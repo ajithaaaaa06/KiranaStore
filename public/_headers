@@ -1,0 +1,23 @@
+# Hashed Assets: Long-term cache
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Service Worker & Manifest: Never cache
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+  Service-Worker-Allowed: /
+
+/manifest.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Type: application/manifest+json
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Global Security Headers
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: microphone=(self), camera=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://api.sarvam.ai https://dhruva-api.bhashini.gov.in; worker-src 'self' blob:; manifest-src 'self';

@@ -1,0 +1,45 @@
+name: Voice Khata CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-build:
+    name: Lint, Test, Benchmark & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (LTS v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Static Typecheck & Lint
+        run: npm run typecheck
+
+      - name: Unit Tests & Code Coverage
+        run: npm test
+
+      - name: Indic Speech Parsing Accuracy Benchmark (Target >= 90%)
+        run: npm run accuracy
+
+      - name: Performance Latency SLA Benchmark (Target < 2s under 4x CPU)
+        run: npm run benchmark
+
+      - name: Production Build & Bundle Budget Audit (Home JS < 150KB Gzip)
+        run: npm run build
