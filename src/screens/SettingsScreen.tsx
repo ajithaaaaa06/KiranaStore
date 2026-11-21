@@ -42,7 +42,6 @@ import {
   HardDrive,
   KeyRound,
   Phone,
-  QrCode,
 } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
 import { useSettings, ASREngine, ThemeMode } from '../hooks/useSettings';
@@ -731,39 +730,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
           <span
             className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white transition-transform shadow-md ${
               settings.requireCustomerPhone ? 'translate-x-6' : 'translate-x-0'
-            }`}
-          />
-        </button>
-      </div>
-
-      {/* Auto-open Payment Request after Udhaar toggle */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-            <QrCode className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-sm font-black text-slate-900 dark:text-white block">
-              {t('autoOpenPaymentRequestLabel')}
-            </span>
-            <span className="text-[11px] font-semibold text-slate-400">
-              {t('autoOpenPaymentRequestDesc')}
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          data-testid="toggle-auto-open-payment"
-          onClick={() => updateSetting('autoOpenPaymentRequest', !settings.autoOpenPaymentRequest)}
-          className={`w-14 h-8 rounded-full transition-colors relative min-h-[32px] ${
-            settings.autoOpenPaymentRequest ? 'bg-amber-600' : 'bg-slate-300 dark:bg-slate-700'
-          }`}
-          aria-label="Toggle auto open payment request after udhaar"
-        >
-          <span
-            className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white transition-transform shadow-md ${
-              settings.autoOpenPaymentRequest ? 'translate-x-6' : 'translate-x-0'
             }`}
           />
         </button>

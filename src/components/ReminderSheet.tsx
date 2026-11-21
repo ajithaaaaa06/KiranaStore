@@ -25,6 +25,7 @@ import { formatRupees, formatFullRelativeDate } from '../lib/format';
 import { useI18n } from '../i18n/I18nContext';
 import { useToast } from './ui/Toast';
 import { translations } from '../i18n/translations';
+import { buildWhatsAppReminderUrl, buildReminderMessage } from '../services/reminderMessage';
 
 export interface ReminderSheetProps {
   customer: Customer;
@@ -81,29 +82,17 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
 
   if (!isOpen) return null;
 
-  // Clean phone number (strip whitespace, hyphens, leading 0 or +91)
-  const cleanPhone = (raw: string): string => {
-    const digits = raw.replace(/\D/g, '');
-    if (digits.length === 12 && digits.startsWith('91')) {
-      return digits;
-    }
-    if (digits.length === 10) {
-      return `91${digits}`;
-    }
-    return digits;
-  };
-
   const handleSendWhatsApp = async () => {
-    const cleanedDigits = cleanPhone(phoneNumber);
+    const digits = phoneNumber.replace(/\D/g, '');
 
-    if (!cleanedDigits || cleanedDigits.length < 10) {
+    if (!digits || digits.length < 10) {
       showToast(t('invalidPhoneError'), { type: 'warning' });
       return;
     }
 
     // Save phone and update lastRemindedAt on customer profile
     try {
-      const raw10 = cleanedDigits.slice(-10);
+      const raw10 = digits.slice(-10);
       const updated = await ledgerService.updateCustomer(customer.id, {
         phone: raw10,
         lastRemindedAt: new Date().toISOString(),
@@ -115,8 +104,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
       // ignore
     }
 
-    const encoded = encodeURIComponent(messageText);
-    const waUrl = `https://wa.me/${cleanedDigits}?text=${encoded}`;
+    const waUrl = buildWhatsAppReminderUrl(phoneNumber, messageText);
     window.open(waUrl, '_blank');
     onClose();
   };
@@ -264,10 +252,10 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
             </button>
           </div>
           <textarea
-            rows={5}
+            rows={7}
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
-            className="w-full bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5 text-sm font-semibold text-white focus:outline-none focus:border-emerald-500 leading-relaxed"
+            className="w-full bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5 text-xs sm:text-sm font-semibold text-white focus:outline-none focus:border-emerald-500 leading-relaxed font-mono whitespace-pre-wrap"
           />
         </div>
 

@@ -16,14 +16,11 @@ import {
   CheckCircle,
   Copy,
   Receipt,
-  Store,
-  Calendar,
 } from 'lucide-react';
 import { Customer, LedgerEntry } from '../services/types';
-import { formatRupees, formatFullRelativeDate } from '../lib/format';
-import { formatTime } from '../lib/formatters';
 import { useToast } from './ui/Toast';
 import { useI18n } from '../i18n/I18nContext';
+import { buildReminderMessage } from '../services/reminderMessage';
 
 export interface ReceiptModalProps {
   customer: Customer;
@@ -46,47 +43,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentDateFormatted = new Date().toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
+  // Generate plain text receipt using the unified message builder format
+  const plainTextReceipt = buildReminderMessage({
+    customerName: customer.name,
+    amount: customer.balance,
+    shopName,
+    lang: language,
+    entries,
   });
-  const currentTimeFormatted = new Date().toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-
-  // Generate plain text receipt for sharing or copying
-  const plainTextReceipt = `
-========================================
-       ${shopName.toUpperCase()}
-           KHATA RECEIPT SLIP
-========================================
-Date: ${currentDateFormatted}, ${currentTimeFormatted}
-Customer: ${customer.name}
-Phone: ${customer.phone ? `+91 ${customer.phone}` : 'N/A'}
-----------------------------------------
-STATEMENT (RECENT TRANSACTIONS):
-${entries
-  .slice(0, 5)
-  .map(
-    (e) =>
-      `${new Date(e.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}: ${
-        e.type === 'credit' ? 'Udhaar' : 'Jama'
-      } - ₹${e.amount.toLocaleString('en-IN')}${e.note ? ` (${e.note})` : ''}`
-  )
-  .join('\n')}
-----------------------------------------
-Total Udhaar: ₹${customer.totalCredit.toLocaleString('en-IN')}
-Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
-----------------------------------------
-*BALANCE OWED: ₹${customer.balance.toLocaleString('en-IN')}*
-========================================
-   Thank you for shopping with us!
-   Powered by Voice Khata PWA
-========================================
-  `.trim();
 
   // Handle Print Action
   const handlePrint = () => {
@@ -147,90 +111,9 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
         {/* ============================================================ */}
         <div
           id="printable-receipt"
-          className="receipt-thermal-paper bg-amber-50/95 dark:bg-white text-slate-900 rounded-2xl p-4 sm:p-5 border-2 border-dashed border-slate-400 shadow-inner print:rounded-none print:border-none print:p-2 print:w-[58mm] print:mx-auto font-mono text-xs leading-tight"
+          className="receipt-thermal-paper bg-amber-50/95 dark:bg-white text-slate-900 rounded-2xl p-4 sm:p-5 border-2 border-dashed border-slate-400 shadow-inner print:rounded-none print:border-none print:p-2 print:w-[58mm] print:mx-auto font-mono text-xs leading-relaxed whitespace-pre-wrap select-text"
         >
-          {/* Header */}
-          <div className="text-center pb-2.5 border-b border-dashed border-slate-400">
-            <h2 className="text-sm font-black tracking-tight uppercase">
-              {shopName}
-            </h2>
-            <p className="text-[10px] text-slate-600 mt-0.5">
-              {t('khataStatementSlip')}
-            </p>
-            <p className="text-[10px] text-slate-500 mt-0.5">
-              {currentDateFormatted} • {currentTimeFormatted}
-            </p>
-          </div>
-
-          {/* Customer Metadata */}
-          <div className="py-2.5 border-b border-dashed border-slate-400 space-y-0.5">
-            <div className="flex justify-between font-bold">
-              <span className="text-slate-500">{t('customerName')}:</span>
-              <span className="font-black text-slate-900">{customer.name}</span>
-            </div>
-            {customer.phone && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">{t('phone')}:</span>
-                <span>+91 {customer.phone}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Line Items Statement */}
-          <div className="py-2.5 border-b border-dashed border-slate-400">
-            <span className="text-[10px] font-black uppercase text-slate-500 block mb-1">
-              {t('recentEntriesReceipt')}
-            </span>
-            <div className="space-y-1">
-              {entries.slice(0, 5).map((e) => {
-                const isCredit = e.type === 'credit';
-                return (
-                  <div key={e.id} className="flex justify-between items-start text-[11px]">
-                    <div>
-                      <span className="font-bold">
-                        [{isCredit ? t('credit').toUpperCase() : t('payment').toUpperCase()}]
-                      </span>{' '}
-                      <span className="text-slate-600">
-                        {formatFullRelativeDate(e.date, { lang: language })}
-                      </span>
-                      {e.note && (
-                        <span className="block text-[10px] text-slate-500 italic pl-1">
-                          - {e.note}
-                        </span>
-                      )}
-                    </div>
-                    <span className="font-black">
-                      ₹{e.amount.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Summary Totals */}
-          <div className="py-2.5 border-b-2 border-slate-900 space-y-1">
-            <div className="flex justify-between text-slate-600 text-[11px]">
-              <span>{t('totalCreditLabel')}</span>
-              <span>₹{customer.totalCredit.toLocaleString('en-IN')}</span>
-            </div>
-            <div className="flex justify-between text-slate-600 text-[11px]">
-              <span>{t('totalPaymentLabel')}</span>
-              <span>₹{customer.totalPayment.toLocaleString('en-IN')}</span>
-            </div>
-            <div className="flex justify-between text-sm font-black pt-1 border-t border-slate-300 text-slate-900">
-              <span>{t('outstandingUdhaar')}:</span>
-              <span className="text-base font-black">
-                ₹{customer.balance.toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="text-center pt-3 text-[10px] text-slate-500 space-y-0.5">
-            <p className="font-bold">{t('thankYouShopping')}</p>
-            <p>Powered by Voice Khata PWA</p>
-          </div>
+          {plainTextReceipt}
         </div>
 
         {/* Modal Action Buttons (Hidden during printing) */}

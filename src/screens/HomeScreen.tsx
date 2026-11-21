@@ -27,7 +27,7 @@ import { useI18n } from '../i18n/I18nContext';
 import { useToast } from '../components/ui/Toast';
 import { useSettings } from '../hooks/useSettings';
 import type { LatencyMetrics } from '../components/DebugLatencyBadge';
-import { VolumeX, AlertCircle, QrCode } from 'lucide-react';
+import { VolumeX, AlertCircle } from 'lucide-react';
 
 const DebugLatencyBadge = lazy(() => import('../components/DebugLatencyBadge').then(m => ({ default: m.DebugLatencyBadge })));
 
@@ -36,7 +36,6 @@ const BalanceAnswerCard = lazy(() => import('../components/BalanceAnswerCard').t
 const ManualEntrySheet = lazy(() => import('../components/ManualEntrySheet').then(m => ({ default: m.ManualEntrySheet })));
 const RegisterCustomerSheet = lazy(() => import('../components/RegisterCustomerSheet').then(m => ({ default: m.RegisterCustomerSheet })));
 const DisambiguationSheet = lazy(() => import('../components/DisambiguationSheet').then(m => ({ default: m.DisambiguationSheet })));
-const PaymentRequestSheet = lazy(() => import('../components/PaymentRequestSheet').then(m => ({ default: m.PaymentRequestSheet })));
 
 interface HomeScreenProps {
   onSelectCustomer?: (customerId: string) => void;
@@ -99,16 +98,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
   const [showQuerySheet, setShowQuerySheet] = useState(false);
   const [queryResponseTime, setQueryResponseTime] = useState<number | undefined>(undefined);
 
-  // Payment Request Overlay State (F17)
-  const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null);
-  const [showPaymentSheet, setShowPaymentSheet] = useState(false);
-  const [activePaymentCustomer, setActivePaymentCustomer] = useState<Customer | null>(null);
-  const [activePaymentAmount, setActivePaymentAmount] = useState<number>(0);
-  const [activePaymentBalance, setActivePaymentBalance] = useState<number>(0);
-  const [activePaymentRequest, setActivePaymentRequest] = useState<PaymentRequest | null>(null);
-  const [isCounterQrMode, setIsCounterQrMode] = useState(false);
-
   // Load shop profile
+  const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null);
   useEffect(() => {
     ledgerService.getProfile?.().then((prof) => {
       if (prof) setShopProfile(prof);
@@ -119,27 +110,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
     window.addEventListener('vk_profile_updated', handleProfileUpdated);
     return () => window.removeEventListener('vk_profile_updated', handleProfileUpdated);
   }, []);
-
-  const handleOpenCounterQr = async () => {
-    const prof = shopProfile || (await ledgerService.getProfile?.()) || null;
-    setShopProfile(prof);
-    setActivePaymentCustomer(null);
-    setActivePaymentAmount(0);
-    setActivePaymentBalance(0);
-    setActivePaymentRequest(null);
-    setIsCounterQrMode(true);
-    setShowPaymentSheet(true);
-  };
-
-  const handleAddPhoneFromPayment = () => {
-    if (activePaymentCustomer) {
-      setRegisterInitialName(activePaymentCustomer.name);
-      setRegisterInitialPhone('');
-      setRegisterPendingEntry(null);
-      setShowPaymentSheet(false);
-      setShowRegisterSheet(true);
-    }
-  };
 
   const { isOnline } = useOnlineStatus();
   const [showManualEntry, setShowManualEntry] = useState(false);
@@ -210,31 +180,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
           customer.name
         );
         lastSavedCustomer = res.customer;
-        if (item.type === 'credit') {
-          try {
-            savedPaymentReq = (await ledgerService.createPaymentRequest?.({
-              entryId: res.entry.id,
-              customerId: res.customer.id,
-              amount: item.amount,
-            })) || null;
-          } catch (e) {
-            console.error('Failed to create payment request:', e);
-          }
-        }
       }
 
       // Audio Feedback for single entry (multi-entry plays sound inside sheet)
       const primary = items[0];
       if (items.length === 1) {
         if (primary.type === 'credit') {
-          if (settings.autoOpenPaymentRequest) {
-            const { getSpeechTemplates } = await import('../i18n/speech');
-            const tmpl = getSpeechTemplates(language);
-            const spokenText = tmpl.creditSavedWithPaymentRequest(primary.customerName, primary.amount);
-            speak(spokenText, { locale: currentLangConfig.speechLocale });
-          } else {
-            announceCreditSaved(primary.customerName, primary.amount);
-          }
+          announceCreditSaved(primary.customerName, primary.amount);
         } else {
           announcePaymentSaved(primary.customerName, primary.amount);
         }
@@ -242,16 +194,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
           `${primary.customerName}: ${primary.type === 'credit' ? t('credit') : t('payment')} - ${t('entrySavedSuccess')}`,
           { type: 'success' }
         );
-
-        // Auto-open payment request sheet if setting is enabled (F17)
-        if (primary.type === 'credit' && settings.autoOpenPaymentRequest && lastSavedCustomer) {
-          setActivePaymentCustomer(lastSavedCustomer);
-          setActivePaymentAmount(primary.amount);
-          setActivePaymentBalance(lastSavedCustomer.balance);
-          setActivePaymentRequest(savedPaymentReq);
-          setIsCounterQrMode(false);
-          setShowPaymentSheet(true);
-        }
       } else {
         showToast(`${items.length} ${t('multiEntriesSavedSuccess')}`, {
           type: 'success',
@@ -273,10 +215,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       announcePaymentSaved,
       showToast,
       refreshData,
-      settings.autoOpenPaymentRequest,
-      language,
-      currentLangConfig.speechLocale,
-      speak,
     ]
   );
 
@@ -605,20 +543,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         totalPendingBalance={totalPendingBalance}
       />
 
-      {/* "Show my QR" Counter Button for in-store customers */}
-      <div className="flex items-center justify-end px-4 -mt-1 mb-2 max-w-md mx-auto">
-        <button
-          type="button"
-          data-testid="show-my-qr-btn"
-          onClick={handleOpenCounterQr}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/30 text-xs font-black transition-all active:scale-95 shadow-sm"
-          aria-label={t('showMyQr')}
-        >
-          <QrCode className="w-3.5 h-3.5" />
-          <span>{t('showMyQr')}</span>
-        </button>
-      </div>
-
       {/* 2. Live Transcript Banner Area (Above Mic) */}
       <LiveTranscriptBanner
         transcript={transcript}
@@ -738,25 +662,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         </Suspense>
       )}
 
-      {/* 10. Instant UPI Payment Request Sheet (F17) */}
-      {showPaymentSheet && (
-        <Suspense fallback={null}>
-          <PaymentRequestSheet
-            isOpen={showPaymentSheet}
-            onClose={() => setShowPaymentSheet(false)}
-            customer={activePaymentCustomer}
-            amount={activePaymentAmount}
-            runningBalance={activePaymentBalance}
-            profile={shopProfile}
-            paymentRequest={activePaymentRequest}
-            isCounterMode={isCounterQrMode}
-            onAddPhoneNumber={handleAddPhoneFromPayment}
-            onOpenSettings={() => navigate('/settings')}
-          />
-        </Suspense>
-      )}
-
-      {/* 11. SLA Latency & Telemetry Badge (?debug=1) */}
+      {/* SLA Latency & Telemetry Badge (?debug=1) */}
       <Suspense fallback={null}>
         <DebugLatencyBadge metrics={latencyMetrics} />
       </Suspense>

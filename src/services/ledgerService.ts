@@ -24,6 +24,7 @@ import {
   EntrySource,
 } from './types';
 import { translations } from '../i18n/translations';
+import { buildReminderMessage, buildWhatsAppReminderUrl } from './reminderMessage';
 import { cleanPhoneNumber } from '../lib/formatters';
 import { getDB, EncryptedCustomerRecord, EncryptedEntryRecord, DB_NAME } from './db';
 import { cryptoService } from './crypto';
@@ -975,41 +976,33 @@ export class RealLedgerService implements ILedgerService {
     shopName: string = 'Kirana Store',
     entries?: LedgerEntry[]
   ): { text: string; url: string } {
-    const amountStr = customer.balance.toLocaleString('en-IN');
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
-    const phone = cleanPhoneNumber(customer.phone);
-    const url = phone
-      ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const text = buildReminderMessage({
+      customerName: customer.name,
+      amount: customer.balance,
+      shopName,
+      lang,
+      entries,
+    });
+    const url = buildWhatsAppReminderUrl(customer.phone || '', text);
     return { text, url };
   }
 
-  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store'): string {
+  public generateReceiptText(
+    entry?: LedgerEntry,
+    customer?: Customer,
+    shopName: string = 'Kirana Store',
+    entries?: LedgerEntry[]
+  ): string {
     const cust = customer || { name: 'Customer', phone: '', balance: 0, totalCredit: 0, totalPayment: 0, id: '' };
-    const isCredit = entry?.type === 'credit';
-    const typeLabel = isCredit ? 'UDHAAR (CREDIT GIVEN)' : 'JAMA (PAYMENT RECEIVED)';
-    const dateFormatted = entry?.date ? new Date(entry.date).toLocaleString('en-IN') : new Date().toLocaleString('en-IN');
-    const amt = entry?.amount !== undefined ? entry.amount.toLocaleString('en-IN') : '0';
-
-    return `
-========================================
-       ${shopName.toUpperCase()}
-           KHATA RECEIPT SLIP
-========================================
-Date: ${dateFormatted}
-Customer: ${cust.name}
-Phone: ${cust.phone || 'N/A'}
-----------------------------------------
-Transaction Type: ${typeLabel}
-Amount: ₹${amt}
-${entry?.note ? `Note: ${entry.note}` : ''}
-----------------------------------------
-Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
-========================================
-   Thank you for shopping with us!
-   Powered by Voice Khata PWA
-========================================
-    `.trim();
+    const allEntries = entries || (entry ? [entry] : undefined);
+    return buildReminderMessage({
+      customerName: cust.name,
+      amount: cust.balance,
+      shopName,
+      lang: 'en',
+      entries: allEntries,
+      now: entry?.date ? new Date(entry.date) : new Date(),
+    });
   }
 
   public async exportData(): Promise<string> {
@@ -1537,41 +1530,33 @@ export class InMemoryLedgerService implements ILedgerService {
     shopName: string = 'Kirana Store',
     entries?: LedgerEntry[]
   ): { text: string; url: string } {
-    const amountStr = customer.balance.toLocaleString('en-IN');
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
-    const phone = cleanPhoneNumber(customer.phone);
-    const url = phone
-      ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const text = buildReminderMessage({
+      customerName: customer.name,
+      amount: customer.balance,
+      shopName,
+      lang,
+      entries,
+    });
+    const url = buildWhatsAppReminderUrl(customer.phone || '', text);
     return { text, url };
   }
 
-  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store'): string {
+  public generateReceiptText(
+    entry?: LedgerEntry,
+    customer?: Customer,
+    shopName: string = 'Kirana Store',
+    entries?: LedgerEntry[]
+  ): string {
     const cust = customer || { name: 'Customer', phone: '', balance: 0, totalCredit: 0, totalPayment: 0, id: '' };
-    const isCredit = entry?.type === 'credit';
-    const typeLabel = isCredit ? 'UDHAAR (CREDIT GIVEN)' : 'JAMA (PAYMENT RECEIVED)';
-    const dateFormatted = entry?.date ? new Date(entry.date).toLocaleString('en-IN') : new Date().toLocaleString('en-IN');
-    const amt = entry?.amount !== undefined ? entry.amount.toLocaleString('en-IN') : '0';
-
-    return `
-========================================
-       ${shopName.toUpperCase()}
-           KHATA RECEIPT SLIP
-========================================
-Date: ${dateFormatted}
-Customer: ${cust.name}
-Phone: ${cust.phone || 'N/A'}
-----------------------------------------
-Transaction Type: ${typeLabel}
-Amount: ₹${amt}
-${entry?.note ? `Note: ${entry.note}` : ''}
-----------------------------------------
-Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
-========================================
-   Thank you for shopping with us!
-   Powered by Voice Khata PWA
-========================================
-    `.trim();
+    const allEntries = entries || (entry ? [entry] : undefined);
+    return buildReminderMessage({
+      customerName: cust.name,
+      amount: cust.balance,
+      shopName,
+      lang: 'en',
+      entries: allEntries,
+      now: entry?.date ? new Date(entry.date) : new Date(),
+    });
   }
 
   public async exportData(): Promise<string> {

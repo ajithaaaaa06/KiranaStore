@@ -242,5 +242,5 @@ export interface ILedgerService {
     entries?: LedgerEntry[]
   ): { text: string; url: string };
 
-  generateReceiptText?(entry?: LedgerEntry, customer?: Customer, shopName?: string): string;
+  generateReceiptText?(entry?: LedgerEntry, customer?: Customer, shopName?: string, entries?: LedgerEntry[]): string;
 }
