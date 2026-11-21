@@ -43,19 +43,63 @@ export const Header: React.FC<HeaderProps> = ({ onOpenLanguagePicker }) => {
 
   const [isResettingDemo, setIsResettingDemo] = useState(false);
 
-  // Editable Shop Name synced with typed useSettings hook
+  // Editable Shop Name synced with typed useSettings hook & local profile
   const shopName = settings.shopName;
   const [isEditingShopName, setIsEditingShopName] = useState(false);
   const [editInput, setEditInput] = useState(shopName);
 
   useEffect(() => {
+    // Initial fetch from encrypted profile
+    ledgerService.getProfile().then((p) => {
+      if (p?.shopName) {
+        updateSetting('shopName', p.shopName);
+        setEditInput(p.shopName);
+      }
+    });
+
+    const handleProfileUpdated = (e: any) => {
+      const p = e?.detail;
+      if (p?.shopName) {
+        updateSetting('shopName', p.shopName);
+        setEditInput(p.shopName);
+      }
+    };
+    const handleShopNameUpdated = (e: any) => {
+      if (typeof e?.detail === 'string') {
+        updateSetting('shopName', e.detail);
+        setEditInput(e.detail);
+      }
+    };
+
+    window.addEventListener('vk_profile_updated', handleProfileUpdated);
+    window.addEventListener('vk_shop_name_updated', handleShopNameUpdated);
+
+    return () => {
+      window.removeEventListener('vk_profile_updated', handleProfileUpdated);
+      window.removeEventListener('vk_shop_name_updated', handleShopNameUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
     setEditInput(shopName);
   }, [shopName]);
 
-  const handleSaveShopName = () => {
+  const handleSaveShopName = async () => {
     const trimmed = editInput.trim() || 'Apna Kirana Khata';
     updateSetting('shopName', trimmed);
     setIsEditingShopName(false);
+
+    try {
+      const existing = await ledgerService.getProfile();
+      if (existing) {
+        await ledgerService.saveProfile({
+          ...existing,
+          shopName: trimmed,
+        });
+      }
+    } catch (err) {
+      console.warn('Could not update profile shop name:', err);
+    }
   };
 
   const handleResetDemo = async () => {

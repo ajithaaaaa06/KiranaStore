@@ -781,7 +781,6 @@ var NUMBER_WORDS = {
   "munnooru": 300,
   "murnooru": 300,
   "murnuru": 300,
-  "munnuru": 300,
   "muru nooru": 300,
   "\u0CAE\u0CC1\u0CA8\u0CCD\u0CA8\u0CC2\u0CB0\u0CC1": 300,
   "naannooru": 400,
@@ -793,8 +792,6 @@ var NUMBER_WORDS = {
   "ainooru": 500,
   "aivannooru": 500,
   "aivattooru": 500,
-  "ainuru": 500,
-  "aanooru": 500,
   "aidu nooru": 500,
   "\u0C90\u0CA8\u0CCD\u0CA8\u0CC2\u0CB0\u0CC1": 500,
   "aaranuru": 600,
@@ -802,7 +799,6 @@ var NUMBER_WORDS = {
   "aaru nooru": 600,
   "\u0C86\u0CB0\u0CA8\u0CCD\u0CA8\u0CC2\u0CB0\u0CC1": 600,
   "eplanooru": 700,
-  "ezhunooru": 700,
   "elu nooru": 700,
   "\u0C8F\u0CB3\u0CC1\u0CA8\u0CC2\u0CB0\u0CC1": 700,
   "entunooru": 800,
@@ -1179,6 +1175,389 @@ function extractAmounts(text) {
   }
   results.sort((a, b) => a.start - b.start);
   return results;
+}
+
+// src/services/phoneParser.ts
+var NATIVE_DIGIT_MAP = {
+  // Devanagari (० - ९)
+  "\u0966": "0",
+  "\u0967": "1",
+  "\u0968": "2",
+  "\u0969": "3",
+  "\u096A": "4",
+  "\u096B": "5",
+  "\u096C": "6",
+  "\u096D": "7",
+  "\u096E": "8",
+  "\u096F": "9",
+  // Kannada (೦ - ೯)
+  "\u0CE6": "0",
+  "\u0CE7": "1",
+  "\u0CE8": "2",
+  "\u0CE9": "3",
+  "\u0CEA": "4",
+  "\u0CEB": "5",
+  "\u0CEC": "6",
+  "\u0CED": "7",
+  "\u0CEE": "8",
+  "\u0CEF": "9",
+  // Tamil (௦ - ௯)
+  "\u0BE6": "0",
+  "\u0BE7": "1",
+  "\u0BE8": "2",
+  "\u0BE9": "3",
+  "\u0BEA": "4",
+  "\u0BEB": "5",
+  "\u0BEC": "6",
+  "\u0BED": "7",
+  "\u0BEE": "8",
+  "\u0BEF": "9",
+  // Telugu (౦ - ౯)
+  "\u0C66": "0",
+  "\u0C67": "1",
+  "\u0C68": "2",
+  "\u0C69": "3",
+  "\u0C6A": "4",
+  "\u0C6B": "5",
+  "\u0C6C": "6",
+  "\u0C6D": "7",
+  "\u0C6E": "8",
+  "\u0C6F": "9"
+};
+var SPOKEN_DIGIT_MAP = {
+  // 0 - Zero
+  "zero": "0",
+  "oh": "0",
+  "o": "0",
+  "zeros": "0",
+  "zeroes": "0",
+  "shunya": "0",
+  "soonya": "0",
+  "shunyaa": "0",
+  "\u0936\u0942\u0928\u094D\u092F": "0",
+  "sonne": "0",
+  "soone": "0",
+  "\u0CB8\u0CCA\u0CA8\u0CCD\u0CA8\u0CC6": "0",
+  // TODO_REVIEW: Check colloquial Kannada "soone" variant
+  "poojyam": "0",
+  "pujyam": "0",
+  "poojiyam": "0",
+  "\u0BAA\u0BC2\u0B9C\u0BCD\u0BAF\u0BAE\u0BCD": "0",
+  "\u0BAA\u0BC2\u0B9C\u0BCD\u0B9C\u0BBF\u0BAF\u0BAE\u0BCD": "0",
+  // TODO_REVIEW: Check colloquial Tamil "poojiyam"
+  "sunna": "0",
+  "soonna": "0",
+  "\u0C38\u0C41\u0C28\u0C4D\u0C28\u0C3E": "0",
+  // 1 - One
+  "one": "1",
+  "won": "1",
+  "ek": "1",
+  "aek": "1",
+  "ik": "1",
+  "\u090F\u0915": "1",
+  "ondu": "1",
+  "wondu": "1",
+  "\u0C92\u0C82\u0CA6\u0CC1": "1",
+  "ondru": "1",
+  "onnu": "1",
+  "\u0B92\u0BA9\u0BCD\u0BB1\u0BC1": "1",
+  "\u0B92\u0BA9\u0BCD\u0BA9\u0BC1": "1",
+  // TODO_REVIEW: Spoken Tamil "onnu" vs formal "ondru"
+  "okati": "1",
+  "vokati": "1",
+  "\u0C12\u0C15\u0C1F\u0C3F": "1",
+  // 2 - Two
+  "two": "2",
+  "to": "2",
+  "too": "2",
+  "do": "2",
+  "doo": "2",
+  "dow": "2",
+  "\u0926\u094B": "2",
+  "eradu": "2",
+  "yeradu": "2",
+  "\u0C8E\u0CB0\u0CA1\u0CC1": "2",
+  "irandu": "2",
+  "rendu": "2",
+  "\u0B87\u0BB0\u0BA3\u0BCD\u0B9F\u0BC1": "2",
+  "\u0BB0\u0BC6\u0BA3\u0BCD\u0B9F\u0BC1": "2",
+  "moodu_dummy": "3",
+  // placeholder
+  // Telugu rendu
+  "\u0C30\u0C46\u0C02\u0C21\u0C41": "2",
+  // 3 - Three
+  "three": "3",
+  "tree": "3",
+  "teen": "3",
+  "tin": "3",
+  "\u0924\u0940\u0928": "3",
+  "mooru": "3",
+  "muru": "3",
+  "\u0CAE\u0CC2\u0CB0\u0CC1": "3",
+  "moondru": "3",
+  "moonu": "3",
+  "\u0BAE\u0BC2\u0BA9\u0BCD\u0BB1\u0BC1": "3",
+  "\u0BAE\u0BC2\u0BA3\u0BC1": "3",
+  "moodu": "3",
+  "mudu": "3",
+  "\u0C2E\u0C42\u0C21\u0C41": "3",
+  // 4 - Four
+  "four": "4",
+  "for": "4",
+  "fore": "4",
+  "char": "4",
+  "chaar": "4",
+  "\u091A\u093E\u0930": "4",
+  "naalku": "4",
+  "nalku": "4",
+  "\u0CA8\u0CBE\u0CB2\u0CCD\u0C95\u0CC1": "4",
+  "naangu": "4",
+  "naalu": "4",
+  "\u0BA8\u0BBE\u0BA9\u0BCD\u0B95\u0BC1": "4",
+  "\u0BA8\u0BBE\u0BB2\u0BC1": "4",
+  "naalugu": "4",
+  "nalugu": "4",
+  "\u0C28\u0C3E\u0C32\u0C41\u0C17\u0C41": "4",
+  // 5 - Five
+  "five": "5",
+  "paanch": "5",
+  "panch": "5",
+  "\u092A\u093E\u0902\u091A": "5",
+  "\u092A\u093E\u0901\u091A": "5",
+  "aidu": "5",
+  "aydu": "5",
+  "\u0C90\u0CA6\u0CC1": "5",
+  "\u0C10\u0C26\u0C41": "5",
+  "aindhu": "5",
+  "anju": "5",
+  "anchu": "5",
+  "\u0B90\u0BA8\u0BCD\u0BA4\u0BC1": "5",
+  "\u0B85\u0B9E\u0BCD\u0B9A\u0BC1": "5",
+  // Telugu aidu covered by 'aidu' / 'aydu'
+  // 6 - Six
+  "six": "6",
+  "chhe": "6",
+  "chhah": "6",
+  "che": "6",
+  "cheh": "6",
+  "\u091B\u0939": "6",
+  "\u091B\u0903": "6",
+  "\u091B\u0947": "6",
+  "aaru": "6",
+  "aru": "6",
+  "\u0C86\u0CB0\u0CC1": "6",
+  "\u0B86\u0BB1\u0BC1": "6",
+  "\u0C06\u0C30\u0C41": "6",
+  // 7 - Seven
+  "seven": "7",
+  "saat": "7",
+  "sat": "7",
+  "\u0938\u093E\u0924": "7",
+  "eelu": "7",
+  "yelu": "7",
+  "\u0C8F\u0CB3\u0CC1": "7",
+  "eezhu": "7",
+  "yezhu": "7",
+  "\u0B8F\u0BB4\u0BC1": "7",
+  "eedu": "7",
+  "yedu": "7",
+  "\u0C0F\u0C21\u0C41": "7",
+  // 8 - Eight
+  "eight": "8",
+  "ate": "8",
+  "aath": "8",
+  "ath": "8",
+  "\u0906\u0920": "8",
+  "entu": "8",
+  "yentu": "8",
+  "\u0C8E\u0C82\u0C9F\u0CC1": "8",
+  "ettu": "8",
+  "\u0B8E\u0B9F\u0BCD\u0B9F\u0BC1": "8",
+  "enimidi": "8",
+  "yenimidi": "8",
+  "\u0C0E\u0C28\u0C3F\u0C2E\u0C3F\u0C26\u0C3F": "8",
+  // 9 - Nine
+  "nine": "9",
+  "nau": "9",
+  "no": "9",
+  "nav": "9",
+  "\u0928\u094C": "9",
+  "ombattu": "9",
+  "ombatu": "9",
+  "\u0C92\u0C82\u0CAC\u0CA4\u0CCD\u0CA4\u0CC1": "9",
+  "onbadhu": "9",
+  "onbathu": "9",
+  "ombadhu": "9",
+  "\u0B92\u0BA9\u0BCD\u0BAA\u0BA4\u0BC1": "9",
+  "tommidi": "9",
+  "\u0C24\u0C4A\u0C2E\u0C4D\u0C2E\u0C3F\u0C26\u0C3F": "9"
+};
+var REPEAT_DOUBLE_WORDS = /* @__PURE__ */ new Set([
+  "double",
+  "dabal",
+  "dubble",
+  "dabbel",
+  "\u0921\u092C\u0932",
+  "\u0CA1\u0CAC\u0CB2\u0CCD",
+  "\u0B9F\u0BAA\u0BC1\u0BB3\u0BCD",
+  "\u0C21\u0C2C\u0C41\u0C32\u0C4D"
+]);
+var REPEAT_TRIPLE_WORDS = /* @__PURE__ */ new Set([
+  "triple",
+  "treepal",
+  "tripple",
+  "tripal",
+  "\u091F\u094D\u0930\u093F\u092A\u0932",
+  "\u0C9F\u0CCD\u0CB0\u0CBF\u0CAA\u0CB2\u0CCD",
+  "\u0B9F\u0BBF\u0BB0\u0BBF\u0BAA\u0BBF\u0BB3\u0BCD",
+  "\u0C1F\u0C4D\u0C30\u0C3F\u0C2A\u0C41\u0C32\u0C4D"
+]);
+var FILLER_WORDS = /* @__PURE__ */ new Set([
+  "number",
+  "no",
+  "ph",
+  "phone",
+  "mobile",
+  "ka",
+  "ki",
+  "ke",
+  "ko",
+  "hai",
+  "he",
+  "daalo",
+  "likho",
+  "add",
+  "karo",
+  "kariye",
+  "kijiye",
+  "umm",
+  "um",
+  "wo",
+  "arre",
+  "are",
+  "ha",
+  "haa",
+  "na",
+  "hisaab",
+  "grahak",
+  "customer",
+  "nambar",
+  "namber",
+  "\u0C28\u0C02\u0C2C\u0C30\u0C4D",
+  "\u0BA8\u0BAE\u0BCD\u0BAA\u0BB0\u0BCD",
+  "\u0CA8\u0C82\u0CAC\u0CB0\u0CCD",
+  "\u0928\u0902\u092C\u0930",
+  "\u092B\u094B\u0928",
+  "matlab",
+  "bolo",
+  "batao",
+  "bataiye"
+]);
+function extractDigitSequence(text) {
+  if (!text) return "";
+  let raw = text.trim();
+  for (const [nativeChar, latinDigit] of Object.entries(NATIVE_DIGIT_MAP)) {
+    raw = raw.split(nativeChar).join(latinDigit);
+  }
+  raw = raw.replace(/[-.,/()]/g, " ");
+  raw = raw.replace(/\bplus\s+(?:nine\s+one|91)\b/gi, "+91 ");
+  raw = raw.replace(/प्लस\s+नौ\s+एक/gi, "+91 ");
+  raw = raw.replace(/ಪ್ಲಸ್\s+ಒಂಬತ್ತು\s+ಒಂದು/gi, "+91 ");
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  let result = "";
+  let pendingMultiplier = 1;
+  for (let i = 0; i < tokens.length; i++) {
+    const rawToken = tokens[i];
+    const token = rawToken.toLowerCase();
+    if (REPEAT_DOUBLE_WORDS.has(token)) {
+      pendingMultiplier = 2;
+      continue;
+    }
+    if (REPEAT_TRIPLE_WORDS.has(token)) {
+      pendingMultiplier = 3;
+      continue;
+    }
+    if (FILLER_WORDS.has(token)) {
+      continue;
+    }
+    if (/^\+?\d+$/.test(token)) {
+      const pureDigits = token.replace(/\D/g, "");
+      if (pureDigits) {
+        if (pendingMultiplier > 1 && pureDigits.length === 1) {
+          result += pureDigits.repeat(pendingMultiplier);
+        } else {
+          result += pureDigits;
+        }
+        pendingMultiplier = 1;
+      }
+      continue;
+    }
+    const digitValue = SPOKEN_DIGIT_MAP[token];
+    if (digitValue !== void 0) {
+      result += digitValue.repeat(pendingMultiplier);
+      pendingMultiplier = 1;
+      continue;
+    }
+    pendingMultiplier = 1;
+  }
+  return result;
+}
+function normalizePrefixes(digits) {
+  let cleaned = digits;
+  if (cleaned.length === 12 && cleaned.startsWith("91")) {
+    const without91 = cleaned.substring(2);
+    if (/^[6-9]/.test(without91)) {
+      cleaned = without91;
+    }
+  }
+  if (cleaned.length === 11 && cleaned.startsWith("0")) {
+    const withoutZero = cleaned.substring(1);
+    if (/^[6-9]/.test(withoutZero)) {
+      cleaned = withoutZero;
+    }
+  }
+  return cleaned;
+}
+function formatPhone(phone) {
+  const clean = (phone || "").replace(/\D/g, "");
+  if (clean.length === 10) {
+    return `${clean.slice(0, 5)} ${clean.slice(5)}`;
+  }
+  return clean;
+}
+function parsePhoneNumber(text) {
+  if (!text || !text.trim()) return null;
+  const rawDigits = extractDigitSequence(text);
+  if (!rawDigits) {
+    return {
+      digits: "",
+      formatted: "",
+      confidence: 0,
+      issues: ["No digits found in input"]
+    };
+  }
+  const normalized = normalizePrefixes(rawDigits);
+  const issues = [];
+  if (normalized.length !== 10) {
+    if (normalized.length === 9) {
+      issues.push("Phone number has 9 digits (1 digit missing). Please speak or enter 10 digits.");
+    } else if (normalized.length === 11) {
+      issues.push("Phone number has 11 digits (1 extra digit). Indian mobile numbers must be 10 digits.");
+    } else {
+      issues.push(`Expected 10 digits, found ${normalized.length} digits.`);
+    }
+  }
+  if (normalized.length > 0 && !/^[6-9]/.test(normalized)) {
+    issues.push(`Indian mobile numbers must start with 6, 7, 8, or 9 (starts with ${normalized[0]}).`);
+  }
+  const isValid = issues.length === 0;
+  const isDirectlyTyped = /^\d{10}$/.test(text.trim().replace(/[- ]/g, ""));
+  return {
+    digits: normalized,
+    formatted: formatPhone(normalized),
+    confidence: isValid ? isDirectlyTyped ? 1 : 0.95 : 0.3,
+    issues
+  };
 }
 
 // src/services/parser.ts
@@ -1756,6 +2135,47 @@ async function parseTranscript(transcript, previousContext) {
       correctionAmount: correctionAmt,
       isCorrection: true,
       customerName: prevCust
+    });
+  }
+  const REGISTER_PATTERNS = [
+    /\b(?:naya|naye|new|add|register|create)\s+(?:customer|grahak|khata|account)\b/i,
+    /\b(?:add|jodo|register)\s+(?:karo|kijiye|karna)\b/i,
+    /\b(?:add|register)\s+customer\b/i,
+    /\b(?:number|phone|mobile)\s+(?:add|save)\s+karo\b/i,
+    /(?:नया\s+ग्राहक|नया\s+कस्टमर|नया\s+खाता|ऐड\s+करो|जोड़ो)/i,
+    /(?:ಹೊಸ\s+ಗ್ರಾಹಕ|ಹೊಸ\s+ಕಸ್ಟಮರ್|ಸೇರಿಸಿ|ನೋಂದಾಯಿಸಿ)/i,
+    /(?:புதிய\s+வாடிக்கையாளர்|சேர்க்கவும்)/i,
+    /(?:కొత్త\s+కస్టమర్|కొత్త\s+ఖాతాదారు|చేర్చండి)/i
+  ];
+  const isRegister = REGISTER_PATTERNS.some((rgx) => rgx.test(lower));
+  if (isRegister) {
+    const parsedPhone = parsePhoneNumber(trimmed);
+    const phoneDigits = parsedPhone && parsedPhone.digits.length >= 10 ? parsedPhone.digits : void 0;
+    let nameText = trimmed;
+    for (const pat of REGISTER_PATTERNS) {
+      nameText = nameText.replace(pat, " ");
+    }
+    nameText = nameText.replace(/\b(?:number|phone|mobile|no|ka|ki|ko|hai|he|naam|name)\b/gi, " ");
+    nameText = nameText.replace(/(?:नंबर|फोन|मोबाइल|का|की|को|है|ಹೆಸರು|ನಂಬರ್|ಎನ್|எண்|నంబర్|నంబరు)/g, " ");
+    if (phoneDigits) {
+      nameText = nameText.replace(new RegExp(phoneDigits, "g"), " ");
+    }
+    nameText = nameText.replace(/\+?91/g, " ");
+    nameText = nameText.replace(/\d+/g, " ");
+    const { name: rawName, confidence: nameConf } = extractCustomerName(nameText);
+    const cleanCustomerName = rawName || "Customer";
+    const regEntry = {
+      customerName: cleanCustomerName,
+      amount: 0,
+      type: "credit",
+      date: now.toISOString(),
+      confidence: phoneDigits ? 0.95 : Math.max(0.85, nameConf),
+      rawTranscript: trimmed
+    };
+    return buildResult("register", [regEntry], phoneDigits ? 0.95 : Math.max(0.85, nameConf), {
+      customerName: cleanCustomerName,
+      name: cleanCustomerName,
+      phone: phoneDigits
     });
   }
   const isQuery = QUERY_PATTERNS.some((rgx) => rgx.test(lower));

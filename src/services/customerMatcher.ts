@@ -14,7 +14,8 @@
  * 6. isDuplicateEntry: checks for duplicate (same customer + amount + type) within 10 minutes.
  */
 
-import { Customer, LedgerEntry, TransactionType } from './types';
+import { Customer, LedgerEntry, TransactionType, LanguageCode } from './types';
+import { extractDigitSequence } from './phoneParser';
 
 // ---------------------------------------------------------------------------
 // 1. HONORIFICS LIST
@@ -534,9 +535,15 @@ export function computeCustomerMatchScore(
   }
 
   // 4. Phonetic Key Match (e.g. Ramesh / Ramesha / Rameshh)
-  const queryPhonetic = getIndianPhoneticKey(normQuery);
-  const customerPhonetic = getIndianPhoneticKey(normCustomer);
-  const hasPhoneticMatch = queryPhonetic && customerPhonetic && queryPhonetic === customerPhonetic;
+  let hasPhoneticMatch = false;
+  if (queryTokens.length === customerTokens.length) {
+    const queryPhonetic = queryTokens.map(getIndianPhoneticKey).join('-');
+    const customerPhonetic = customerTokens.map(getIndianPhoneticKey).join('-');
+    hasPhoneticMatch = Boolean(queryPhonetic && queryPhonetic === customerPhonetic);
+  } else if (queryTokens.length === 1) {
+    const qPhonetic = getIndianPhoneticKey(queryTokens[0]);
+    hasPhoneticMatch = customerTokens.some((cTok) => getIndianPhoneticKey(cTok) === qPhonetic);
+  }
 
   // 5. String Similarity (Jaro-Winkler + Levenshtein)
   const jwSim = jaroWinklerSimilarity(normQuery, normCustomer);
@@ -612,9 +619,19 @@ export function findCustomers(
   const topCandidate = ranked[0];
   const runnerUp = ranked[1];
 
-  // Single clear winner ≥ 0.92 (exact match or clear lead over runner-up)
-  if (topCandidate.score >= 0.92) {
-    if (topCandidate.score === 1.0 || !runnerUp || (topCandidate.score - runnerUp.score >= 0.08)) {
+  // Check if spoken query is a single first name shared by several customers
+  const queryTokens = normalizeName(trimmed).split(/\s+/).filter(Boolean);
+  const isSharedFirstName =
+    queryTokens.length === 1 &&
+    ranked.filter((r) =>
+      normalizeName(r.customer.name).split(/\s+/).includes(queryTokens[0])
+    ).length >= 2;
+
+  // Single clear winner ≥ 0.92:
+  // Must NOT be a shared first name (e.g. "Ramesh" with Ramesh Kumar and Ramesh Gowda),
+  // and either no runner-up or lead > 0.10 over runner-up.
+  if (topCandidate.score >= 0.92 && !isSharedFirstName) {
+    if (!runnerUp || topCandidate.score - runnerUp.score > 0.10) {
       return {
         action: 'auto_select',
         candidates: ranked,
@@ -624,7 +641,7 @@ export function findCustomers(
     }
   }
 
-  // Disambiguate when multiple candidates are close or score is in 0.60 - 0.92 range
+  // Disambiguate when multiple candidates are close (within 0.10) or score is in 0.60 - 0.92 range or shared first name
   return {
     action: 'disambiguate',
     candidates: ranked,
@@ -690,4 +707,223 @@ export function isDuplicateEntry(
 
     return false;
   });
+}
+
+// ---------------------------------------------------------------------------
+// 8. F16: DISAMBIGUATION RESOLUTION (PHONE SUFFIX, NAME, ORDINALS)
+// ---------------------------------------------------------------------------
+
+export interface OrdinalMapping {
+  index: number;
+  words: string[];
+}
+
+export const ORDINAL_MAP: OrdinalMapping[] = [
+  {
+    index: 0, // First / Pehla
+    words: [
+      'first', '1st', 'one', 'pehla', 'pehli', 'pehle', 'ek', 'number one',
+      'modala', 'modalane', 'modalaneya', 'ondu', 'ಮೊದಲ', 'ಮೊದಲನೆಯ', 'ಒಂದು',
+      'mudal', 'mudhal', 'mudhalaavathu', 'onnu', 'ஒன்று', 'முதல்', 'முதலாவது',
+      'modati', 'modata', 'okati', 'మొదటి', 'ఒకటి'
+    ],
+  },
+  {
+    index: 1, // Second / Doosra
+    words: [
+      'second', '2nd', 'two', 'doosra', 'doosri', 'doosre', 'do', 'number two',
+      'eradu', 'eradane', 'eradaneya', 'ಎರಡನೆಯ', 'ಎರಡು',
+      'irandavathu', 'irandu', 'இரண்டாவது', 'இரண்டு',
+      'rendava', 'rendu', 'రెండవ', 'రెండు'
+    ],
+  },
+  {
+    index: 2, // Third / Teesra
+    words: [
+      'third', '3rd', 'three', 'teesra', 'teesri', 'teesre', 'teen',
+      'muru', 'murane', 'muraneya', 'ಮೂರನೆಯ', 'ಮೂರು',
+      'moondravathu', 'moondru', 'மூன்றாவது', 'மூன்று',
+      'moodava', 'moodu', 'మూడవ', 'మూడు'
+    ],
+  },
+  {
+    index: 3, // Fourth / Chautha
+    words: [
+      'fourth', '4th', 'four', 'chautha', 'chauthi', 'chauthe', 'char',
+      'nalku', 'naalku', 'nalkane', 'nalkaneya', 'ನಾಲ್ಕನೆಯ', 'ನಾಲ್ಕು',
+      'naangavathu', 'naangu', 'நான்காவது', 'நான்கு',
+      'naalgava', 'naalugu', 'నాలుగవ', 'నాలుగు'
+    ],
+  },
+];
+
+export type DisambiguationResolution =
+  | {
+      status: 'matched';
+      customer: Customer;
+      method: 'digits' | 'name' | 'ordinal';
+      matchedValue: string;
+    }
+  | {
+      status: 'need_more_digits';
+      digitsNeeded: number;
+      matchingCandidates: Customer[];
+    }
+  | {
+      status: 'no_match';
+      rawQuery: string;
+    };
+
+/**
+ * Resolves which candidate customer the shopkeeper intended:
+ * 1. Spoken digits suffix (last 4 digits in any of 5 languages via phoneParser)
+ * 2. Fuller name ("Ramesh Gowda") or surname / distinctive token ("Gowda", "Kumar", "Plumber")
+ * 3. Ordinals ("pehla", "doosra", "first", "second", Kannada, Tamil, Telugu)
+ * 4. Two candidates sharing same last 4 digits -> requests 6 digits (need_more_digits)
+ */
+export function resolveDisambiguationChoice(
+  speechTranscript: string,
+  candidates: Customer[],
+  language: LanguageCode = 'hi',
+  requiredDigitsCount: number = 4
+): DisambiguationResolution {
+  const trimmed = speechTranscript.trim();
+  if (!trimmed || candidates.length === 0) {
+    return { status: 'no_match', rawQuery: speechTranscript };
+  }
+
+  // 1. Spoken / Typed digits matching
+  const extractedDigits = extractDigitSequence(trimmed);
+  if (extractedDigits.length >= 3) {
+    const targetSuffix = extractedDigits.slice(-requiredDigitsCount);
+
+    const suffixMatches = candidates.filter((c) => {
+      if (!c.phone) return false;
+      const cleanPhone = c.phone.replace(/\D/g, '');
+      return (
+        cleanPhone.endsWith(targetSuffix) ||
+        cleanPhone.endsWith(extractedDigits) ||
+        (extractedDigits.length <= cleanPhone.length && cleanPhone.endsWith(extractedDigits)) ||
+        (cleanPhone.length >= targetSuffix.length && extractedDigits.endsWith(cleanPhone.slice(-requiredDigitsCount)))
+      );
+    });
+
+    if (suffixMatches.length === 1) {
+      return {
+        status: 'matched',
+        customer: suffixMatches[0],
+        method: 'digits',
+        matchedValue: targetSuffix,
+      };
+    }
+
+    if (suffixMatches.length > 1) {
+      // Two candidates share the same last 4 digits
+      // Ask for last 6 digits, then full number. Never choose silently.
+      if (requiredDigitsCount < 10) {
+        const nextDigits = requiredDigitsCount === 4 ? 6 : 10;
+        return {
+          status: 'need_more_digits',
+          digitsNeeded: nextDigits,
+          matchingCandidates: suffixMatches,
+        };
+      } else {
+        // At 10 digits (full phone), check exact match
+        const exact = suffixMatches.find((c) => c.phone?.replace(/\D/g, '') === extractedDigits);
+        if (exact) {
+          return {
+            status: 'matched',
+            customer: exact,
+            method: 'digits',
+            matchedValue: extractedDigits,
+          };
+        }
+        return {
+          status: 'need_more_digits',
+          digitsNeeded: 10,
+          matchingCandidates: suffixMatches,
+        };
+      }
+    }
+
+    // If pure digits were spoken (4+ digits) but matched zero candidates:
+    if (extractedDigits.length >= 4) {
+      return { status: 'no_match', rawQuery: speechTranscript };
+    }
+  }
+
+  // 2. Ordinals matching
+  const normSpeech = normalizeName(trimmed);
+  const speechTokens = normSpeech.split(/\s+/).filter(Boolean);
+
+  for (const ord of ORDINAL_MAP) {
+    const isOrdinalMatch = ord.words.some((word) => {
+      const normWord = normalizeName(word);
+      return (
+        normSpeech === normWord ||
+        speechTokens.includes(normWord) ||
+        trimmed.toLowerCase().includes(word.toLowerCase())
+      );
+    });
+
+    if (isOrdinalMatch && ord.index < candidates.length) {
+      return {
+        status: 'matched',
+        customer: candidates[ord.index],
+        method: 'ordinal',
+        matchedValue: ord.words[0],
+      };
+    }
+  }
+
+  // 3. Fuller Name or Distinctive Surname / Token Matching
+  const nameMatches: Customer[] = [];
+
+  for (const candidate of candidates) {
+    const normCandName = normalizeName(candidate.name);
+    const candTokens = normCandName.split(/\s+/).filter(Boolean);
+    const notesTokens = candidate.notes ? normalizeName(candidate.notes).split(/\s+/).filter(Boolean) : [];
+    const allCandTokens = [...candTokens, ...notesTokens];
+
+    // Full name match (exact or high Jaro-Winkler)
+    if (normCandName === normSpeech || jaroWinklerSimilarity(normCandName, normSpeech) >= 0.88) {
+      nameMatches.push(candidate);
+      continue;
+    }
+
+    // Distinctive tokens: tokens unique to this candidate among the candidates list
+    const distinctiveTokens = allCandTokens.filter((token) => {
+      if (token.length <= 2) return false;
+      const appearsInOthers = candidates.some((other) => {
+        if (other.id === candidate.id) return false;
+        const otherTokens = [
+          ...normalizeName(other.name).split(/\s+/),
+          ...(other.notes ? normalizeName(other.notes).split(/\s+/) : []),
+        ];
+        return otherTokens.includes(token);
+      });
+      return !appearsInOthers;
+    });
+
+    const matchesDistinctive = distinctiveTokens.some((dTok) =>
+      speechTokens.includes(dTok) ||
+      normSpeech.includes(dTok) ||
+      jaroWinklerSimilarity(dTok, normSpeech) >= 0.90
+    );
+
+    if (matchesDistinctive) {
+      nameMatches.push(candidate);
+    }
+  }
+
+  if (nameMatches.length === 1) {
+    return {
+      status: 'matched',
+      customer: nameMatches[0],
+      method: 'name',
+      matchedValue: nameMatches[0].name,
+    };
+  }
+
+  return { status: 'no_match', rawQuery: speechTranscript };
 }

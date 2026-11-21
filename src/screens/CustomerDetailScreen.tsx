@@ -34,11 +34,13 @@ import { ReminderSheet } from '../components/ReminderSheet';
 import { ReceiptModal } from '../components/ReceiptModal';
 import { useI18n } from '../i18n/I18nContext';
 import { useSpeak } from '../hooks/useSpeak';
+import { useSettings } from '../hooks/useSettings';
 
 export const CustomerDetailScreen: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { language } = useI18n();
+  const { settings } = useSettings();
   const { speakBalance, speakConfirmation } = useSpeak();
   const { showToast } = useToast();
 
@@ -479,6 +481,7 @@ export const CustomerDetailScreen: React.FC = () => {
       {/* 6. WhatsApp Reminder Sheet with Multi-Language Templates */}
       <ReminderSheet
         customer={customer}
+        shopName={settings.shopName}
         isOpen={isReminderOpen}
         onClose={() => setIsReminderOpen(false)}
         onCustomerUpdated={(updated) => setCustomer(updated)}
@@ -488,6 +491,7 @@ export const CustomerDetailScreen: React.FC = () => {
       <ReceiptModal
         customer={customer}
         entries={entries}
+        shopName={settings.shopName}
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
       />

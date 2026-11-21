@@ -25,6 +25,8 @@ export interface AppSettings {
   muteReplies: boolean;
   theme: ThemeMode;
   asrEngine: ASREngine;
+  requireCustomerPhone: boolean;
+  autoOpenPaymentRequest: boolean;
 }
 
 export const SETTINGS_STORAGE_KEY = 'voice_khata_settings';
@@ -42,6 +44,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   muteReplies: false,
   theme: 'light',
   asrEngine: 'browser',
+  requireCustomerPhone: true,
+  autoOpenPaymentRequest: true,
 };
 
 interface SettingsContextType {
@@ -81,6 +85,8 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       muteReplies: legacyMuted === 'true',
       theme: legacyTheme || DEFAULT_SETTINGS.theme,
       asrEngine: DEFAULT_SETTINGS.asrEngine,
+      requireCustomerPhone: DEFAULT_SETTINGS.requireCustomerPhone,
+      autoOpenPaymentRequest: DEFAULT_SETTINGS.autoOpenPaymentRequest,
     };
   });
 

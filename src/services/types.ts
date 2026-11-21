@@ -7,16 +7,43 @@ export type TransactionType = 'credit' | 'payment';
 // credit = Udhaar Diya (Customer took goods on credit, owes money)
 // payment = Jama Mila (Customer paid cash/settled udhaar)
 
+export interface ShopProfile {
+  shopName: string;
+  shopkeeperName: string;
+  phone: string; // Normalised 10 digits
+  upiId: string; // Shop UPI VPA
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+}
+
 export interface Customer {
   id: string;
   name: string;
-  phone?: string;
+  phone?: string; // Normalised 10 digits
+  phoneVerified?: boolean;
   totalCredit: number;   // Total udhaar given (₹)
   totalPayment: number;  // Total jama received (₹)
   balance: number;       // totalCredit - totalPayment (>0 means customer owes money)
   lastTransactionDate?: string; // ISO string
   createdAt?: string;     // ISO string
   notes?: string;
+}
+
+export type EntrySource = 'voice' | 'manual' | 'upi';
+
+export type PaymentRequestStatus = 'pending' | 'paid' | 'expired' | 'cancelled';
+
+export interface PaymentRequest {
+  ref: string; // Random reference id
+  entryId?: string;
+  customerId: string;
+  amount: number;
+  status: PaymentRequestStatus;
+  createdAt: string; // ISO string
+  expiresAt: string; // ISO string
+  paidAt?: string; // ISO string
+  paidAmount?: number;
+  link?: string;
 }
 
 /**
@@ -34,6 +61,8 @@ export interface LedgerEntry {
   customerName?: string;
   rawTranscript?: string;// Spoken transcript that created this entry
   synced?: boolean;
+  source?: EntrySource;
+  paymentRef?: string;
 }
 
 // Transaction is an alias for LedgerEntry for backward compatibility
@@ -178,6 +207,30 @@ export interface ILedgerService {
   deleteEntry(id: string): Promise<void>;
   exportData(): Promise<string>;
   exportCSV?(): Promise<string>;
+  // Profile and Customer Phone methods
+  getProfile?(): Promise<ShopProfile | null>;
+  saveProfile?(profile: Omit<ShopProfile, 'createdAt' | 'updatedAt'> & { createdAt?: string; updatedAt?: string }): Promise<ShopProfile>;
+  addCustomer?(data: { name: string; phone?: string; notes?: string }): Promise<Customer>;
+  updateCustomerPhone?(customerId: string, phone: string, verified?: boolean): Promise<Customer>;
+  findCustomersByPhoneSuffix?(suffix: string): Promise<Customer[]>;
+  getCustomerByPhone?(phone: string): Promise<Customer | null>;
+
+  // Payment Request & UPI integration methods
+  createPaymentRequest?(input: {
+    entryId?: string;
+    customerId: string;
+    amount: number;
+    expiryMinutes?: number;
+    link?: string;
+    ref?: string;
+  }): Promise<PaymentRequest>;
+  getPendingPaymentRequests?(): Promise<PaymentRequest[]>;
+  markPaymentRequestPaid?(
+    ref: string,
+    paidAmount?: number,
+    paidAt?: string
+  ): Promise<{ paymentRequest: PaymentRequest; entry?: LedgerEntry; isNewPayment: boolean } & PaymentRequest>;
+
   clearAllData?(): Promise<void>;
   seedPitchDemoData?(): Promise<void>;
 }

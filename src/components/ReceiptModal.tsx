@@ -8,7 +8,7 @@
  * - "Share" uses navigator.share() when available, with fallback to clipboard copy.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Printer,
@@ -18,16 +18,20 @@ import {
   Receipt,
   Store,
   Calendar,
+  QrCode,
 } from 'lucide-react';
 import { Customer, LedgerEntry } from '../services/types';
 import { formatRupees, formatFullRelativeDate } from '../lib/format';
 import { formatTime } from '../lib/formatters';
 import { useToast } from './ui/Toast';
+import { ledgerService } from '../services/ledgerService';
+import { buildUpiLink, generateQrDataUrl } from '../services/upiPayment';
 
 export interface ReceiptModalProps {
   customer: Customer;
   entries: LedgerEntry[];
   shopName?: string;
+  upiId?: string;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -36,11 +40,38 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   customer,
   entries,
   shopName = 'Sri Lakshmi Kirana Store',
+  upiId: propUpiId,
   isOpen,
   onClose,
 }) => {
   const { showToast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [loadedUpiId, setLoadedUpiId] = useState<string>('');
+
+  useEffect(() => {
+    if (propUpiId) {
+      setLoadedUpiId(propUpiId);
+    } else if (isOpen) {
+      ledgerService.getProfile?.().then((prof) => {
+        if (prof?.upiId) {
+          setLoadedUpiId(prof.upiId);
+        }
+      });
+    }
+  }, [propUpiId, isOpen]);
+
+  const activeUpiId = propUpiId || loadedUpiId;
+
+  const qrDataUrl = useMemo(() => {
+    if (!activeUpiId) return '';
+    const link = buildUpiLink({
+      upiId: activeUpiId,
+      shopName,
+      amount: customer.balance > 0 ? customer.balance : undefined,
+      note: `Khata - ${customer.name}`,
+    });
+    return generateQrDataUrl(link, 4, 3);
+  }, [activeUpiId, shopName, customer.balance, customer.name]);
 
   if (!isOpen) return null;
 
@@ -80,7 +111,7 @@ Total Udhaar: ₹${customer.totalCredit.toLocaleString('en-IN')}
 Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
 ----------------------------------------
 *BALANCE OWED: ₹${customer.balance.toLocaleString('en-IN')}*
-========================================
+${activeUpiId ? `----------------------------------------\nScan & Pay via UPI:\nUPI ID: ${activeUpiId}\n` : ''}========================================
    Thank you for shopping with us!
    Powered by Voice Khata PWA
 ========================================
@@ -223,6 +254,23 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
               </span>
             </div>
           </div>
+
+          {/* UPI Payment QR Slip Section */}
+          {activeUpiId && qrDataUrl && (
+            <div className="py-2.5 border-b border-dashed border-slate-400 text-center flex flex-col items-center">
+              <span className="text-[10px] font-black uppercase text-slate-700 block mb-1">
+                Scan to Pay via UPI
+              </span>
+              <img
+                src={qrDataUrl}
+                alt="UPI Payment QR"
+                className="w-24 h-24 mx-auto my-1 border border-slate-300 p-1 bg-white rounded"
+              />
+              <span className="text-[10px] font-bold text-slate-800 font-mono block">
+                UPI ID: {activeUpiId}
+              </span>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="text-center pt-3 text-[10px] text-slate-500 space-y-0.5">

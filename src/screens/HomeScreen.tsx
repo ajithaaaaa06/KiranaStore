@@ -11,27 +11,33 @@
  * - Final transcript routed through parseTranscript() in /services/parser.ts
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QuickSummaryCards } from '../components/QuickSummaryCards';
 import { GiantMicHero } from '../components/GiantMicHero';
 import { LiveTranscriptBanner } from '../components/LiveTranscriptBanner';
 import { RecentTransactionsList } from '../components/RecentTransactionsList';
-import { ConfirmEntrySheet } from '../components/ConfirmEntrySheet';
-import { BalanceAnswerCard } from '../components/BalanceAnswerCard';
-import { ManualEntrySheet } from '../components/ManualEntrySheet';
-import { Customer, LedgerEntry, DailySummary, ParsedEntry, TransactionType, ConfirmEntryData } from '../services/types';
+import { Customer, LedgerEntry, DailySummary, ParsedEntry, TransactionType, ConfirmEntryData, ShopProfile, PaymentRequest } from '../services/types';
 import { ledgerService } from '../services/ledgerService';
 import { parseTranscript } from '../services/parser';
+import { findCustomers } from '../services/customerMatcher';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSoundbox } from '../hooks/useSoundbox';
 import { useSpeak } from '../hooks/useSpeak';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useI18n } from '../i18n/I18nContext';
+import { getSpeechTemplates } from '../i18n/speech';
 import { useToast } from '../components/ui/Toast';
 import { useSettings } from '../hooks/useSettings';
 import { DebugLatencyBadge, LatencyMetrics } from '../components/DebugLatencyBadge';
-import { VolumeX, AlertCircle } from 'lucide-react';
+import { VolumeX, AlertCircle, QrCode } from 'lucide-react';
+
+const ConfirmEntrySheet = lazy(() => import('../components/ConfirmEntrySheet').then(m => ({ default: m.ConfirmEntrySheet })));
+const BalanceAnswerCard = lazy(() => import('../components/BalanceAnswerCard').then(m => ({ default: m.BalanceAnswerCard })));
+const ManualEntrySheet = lazy(() => import('../components/ManualEntrySheet').then(m => ({ default: m.ManualEntrySheet })));
+const RegisterCustomerSheet = lazy(() => import('../components/RegisterCustomerSheet').then(m => ({ default: m.RegisterCustomerSheet })));
+const DisambiguationSheet = lazy(() => import('../components/DisambiguationSheet').then(m => ({ default: m.DisambiguationSheet })));
+const PaymentRequestSheet = lazy(() => import('../components/PaymentRequestSheet').then(m => ({ default: m.PaymentRequestSheet })));
 
 interface HomeScreenProps {
   onSelectCustomer?: (customerId: string) => void;
@@ -39,10 +45,10 @@ interface HomeScreenProps {
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
   const navigate = useNavigate();
-  const { language, currentLangConfig } = useI18n();
+  const { language, currentLangConfig, t } = useI18n();
   const { settings } = useSettings();
   const { announceCreditSaved, announcePaymentSaved } = useSoundbox();
-  const { speakBalance, voiceNotice, clearVoiceNotice } = useSpeak();
+  const { speak, speakBalance, voiceNotice, clearVoiceNotice } = useSpeak();
   const { showToast } = useToast();
 
   const handleCustomerClick = onSelectCustomer || ((id: string) => navigate(`/customers/${id}`));
@@ -76,10 +82,65 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
   const [isDuplicateDetected, setIsDuplicateDetected] = useState(false);
 
+  // Registration Overlay State (F15)
+  const [showRegisterSheet, setShowRegisterSheet] = useState(false);
+  const [registerInitialName, setRegisterInitialName] = useState('');
+  const [registerInitialPhone, setRegisterInitialPhone] = useState('');
+  const [registerPendingEntry, setRegisterPendingEntry] = useState<ParsedEntry | null>(null);
+
+  // Disambiguation Overlay State (F16)
+  const [showDisambiguateSheet, setShowDisambiguateSheet] = useState(false);
+  const [disambiguateCandidates, setDisambiguateCandidates] = useState<Customer[]>([]);
+  const [disambiguateSpokenName, setDisambiguateSpokenName] = useState('');
+  const [disambiguatePendingEntry, setDisambiguatePendingEntry] = useState<ParsedEntry | null>(null);
+  const [disambiguateIsQuery, setDisambiguateIsQuery] = useState(false);
+
   const [queryCustomer, setQueryCustomer] = useState<Customer | null>(null);
   const [queryTransactions, setQueryTransactions] = useState<LedgerEntry[]>([]);
   const [showQuerySheet, setShowQuerySheet] = useState(false);
   const [queryResponseTime, setQueryResponseTime] = useState<number | undefined>(undefined);
+
+  // Payment Request Overlay State (F17)
+  const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null);
+  const [showPaymentSheet, setShowPaymentSheet] = useState(false);
+  const [activePaymentCustomer, setActivePaymentCustomer] = useState<Customer | null>(null);
+  const [activePaymentAmount, setActivePaymentAmount] = useState<number>(0);
+  const [activePaymentBalance, setActivePaymentBalance] = useState<number>(0);
+  const [activePaymentRequest, setActivePaymentRequest] = useState<PaymentRequest | null>(null);
+  const [isCounterQrMode, setIsCounterQrMode] = useState(false);
+
+  // Load shop profile
+  useEffect(() => {
+    ledgerService.getProfile?.().then((prof) => {
+      if (prof) setShopProfile(prof);
+    });
+    const handleProfileUpdated = (e: any) => {
+      if (e?.detail) setShopProfile(e.detail);
+    };
+    window.addEventListener('vk_profile_updated', handleProfileUpdated);
+    return () => window.removeEventListener('vk_profile_updated', handleProfileUpdated);
+  }, []);
+
+  const handleOpenCounterQr = async () => {
+    const prof = shopProfile || (await ledgerService.getProfile?.()) || null;
+    setShopProfile(prof);
+    setActivePaymentCustomer(null);
+    setActivePaymentAmount(0);
+    setActivePaymentBalance(0);
+    setActivePaymentRequest(null);
+    setIsCounterQrMode(true);
+    setShowPaymentSheet(true);
+  };
+
+  const handleAddPhoneFromPayment = () => {
+    if (activePaymentCustomer) {
+      setRegisterInitialName(activePaymentCustomer.name);
+      setRegisterInitialPhone('');
+      setRegisterPendingEntry(null);
+      setShowPaymentSheet(false);
+      setShowRegisterSheet(true);
+    }
+  };
 
   const { isOnline } = useOnlineStatus();
   const [showManualEntry, setShowManualEntry] = useState(false);
@@ -124,9 +185,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       const items = Array.isArray(data) ? data : [data];
       if (items.length === 0) return;
 
+      let savedPaymentReq: PaymentRequest | null = null;
+      let lastSavedCustomer: Customer | null = null;
+
       for (const item of items) {
         const customer = await ledgerService.findOrCreateCustomer(item.customerName);
-        await ledgerService.addEntry(
+        const res = await ledgerService.addEntry(
           {
             customerId: customer.id,
             customerName: customer.name,
@@ -139,13 +203,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
           },
           customer.name
         );
+        lastSavedCustomer = res.customer;
+        if (item.type === 'credit') {
+          try {
+            savedPaymentReq = (await ledgerService.createPaymentRequest?.({
+              entryId: res.entry.id,
+              customerId: res.customer.id,
+              amount: item.amount,
+            })) || null;
+          } catch (e) {
+            console.error('Failed to create payment request:', e);
+          }
+        }
       }
 
       // Audio Feedback for single entry (multi-entry plays sound inside sheet)
       const primary = items[0];
       if (items.length === 1) {
         if (primary.type === 'credit') {
-          announceCreditSaved(primary.customerName, primary.amount);
+          if (settings.autoOpenPaymentRequest) {
+            const tmpl = getSpeechTemplates(language);
+            const spokenText = tmpl.creditSavedWithPaymentRequest(primary.customerName, primary.amount);
+            speak(spokenText, { locale: currentLangConfig.speechLocale });
+          } else {
+            announceCreditSaved(primary.customerName, primary.amount);
+          }
         } else {
           announcePaymentSaved(primary.customerName, primary.amount);
         }
@@ -153,6 +235,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
           `${primary.customerName} ko ${primary.type === 'credit' ? 'udhaar' : 'jama'} likha gaya!`,
           { type: 'success' }
         );
+
+        // Auto-open payment request sheet if setting is enabled (F17)
+        if (primary.type === 'credit' && settings.autoOpenPaymentRequest && lastSavedCustomer) {
+          setActivePaymentCustomer(lastSavedCustomer);
+          setActivePaymentAmount(primary.amount);
+          setActivePaymentBalance(lastSavedCustomer.balance);
+          setActivePaymentRequest(savedPaymentReq);
+          setIsCounterQrMode(false);
+          setShowPaymentSheet(true);
+        }
       } else {
         showToast(`${items.length} hisaab entries safalta se save ho gayi!`, {
           type: 'success',
@@ -168,7 +260,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       setParsedDraft(null);
       await refreshData();
     },
-    [parsedDraft, announceCreditSaved, announcePaymentSaved, showToast, refreshData]
+    [
+      parsedDraft,
+      announceCreditSaved,
+      announcePaymentSaved,
+      showToast,
+      refreshData,
+      settings.autoOpenPaymentRequest,
+      language,
+      currentLangConfig.speechLocale,
+      speak,
+    ]
   );
 
   /**
@@ -231,8 +333,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       if (result.intent === 'query' || result.type === 'query') {
         const queryStart = performance.now();
         const targetName = result.queryCustomer || result.customerName || 'Customer';
-        // Query balance for customer
-        const matched = await ledgerService.findCustomerByName(targetName);
+        const allCusts = await ledgerService.getCustomers();
+        const matchResult = findCustomers(targetName, allCusts);
+
+        // Disambiguate multiple candidates (F16)
+        if (matchResult.action === 'disambiguate' && matchResult.candidates.length > 1) {
+          setDisambiguateCandidates(matchResult.candidates.map((c) => c.customer));
+          setDisambiguateSpokenName(targetName);
+          setDisambiguatePendingEntry(null);
+          setDisambiguateIsQuery(true);
+          setShowDisambiguateSheet(true);
+          return;
+        }
+
+        const matched = matchResult.selectedCustomer || (await ledgerService.findCustomerByName(targetName));
         if (matched) {
           const custEntries = await ledgerService.getCustomerEntries(matched.id);
           const latency = Math.round(performance.now() - queryStart);
@@ -253,12 +367,52 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
           setShowQuerySheet(true);
           speakBalance(newCust.name, 0, language);
         }
+      } else if (result.intent === 'register') {
+        // Voice registration flow (F15)
+        setRegisterInitialName(result.name || result.customerName || '');
+        setRegisterInitialPhone(result.phone || '');
+        setRegisterPendingEntry(null);
+        setShowRegisterSheet(true);
+        if (!result.phone) {
+          const askText =
+            t('customerNewAskPhoneSpoken', { name: result.name || 'Grahak' }) ||
+            `${result.name || 'Grahak'} naya hai. Number bataiye`;
+          speak(askText, { locale: currentLangConfig.speechLocale });
+        }
+        return;
       } else if (result.intent === 'entry' || result.type === 'entry') {
+        const spokenCustName = result.data.customerName || '';
+        const allCusts = await ledgerService.getCustomers();
+        const matchResult = findCustomers(spokenCustName, allCusts);
+
+        // If customer is not found (score < 0.60), ask for number and open RegisterCustomerSheet!
+        if (matchResult.action === 'create_new') {
+          const askText =
+            t('customerNewAskPhoneSpoken', { name: spokenCustName }) ||
+            `${spokenCustName} naya hai. Number bataiye`;
+          speak(askText, { locale: currentLangConfig.speechLocale });
+          setRegisterInitialName(spokenCustName);
+          setRegisterInitialPhone('');
+          setRegisterPendingEntry(result.data);
+          setShowRegisterSheet(true);
+          return;
+        }
+
+        // Disambiguate when multiple candidates match (F16)
+        if (matchResult.action === 'disambiguate' && matchResult.candidates.length > 1) {
+          setDisambiguateCandidates(matchResult.candidates.map((c) => c.customer));
+          setDisambiguateSpokenName(spokenCustName);
+          setDisambiguatePendingEntry(result.data);
+          setDisambiguateIsQuery(false);
+          setShowDisambiguateSheet(true);
+          return;
+        }
+
         // Transaction intent: open confirm sheet
         setParsedDraft(result.data);
 
         // Check for duplicate warning if similar entry in last 10 min
-        const matched = await ledgerService.findCustomerByName(result.data.customerName || '');
+        const matched = matchResult.selectedCustomer;
         if (matched && result.data.amount) {
           const isDup = await ledgerService.checkDuplicateEntry(
             matched.id,
@@ -279,7 +433,76 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         });
       }
     },
-    [parsedDraft, showConfirmSheet, showQuerySheet, handleConfirmTransaction, speakBalance, language, showToast]
+    [parsedDraft, showConfirmSheet, showQuerySheet, handleConfirmTransaction, speakBalance, language, showToast, speak, t, currentLangConfig.speechLocale]
+  );
+
+  const handleCustomerRegistered = (newCustomer: Customer, pending?: ParsedEntry | null) => {
+    setShowRegisterSheet(false);
+    setRegisterPendingEntry(null);
+    refreshData();
+    if (pending) {
+      setParsedDraft({
+        ...pending,
+        customerName: newCustomer.name,
+      });
+      setIsDuplicateDetected(false);
+      setShowConfirmSheet(true);
+    }
+  };
+
+  const handleSelectExistingFromRegister = (existing: Customer, pending?: ParsedEntry | null) => {
+    setShowRegisterSheet(false);
+    setRegisterPendingEntry(null);
+    if (pending) {
+      setParsedDraft({
+        ...pending,
+        customerName: existing.name,
+      });
+      setIsDuplicateDetected(false);
+      setShowConfirmSheet(true);
+    }
+  };
+
+  // Disambiguation resolution callback (F16)
+  const handleCustomerDisambiguated = useCallback(
+    async (chosen: Customer) => {
+      setShowDisambiguateSheet(false);
+      if (disambiguateIsQuery) {
+        setDisambiguateIsQuery(false);
+        const queryStart = performance.now();
+        const custEntries = await ledgerService.getCustomerEntries(chosen.id);
+        const latency = Math.round(performance.now() - queryStart);
+        setQueryResponseTime(latency);
+        setLatencyMetrics((prev) => ({ ...prev, queryResponseTimeMs: latency }));
+        setQueryCustomer(chosen);
+        setQueryTransactions(custEntries);
+        setShowQuerySheet(true);
+        speakBalance(chosen.name, chosen.balance, language);
+      } else if (disambiguatePendingEntry) {
+        const updatedDraft: ParsedEntry = {
+          ...disambiguatePendingEntry,
+          customerName: chosen.name,
+        };
+        setParsedDraft(updatedDraft);
+        setDisambiguatePendingEntry(null);
+
+        // Check for duplicate warning if similar entry in last 10 min
+        if (disambiguatePendingEntry.amount) {
+          const isDup = await ledgerService.checkDuplicateEntry(
+            chosen.id,
+            disambiguatePendingEntry.amount,
+            disambiguatePendingEntry.type || 'credit',
+            600000 // 10 minutes
+          );
+          setIsDuplicateDetected(isDup);
+        } else {
+          setIsDuplicateDetected(false);
+        }
+
+        setShowConfirmSheet(true);
+      }
+    },
+    [disambiguateIsQuery, disambiguatePendingEntry, speakBalance, language]
   );
 
   // useSpeechRecognition Hook with Web Audio AnalyserNode volume levels
@@ -372,6 +595,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         totalPendingBalance={totalPendingBalance}
       />
 
+      {/* "Show my QR" Counter Button for in-store customers */}
+      <div className="flex items-center justify-end px-4 -mt-1 mb-2 max-w-md mx-auto">
+        <button
+          type="button"
+          data-testid="show-my-qr-btn"
+          onClick={handleOpenCounterQr}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/30 text-xs font-black transition-all active:scale-95 shadow-sm"
+          aria-label={t('showMyQr')}
+        >
+          <QrCode className="w-3.5 h-3.5" />
+          <span>{t('showMyQr')}</span>
+        </button>
+      </div>
+
       {/* 2. Live Transcript Banner Area (Above Mic) */}
       <LiveTranscriptBanner
         transcript={transcript}
@@ -408,49 +645,108 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
 
       {/* 5. Transaction Confirmation Bottom Sheet */}
       {showConfirmSheet && parsedDraft && (
-        <ConfirmEntrySheet
-          command={{
-            ...parsedDraft,
-            intent: 'add_transaction',
-          }}
-          isDuplicatePotential={isDuplicateDetected}
-          onConfirm={handleConfirmTransaction}
-          onCancel={() => {
-            setShowConfirmSheet(false);
-            setParsedDraft(null);
-            resetTranscript();
-          }}
-          onOpenManual={() => {
-            setShowConfirmSheet(false);
-            setShowManualEntry(true);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ConfirmEntrySheet
+            command={{
+              ...parsedDraft,
+              intent: 'add_transaction',
+            }}
+            isDuplicatePotential={isDuplicateDetected}
+            onConfirm={handleConfirmTransaction}
+            onCancel={() => {
+              setShowConfirmSheet(false);
+              setParsedDraft(null);
+              resetTranscript();
+            }}
+            onOpenManual={() => {
+              setShowConfirmSheet(false);
+              setShowManualEntry(true);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* 6. Balance Query Bottom Sheet (Answer Card) */}
       {showQuerySheet && queryCustomer && (
-        <BalanceAnswerCard
-          customer={queryCustomer}
-          recentTransactions={queryTransactions}
-          responseTimeMs={queryResponseTime}
-          onClose={() => {
-            setShowQuerySheet(false);
-            setQueryCustomer(null);
-          }}
-          onViewCustomer={handleCustomerClick}
-        />
+        <Suspense fallback={null}>
+          <BalanceAnswerCard
+            customer={queryCustomer}
+            recentTransactions={queryTransactions}
+            responseTimeMs={queryResponseTime}
+            onClose={() => {
+              setShowQuerySheet(false);
+              setQueryCustomer(null);
+            }}
+            onViewCustomer={handleCustomerClick}
+          />
+        </Suspense>
       )}
 
       {/* 7. Manual Entry Sheet (Fallback when noise is high) */}
       {showManualEntry && (
-        <ManualEntrySheet
-          customers={customers}
-          onSave={handleManualSave}
-          onClose={() => setShowManualEntry(false)}
-        />
+        <Suspense fallback={null}>
+          <ManualEntrySheet
+            customers={customers}
+            onSave={handleManualSave}
+            onClose={() => setShowManualEntry(false)}
+          />
+        </Suspense>
       )}
 
-      {/* 8. SLA Latency & Telemetry Badge (?debug=1) */}
+      {/* 8. Voice Customer Registration Sheet (F15) */}
+      {showRegisterSheet && (
+        <Suspense fallback={null}>
+          <RegisterCustomerSheet
+            isOpen={showRegisterSheet}
+            initialName={registerInitialName}
+            initialPhone={registerInitialPhone}
+            pendingEntry={registerPendingEntry}
+            onClose={() => {
+              setShowRegisterSheet(false);
+              setRegisterPendingEntry(null);
+            }}
+            onRegistered={handleCustomerRegistered}
+            onSelectExisting={handleSelectExistingFromRegister}
+          />
+        </Suspense>
+      )}
+
+      {/* 9. Voice Customer Disambiguation Sheet (F16) */}
+      {showDisambiguateSheet && (
+        <Suspense fallback={null}>
+          <DisambiguationSheet
+            isOpen={showDisambiguateSheet}
+            spokenName={disambiguateSpokenName}
+            candidates={disambiguateCandidates}
+            onSelect={handleCustomerDisambiguated}
+            onCancel={() => {
+              setShowDisambiguateSheet(false);
+              setDisambiguatePendingEntry(null);
+              setDisambiguateIsQuery(false);
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* 10. Instant UPI Payment Request Sheet (F17) */}
+      {showPaymentSheet && (
+        <Suspense fallback={null}>
+          <PaymentRequestSheet
+            isOpen={showPaymentSheet}
+            onClose={() => setShowPaymentSheet(false)}
+            customer={activePaymentCustomer}
+            amount={activePaymentAmount}
+            runningBalance={activePaymentBalance}
+            profile={shopProfile}
+            paymentRequest={activePaymentRequest}
+            isCounterMode={isCounterQrMode}
+            onAddPhoneNumber={handleAddPhoneFromPayment}
+            onOpenSettings={() => navigate('/settings')}
+          />
+        </Suspense>
+      )}
+
+      {/* 11. SLA Latency & Telemetry Badge (?debug=1) */}
       <DebugLatencyBadge metrics={latencyMetrics} />
     </div>
   );

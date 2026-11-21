@@ -16,16 +16,16 @@
  */
 
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { TransactionType } from './types';
+import { TransactionType, EntrySource, PaymentRequestStatus } from './types';
 
 export const DB_NAME = 'VoiceKhataDB';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export interface EncryptedCustomerRecord {
   id: string;
   createdAt?: string;
   lastTransactionDate?: string;
-  encryptedPayload: string; // Base64 ciphertext containing { name, phone, notes }
+  encryptedPayload: string; // Base64 ciphertext containing { name, phone, notes, phoneVerified }
   iv: string;               // Base64 12-byte IV
 }
 
@@ -36,8 +36,30 @@ export interface EncryptedEntryRecord {
   date: string;            // ISO String for indexing
   createdAt: string;       // ISO String
   synced?: boolean;
-  encryptedPayload: string; // Base64 ciphertext containing { customerName, amount, note, notes, rawTranscript }
+  source?: EntrySource;
+  paymentRef?: string;
+  encryptedPayload: string; // Base64 ciphertext containing { customerName, amount, note, notes, rawTranscript, source, paymentRef }
   iv: string;               // Base64 12-byte IV
+}
+
+export interface EncryptedProfileRecord {
+  id: string;              // 'current'
+  createdAt: string;       // ISO String
+  updatedAt: string;       // ISO String
+  encryptedPayload: string;// Base64 ciphertext containing { shopName, shopkeeperName, phone, upiId }
+  iv: string;              // Base64 12-byte IV
+}
+
+export interface EncryptedPaymentRequestRecord {
+  ref: string;             // Unique random reference id (keyPath)
+  entryId?: string;        // Optional associated ledger entry id
+  customerId: string;      // Customer identifier
+  status: PaymentRequestStatus; // Indexable status: 'pending' | 'paid' | 'expired' | 'cancelled'
+  createdAt: string;       // ISO String
+  expiresAt: string;       // ISO String
+  paidAt?: string;         // ISO String
+  encryptedPayload: string;// Base64 ciphertext containing { amount, paidAmount, link }
+  iv: string;              // Base64 12-byte IV
 }
 
 export interface MetaRecord {
@@ -66,6 +88,18 @@ export interface VoiceKhataDBSchema extends DBSchema {
     key: string;
     value: MetaRecord;
   };
+  profile: {
+    key: string;
+    value: EncryptedProfileRecord;
+  };
+  paymentRequests: {
+    key: string;
+    value: EncryptedPaymentRequestRecord;
+    indexes: {
+      'by-ref': string;
+      'by-status': string;
+    };
+  };
 }
 
 // In-Memory Mock Store for Node.js / Headless environments without window.indexedDB
@@ -74,6 +108,8 @@ class InMemoryDBMock {
   private entries = new Map<string, EncryptedEntryRecord>();
   private settings = new Map<string, { key: string; value: any }>();
   private meta = new Map<string, MetaRecord>();
+  private profile = new Map<string, EncryptedProfileRecord>();
+  private paymentRequests = new Map<string, EncryptedPaymentRequestRecord>();
 
   private getStore(name: string): Map<string, any> {
     switch (name) {
@@ -81,6 +117,8 @@ class InMemoryDBMock {
       case 'entries': return this.entries;
       case 'settings': return this.settings;
       case 'meta': return this.meta;
+      case 'profile': return this.profile;
+      case 'paymentRequests': return this.paymentRequests;
       default: throw new Error(`Unknown store: ${name}`);
     }
   }
@@ -90,7 +128,7 @@ class InMemoryDBMock {
   }
 
   public async put(storeName: string, value: any, key?: string) {
-    const k = key || value.id || value.key;
+    const k = key || value.ref || value.id || value.key;
     this.getStore(storeName).set(k, value);
     return k;
   }
@@ -121,6 +159,15 @@ class InMemoryDBMock {
         return all.filter((e) => e.date.startsWith(query));
       }
     }
+    if (storeName === 'paymentRequests') {
+      const all = Array.from(this.paymentRequests.values());
+      if (indexName === 'by-status') {
+        return all.filter((p) => p.status === query);
+      }
+      if (indexName === 'by-ref') {
+        return all.filter((p) => p.ref === query);
+      }
+    }
     return [];
   }
 
@@ -138,9 +185,9 @@ let dbInstance: IDBPDatabase<VoiceKhataDBSchema> | InMemoryDBMock | null = null;
 /**
  * Opens or retrieves the singleton VoiceKhataDB instance
  */
-export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema> | InMemoryDBMock> {
+export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema>> {
   if (dbInstance) {
-    return dbInstance;
+    return dbInstance as unknown as IDBPDatabase<VoiceKhataDBSchema>;
   }
 
   // Check if browser IndexedDB is available
@@ -148,7 +195,7 @@ export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema> | InMemo
 
   if (!isIndexedDBAvailable) {
     dbInstance = new InMemoryDBMock();
-    return dbInstance;
+    return dbInstance as unknown as IDBPDatabase<VoiceKhataDBSchema>;
   }
 
   try {
@@ -175,6 +222,19 @@ export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema> | InMemo
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' });
         }
+
+        // Version 2 Migration: Store 5: profile & Store 6: paymentRequests
+        if (oldVersion < 2) {
+          if (!db.objectStoreNames.contains('profile')) {
+            db.createObjectStore('profile', { keyPath: 'id' });
+          }
+
+          if (!db.objectStoreNames.contains('paymentRequests')) {
+            const payStore = db.createObjectStore('paymentRequests', { keyPath: 'ref' });
+            payStore.createIndex('by-ref', 'ref', { unique: true });
+            payStore.createIndex('by-status', 'status', { unique: false });
+          }
+        }
       },
       blocked() {
         console.warn('VoiceKhataDB database upgrade blocked: please close other tabs.');
@@ -191,7 +251,7 @@ export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema> | InMemo
   } catch (err) {
     console.warn('Failed to open browser IndexedDB, falling back to in-memory store:', err);
     dbInstance = new InMemoryDBMock();
-    return dbInstance;
+    return dbInstance as unknown as IDBPDatabase<VoiceKhataDBSchema>;
   }
 }
 
@@ -214,6 +274,8 @@ export async function resetDatabase(): Promise<void> {
   await db.clear('entries');
   await db.clear('settings');
   await db.clear('meta');
+  await db.clear('profile');
+  await db.clear('paymentRequests');
 }
 
 /**

@@ -20,14 +20,17 @@ import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom
 import { Header } from './components/Header';
 import { BottomNavBar } from './components/BottomNavBar';
 import { HomeScreen } from './screens/HomeScreen';
-import { LanguageSelectorModal } from './components/LanguageSelectorModal';
 import { InstallAppBanner } from './components/InstallAppBanner';
-import { OnboardingModal } from './components/OnboardingModal';
-import { PinLockScreen } from './components/PinLockScreen';
 import { PwaUpdateToast } from './components/PwaUpdateToast';
 import { ToastProvider } from './components/ui/Toast';
 import { ledgerService } from './services/ledgerService';
 import { requestStoragePersistence } from './services/db';
+
+// Lazy-load modals and non-home routes to ensure <150KB initial home JS bundle
+const LanguageSelectorModal = lazy(() => import('./components/LanguageSelectorModal').then(m => ({ default: m.LanguageSelectorModal })));
+const ShopkeeperSignupModal = lazy(() => import('./components/ShopkeeperSignupModal').then(m => ({ default: m.ShopkeeperSignupModal })));
+const OnboardingModal = lazy(() => import('./components/OnboardingModal').then(m => ({ default: m.OnboardingModal })));
+const PinLockScreen = lazy(() => import('./components/PinLockScreen').then(m => ({ default: m.PinLockScreen })));
 
 // Lazy-load all non-home routes to ensure <150KB initial home JS bundle
 const CustomersScreen = lazy(() => import('./screens/CustomersScreen'));
@@ -42,8 +45,27 @@ const StyleguideScreen = lazy(() => import('./screens/StyleguideScreen'));
  * Content padding pb-32 ensures bottom nav NEVER overlaps the mic button.
  */
 const AppLayout: React.FC = () => {
+  const isDemo = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('demo') === '1' || localStorage.getItem('vk_demo_mode') === 'true';
+  }, []);
+
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [showSignup, setShowSignup] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('demo') === '1' || localStorage.getItem('vk_demo_mode') === 'true') {
+      return false;
+    }
+    return localStorage.getItem('vk_signup_completed') !== 'true';
+  });
   const [showOnboarding, setShowOnboarding] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const isSignupPending = localStorage.getItem('vk_signup_completed') !== 'true';
+    const urlParams = new URLSearchParams(window.location.search);
+    const isDemoMode = urlParams.get('demo') === '1' || localStorage.getItem('vk_demo_mode') === 'true';
+    if (!isDemoMode && isSignupPending) return false;
     return localStorage.getItem('vk_onboarding_completed') !== 'true';
   });
   const [isLocked, setIsLocked] = useState(false);
@@ -51,12 +73,29 @@ const AppLayout: React.FC = () => {
 
   React.useEffect(() => {
     const handleOpenOnboarding = () => setShowOnboarding(true);
+    const handleOpenSignup = () => setShowSignup(true);
     window.addEventListener('vk_open_onboarding', handleOpenOnboarding);
+    window.addEventListener('vk_open_signup', handleOpenSignup);
 
     // Check lock state & persistence on load
     const checkSecurityState = async () => {
       try {
         await ledgerService.init();
+
+        // Seed demo profile automatically in demo mode (?demo=1)
+        if (isDemo) {
+          localStorage.setItem('vk_signup_completed', 'true');
+          const existingProfile = await ledgerService.getProfile();
+          if (!existingProfile) {
+            await ledgerService.saveProfile({
+              shopName: 'Sri Balaji Kirana Store',
+              shopkeeperName: 'Ramesh Kumar',
+              phone: '9845012345',
+              upiId: 'balaji.kirana@oksbi',
+            });
+          }
+        }
+
         const hasPin = await ledgerService.isPinSet();
         const unlocked = ledgerService.isUnlocked();
         setIsLocked(hasPin && !unlocked);
@@ -79,9 +118,17 @@ const AppLayout: React.FC = () => {
 
     return () => {
       window.removeEventListener('vk_open_onboarding', handleOpenOnboarding);
+      window.removeEventListener('vk_open_signup', handleOpenSignup);
       window.removeEventListener('vk_pin_lock_state_changed', handlePinLockEvent);
     };
-  }, []);
+  }, [isDemo]);
+
+  const handleSignupComplete = () => {
+    setShowSignup(false);
+    if (localStorage.getItem('vk_onboarding_completed') !== 'true') {
+      setShowOnboarding(true);
+    }
+  };
 
   if (isCheckingLock) {
     return (
@@ -93,10 +140,12 @@ const AppLayout: React.FC = () => {
 
   if (isLocked) {
     return (
-      <PinLockScreen
-        onUnlock={() => setIsLocked(false)}
-        onResetApp={() => window.location.reload()}
-      />
+      <Suspense fallback={<div className="min-h-screen bg-slate-900" />}>
+        <PinLockScreen
+          onUnlock={() => setIsLocked(false)}
+          onResetApp={() => window.location.reload()}
+        />
+      </Suspense>
     );
   }
 
@@ -121,14 +170,30 @@ const AppLayout: React.FC = () => {
 
       {/* Global Language Selector Modal */}
       {showLanguagePicker && (
-        <LanguageSelectorModal onClose={() => setShowLanguagePicker(false)} />
+        <Suspense fallback={null}>
+          <LanguageSelectorModal onClose={() => setShowLanguagePicker(false)} />
+        </Suspense>
+      )}
+
+      {/* First-Run Shopkeeper Sign-Up Wizard (F14) */}
+      {showSignup && (
+        <Suspense fallback={null}>
+          <ShopkeeperSignupModal
+            isOpen={showSignup}
+            onComplete={handleSignupComplete}
+          />
+        </Suspense>
       )}
 
       {/* First-Run Onboarding Modal (3 swipeable screens) */}
-      <OnboardingModal
-        isOpen={showOnboarding}
-        onClose={() => setShowOnboarding(false)}
-      />
+      {showOnboarding && !showSignup && (
+        <Suspense fallback={null}>
+          <OnboardingModal
+            isOpen={showOnboarding && !showSignup}
+            onClose={() => setShowOnboarding(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

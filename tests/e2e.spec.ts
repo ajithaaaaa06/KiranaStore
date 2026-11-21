@@ -4,6 +4,7 @@ import { test, expect } from '@playwright/test';
 async function setupMocks(page: any) {
   await page.addInitScript(() => {
     localStorage.setItem('vk_onboarding_completed', 'true');
+    localStorage.setItem('vk_signup_completed', 'true');
     localStorage.setItem('vk_speech_language', 'hi');
 
     class MockSpeechRecognition {
@@ -76,7 +77,7 @@ test.describe('Voice Khata E2E Acceptance Suite (360x640 Viewport)', () => {
 
   // (a) say -> confirm -> save
   test('(a) Voice Flow: Say -> Confirm Preview -> Save in <= 2 taps', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?demo=1');
     await page.waitForLoadState('domcontentloaded');
 
     // 1. Verify Giant Mic button is present and tap it
@@ -84,35 +85,35 @@ test.describe('Voice Khata E2E Acceptance Suite (360x640 Viewport)', () => {
     await expect(micButton).toBeVisible({ timeout: 10000 });
     await micButton.click();
 
-    // 2. Mock spoken sentence: "Ramesh ko 500 udhaar diya"
+    // 2. Mock spoken sentence: "Lakshmi ko 500 udhaar diya"
     await page.evaluate(async () => {
-      await (window as any).__triggerSpeech('Ramesh ko 500 udhaar diya');
+      await (window as any).__triggerSpeech('Lakshmi ko 500 udhaar diya');
     });
 
     // 3. Confirm Preview Sheet appears with customer and ₹500
     const saveButton = page.getByTestId('confirm-save-button');
     await expect(saveButton).toBeVisible({ timeout: 6000 });
-    await expect(page.getByText('Ramesh').first()).toBeVisible();
+    await expect(page.getByText('Lakshmi').first()).toBeVisible();
 
     // 4. Tap Save button (<= 2 taps total)
     await saveButton.click();
 
     // 5. Verify transaction is recorded and sheet is dismissed
     await expect(saveButton).toBeHidden({ timeout: 5000 });
-    await expect(page.getByText('Ramesh').first()).toBeVisible();
+    await expect(page.getByText('Lakshmi').first()).toBeVisible();
   });
 
   // (b) voice correction
   test('(b) Voice Correction: Spoken correction updates pending entry in place', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?demo=1');
     await page.waitForLoadState('domcontentloaded');
 
     const micButton = page.getByTestId('giant-mic-button');
     await expect(micButton).toBeVisible({ timeout: 10000 });
 
-    // 1. Initial voice entry: "Ramesh 500 udhaar"
+    // 1. Initial voice entry: "Lakshmi 500 udhaar"
     await page.evaluate(async () => {
-      await (window as any).__triggerSpeech('Ramesh 500 udhaar');
+      await (window as any).__triggerSpeech('Lakshmi 500 udhaar');
     });
 
     const saveButton = page.getByTestId('confirm-save-button');
@@ -136,21 +137,21 @@ test.describe('Voice Khata E2E Acceptance Suite (360x640 Viewport)', () => {
 
   // (c) balance query
   test('(c) Balance Query: "Ramesh ka total?" opens BalanceAnswerCard', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?demo=1');
     await page.waitForLoadState('domcontentloaded');
 
     const micButton = page.getByTestId('giant-mic-button');
     await expect(micButton).toBeVisible({ timeout: 10000 });
 
-    // 1. Trigger voice balance query
+    // 1. Trigger voice balance query for unique customer Lakshmi
     await page.evaluate(async () => {
-      await (window as any).__triggerSpeech('Ramesh ka total?');
+      await (window as any).__triggerSpeech('Lakshmi ka total?');
     });
 
     // 2. Balance card dialog appears with customer balance
     const balanceTitle = page.getByText(/Khata Balance Inquiry/i);
     await expect(balanceTitle).toBeVisible({ timeout: 6000 });
-    await expect(page.getByText('Ramesh').first()).toBeVisible();
+    await expect(page.getByText('Lakshmi').first()).toBeVisible();
 
     // 3. Close card
     const closeBtn = page.getByRole('button', { name: /Close card/i });
@@ -160,7 +161,7 @@ test.describe('Voice Khata E2E Acceptance Suite (360x640 Viewport)', () => {
 
   // (d) duplicate warning
   test('(d) Duplicate Warning: Flags identical transaction within 10 minutes', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?demo=1');
     await page.waitForLoadState('domcontentloaded');
 
     const micButton = page.getByTestId('giant-mic-button');
@@ -168,7 +169,7 @@ test.describe('Voice Khata E2E Acceptance Suite (360x640 Viewport)', () => {
 
     // 1. Add first entry
     await page.evaluate(async () => {
-      await (window as any).__triggerSpeech('Suresh 200 jama');
+      await (window as any).__triggerSpeech('Lakshmi 200 jama');
     });
     const saveButton = page.getByTestId('confirm-save-button');
     await expect(saveButton).toBeVisible({ timeout: 6000 });
@@ -177,7 +178,7 @@ test.describe('Voice Khata E2E Acceptance Suite (360x640 Viewport)', () => {
 
     // 2. Send identical transaction again within 10 minutes
     await page.evaluate(async () => {
-      await (window as any).__triggerSpeech('Suresh 200 jama');
+      await (window as any).__triggerSpeech('Lakshmi 200 jama');
     });
 
     // 3. Duplicate warning banner appears

@@ -18,18 +18,26 @@ import {
   LanguageCode,
   TransactionType,
   DayChartData,
+  ShopProfile,
+  PaymentRequest,
+  PaymentRequestStatus,
+  EntrySource,
 } from './types';
 import { translations } from '../i18n/translations';
 import { cleanPhoneNumber } from '../lib/formatters';
-import { PITCH_CUSTOMERS, PITCH_ENTRIES } from './demoDataset';
 import { findCustomers as findMatchingCustomers, isDuplicateEntry } from './customerMatcher';
 import { getDB, EncryptedCustomerRecord, EncryptedEntryRecord, DB_NAME } from './db';
 import { cryptoService } from './crypto';
+import { generatePaymentRef } from './upiPayment';
 import {
   encryptCustomerEntity,
   decryptCustomerEntity,
   encryptEntryEntity,
   decryptEntryEntity,
+  encryptProfileEntity,
+  decryptProfileEntity,
+  encryptPaymentRequestEntity,
+  decryptPaymentRequestEntity,
   seedPitchDemoDataToDB,
 } from './dbMigration';
 
@@ -38,7 +46,8 @@ const INITIAL_CUSTOMERS: Customer[] = [
   {
     id: 'cust-1',
     name: 'Ramesh Bhai (Plumber)',
-    phone: '9845012345',
+    phone: '9845012345', // ends in 2345
+    phoneVerified: true,
     totalCredit: 2400,
     totalPayment: 1000,
     balance: 1400,
@@ -50,6 +59,7 @@ const INITIAL_CUSTOMERS: Customer[] = [
     id: 'cust-2',
     name: 'Pooja Akka (Teacher)',
     phone: '9880198765',
+    phoneVerified: true,
     totalCredit: 850,
     totalPayment: 500,
     balance: 350,
@@ -61,6 +71,7 @@ const INITIAL_CUSTOMERS: Customer[] = [
     id: 'cust-3',
     name: 'Suresh Tailor',
     phone: '9741234567',
+    phoneVerified: true,
     totalCredit: 1600,
     totalPayment: 800,
     balance: 800,
@@ -70,7 +81,8 @@ const INITIAL_CUSTOMERS: Customer[] = [
   {
     id: 'cust-4',
     name: 'Anil Sharma',
-    phone: '9900112233',
+    phone: '9900118899', // ends in 8899 (shared suffix with Sunita Bai)
+    phoneVerified: true,
     totalCredit: 1200,
     totalPayment: 1200,
     balance: 0,
@@ -81,6 +93,7 @@ const INITIAL_CUSTOMERS: Customer[] = [
     id: 'cust-5',
     name: 'Venkatesh Rao',
     phone: '9448123987',
+    phoneVerified: true,
     totalCredit: 3450,
     totalPayment: 1300,
     balance: 2150,
@@ -91,13 +104,25 @@ const INITIAL_CUSTOMERS: Customer[] = [
   {
     id: 'cust-6',
     name: 'Ramesh Gowda',
-    phone: '9845099887',
+    phone: '9845099887', // ends in 9887 (different from Ramesh Bhai 2345)
+    phoneVerified: true,
     totalCredit: 650,
     totalPayment: 200,
     balance: 450,
     lastTransactionDate: new Date(Date.now() - 3600000 * 20).toISOString(),
     createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
     notes: 'Near temple',
+  },
+  {
+    id: 'cust-7',
+    name: 'Sunita Bai',
+    phone: '9845568899', // ends in 8899 (shared suffix with Anil Sharma)
+    phoneVerified: true,
+    totalCredit: 1500,
+    totalPayment: 500,
+    balance: 1000,
+    lastTransactionDate: new Date(Date.now() - 3600000 * 15).toISOString(),
+    createdAt: new Date(Date.now() - 86400000 * 12).toISOString(),
   },
 ];
 
@@ -493,6 +518,28 @@ export class RealLedgerService implements ILedgerService {
     return newCust;
   }
 
+  public async addCustomer(customerData: { name: string; phone?: string; notes?: string }): Promise<Customer> {
+    await this.init();
+    const trimmed = customerData.name.trim();
+    const cleanPhone = customerData.phone ? cleanPhoneNumber(customerData.phone) : '';
+    const newCust: Customer = {
+      id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: trimmed,
+      phone: cleanPhone,
+      totalCredit: 0,
+      totalPayment: 0,
+      balance: 0,
+      lastTransactionDate: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      notes: customerData.notes || '',
+    };
+
+    const db = await getDB();
+    const encRec = await encryptCustomerEntity(newCust);
+    await db.put('customers', encRec);
+    return newCust;
+  }
+
   public async updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer> {
     const existing = await this.getCustomerById(id);
     if (!existing) {
@@ -504,6 +551,173 @@ export class RealLedgerService implements ILedgerService {
     const encRec = await encryptCustomerEntity(updated);
     await db.put('customers', encRec);
     return updated;
+  }
+
+  // --- Shop Profile Operations ---
+
+  public async getProfile(): Promise<ShopProfile | null> {
+    await this.init();
+    if (!this.isUnlocked()) return null;
+    const db = await getDB();
+    const raw = await db.get('profile', 'current');
+    if (!raw) return null;
+    return await decryptProfileEntity(raw);
+  }
+
+  public async saveProfile(
+    profileData: Omit<ShopProfile, 'createdAt' | 'updatedAt'> & { createdAt?: string; updatedAt?: string }
+  ): Promise<ShopProfile> {
+    await this.init();
+    const db = await getDB();
+    const existingRaw = await db.get('profile', 'current');
+    const now = new Date().toISOString();
+    const createdAt = existingRaw?.createdAt || profileData.createdAt || now;
+    const profile: ShopProfile = {
+      shopName: profileData.shopName.trim(),
+      shopkeeperName: profileData.shopkeeperName.trim(),
+      phone: cleanPhoneNumber(profileData.phone),
+      upiId: profileData.upiId.trim(),
+      createdAt,
+      updatedAt: now,
+    };
+    const encrypted = await encryptProfileEntity(profile);
+    await db.put('profile', encrypted);
+    await db.put('settings', { key: 'shopName', value: profile.shopName });
+    return profile;
+  }
+
+  // --- Customer Phone Operations & Suffix Disambiguation ---
+
+  public async updateCustomerPhone(
+    customerId: string,
+    phone: string,
+    verified: boolean = false
+  ): Promise<Customer> {
+    await this.init();
+    const normalizedPhone = cleanPhoneNumber(phone);
+    return await this.updateCustomer(customerId, {
+      phone: normalizedPhone,
+      phoneVerified: verified,
+    });
+  }
+
+  public async findCustomersByPhoneSuffix(suffix: string): Promise<Customer[]> {
+    await this.init();
+    const cleanSuffix = suffix.replace(/\D/g, '');
+    if (!cleanSuffix) return [];
+    const all = await this.getCustomers();
+    return all.filter((c) => c.phone && cleanPhoneNumber(c.phone).endsWith(cleanSuffix));
+  }
+
+  public async getCustomerByPhone(phone: string): Promise<Customer | null> {
+    await this.init();
+    const clean = cleanPhoneNumber(phone);
+    if (!clean) return null;
+    const all = await this.getCustomers();
+    return all.find((c) => c.phone && cleanPhoneNumber(c.phone) === clean) || null;
+  }
+
+  // --- Payment Requests & UPI Operations ---
+
+  public async createPaymentRequest(input: {
+    entryId?: string;
+    customerId: string;
+    amount: number;
+    expiryMinutes?: number;
+    link?: string;
+    ref?: string;
+  }): Promise<PaymentRequest> {
+    await this.init();
+    const now = new Date();
+    const ref = input.ref || generatePaymentRef();
+    const expiresAt = new Date(now.getTime() + (input.expiryMinutes ?? 1440) * 60000).toISOString();
+    const req: PaymentRequest = {
+      ref,
+      entryId: input.entryId,
+      customerId: input.customerId,
+      amount: input.amount,
+      status: 'pending',
+      createdAt: now.toISOString(),
+      expiresAt,
+      link: input.link,
+    };
+    const encrypted = await encryptPaymentRequestEntity(req);
+    const db = await getDB();
+    await db.put('paymentRequests', encrypted);
+    return req;
+  }
+
+  public async getPendingPaymentRequests(): Promise<PaymentRequest[]> {
+    await this.init();
+    if (!this.isUnlocked()) return [];
+    const db = await getDB();
+    const rawList = await db.getAll('paymentRequests');
+    const result: PaymentRequest[] = [];
+    for (const raw of rawList) {
+      if (raw.status === 'pending') {
+        const req = await decryptPaymentRequestEntity(raw);
+        result.push(req);
+      }
+    }
+    return result;
+  }
+
+  public async markPaymentRequestPaid(
+    ref: string,
+    paidAmount?: number,
+    paidAt?: string
+  ): Promise<{ paymentRequest: PaymentRequest; entry?: LedgerEntry; isNewPayment: boolean } & PaymentRequest> {
+    await this.init();
+    const db = await getDB();
+    const raw = await db.get('paymentRequests', ref);
+    if (!raw) {
+      throw new Error(`Payment request with ref ${ref} not found`);
+    }
+    const existingReq = await decryptPaymentRequestEntity(raw);
+
+    // Idempotency: calling twice with same ref creates only one payment entry
+    if (existingReq.status === 'paid') {
+      const entries = await this.getCustomerEntries(existingReq.customerId);
+      const matchedEntry = entries.find((e) => e.paymentRef === ref);
+      return Object.assign(
+        {
+          paymentRequest: existingReq,
+          entry: matchedEntry,
+          isNewPayment: false,
+        },
+        existingReq
+      );
+    }
+
+    const paidTimestamp = paidAt || new Date().toISOString();
+    const actualAmount = paidAmount !== undefined ? paidAmount : existingReq.amount;
+
+    existingReq.status = 'paid';
+    existingReq.paidAt = paidTimestamp;
+    existingReq.paidAmount = actualAmount;
+
+    const encrypted = await encryptPaymentRequestEntity(existingReq);
+    await db.put('paymentRequests', encrypted);
+
+    // Record payment automatically in ledger
+    const { entry: newEntry } = await this.addEntry({
+      customerId: existingReq.customerId,
+      amount: actualAmount,
+      type: 'payment',
+      date: paidTimestamp,
+      note: `UPI Online Payment (Ref: ${ref})`,
+      source: 'upi',
+      paymentRef: ref,
+    });
+
+    return Object.assign(
+      {
+        paymentRequest: existingReq,
+        entry: newEntry,
+        isNewPayment: true,
+      },
+      existingReq
+    );
   }
 
   public async checkDuplicateEntry(
@@ -761,7 +975,7 @@ export class RealLedgerService implements ILedgerService {
     return { text, url };
   }
 
-  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store'): string {
+  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store', upiId?: string): string {
     const cust = customer || { name: 'Customer', phone: '', balance: 0, totalCredit: 0, totalPayment: 0, id: '' };
     const isCredit = entry?.type === 'credit';
     const typeLabel = isCredit ? 'UDHAAR (CREDIT GIVEN)' : 'JAMA (PAYMENT RECEIVED)';
@@ -782,7 +996,7 @@ Amount: ₹${amt}
 ${entry?.note ? `Note: ${entry.note}` : ''}
 ----------------------------------------
 Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
-========================================
+${upiId ? `----------------------------------------\nScan & Pay via UPI:\nUPI ID: ${upiId}\n` : ''}========================================
    Thank you for shopping with us!
    Powered by Voice Khata PWA
 ========================================
@@ -849,6 +1063,8 @@ Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
     const db = await getDB();
     await db.clear('customers');
     await db.clear('entries');
+    await db.clear('profile');
+    await db.clear('paymentRequests');
   }
 }
 
@@ -858,6 +1074,8 @@ Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
 export class InMemoryLedgerService implements ILedgerService {
   private customers: Customer[] = [];
   private entries: LedgerEntry[] = [];
+  private profile: ShopProfile | null = null;
+  private paymentRequests: PaymentRequest[] = [];
   private isInitialized = false;
 
   constructor() {
@@ -866,8 +1084,8 @@ export class InMemoryLedgerService implements ILedgerService {
 
   public async init(): Promise<void> {
     if (this.isInitialized) return;
-    this.customers = JSON.parse(JSON.stringify(PITCH_CUSTOMERS));
-    this.entries = JSON.parse(JSON.stringify(PITCH_ENTRIES));
+    this.customers = JSON.parse(JSON.stringify(INITIAL_CUSTOMERS));
+    this.entries = JSON.parse(JSON.stringify(INITIAL_ENTRIES));
     this.isInitialized = true;
   }
 
@@ -877,6 +1095,7 @@ export class InMemoryLedgerService implements ILedgerService {
   }
 
   public async seedPitchDemoData(): Promise<void> {
+    const { PITCH_CUSTOMERS, PITCH_ENTRIES } = await import('./demoDataset');
     this.customers = JSON.parse(JSON.stringify(PITCH_CUSTOMERS));
     this.entries = JSON.parse(JSON.stringify(PITCH_ENTRIES));
   }
@@ -923,6 +1142,149 @@ export class InMemoryLedgerService implements ILedgerService {
     return updated;
   }
 
+  // --- Shop Profile Operations ---
+
+  public async getProfile(): Promise<ShopProfile | null> {
+    await this.init();
+    return this.profile ? JSON.parse(JSON.stringify(this.profile)) : null;
+  }
+
+  public async saveProfile(
+    profileData: Omit<ShopProfile, 'createdAt' | 'updatedAt'> & { createdAt?: string; updatedAt?: string }
+  ): Promise<ShopProfile> {
+    await this.init();
+    const now = new Date().toISOString();
+    const createdAt = this.profile?.createdAt || profileData.createdAt || now;
+    this.profile = {
+      shopName: profileData.shopName.trim(),
+      shopkeeperName: profileData.shopkeeperName.trim(),
+      phone: cleanPhoneNumber(profileData.phone),
+      upiId: profileData.upiId.trim(),
+      createdAt,
+      updatedAt: now,
+    };
+    return JSON.parse(JSON.stringify(this.profile));
+  }
+
+  // --- Customer Phone Operations & Suffix Disambiguation ---
+
+  public async updateCustomerPhone(
+    customerId: string,
+    phone: string,
+    verified: boolean = false
+  ): Promise<Customer> {
+    await this.init();
+    const cust = this.customers.find((c) => c.id === customerId);
+    if (!cust) throw new Error(`Customer with id ${customerId} not found`);
+    cust.phone = cleanPhoneNumber(phone);
+    cust.phoneVerified = verified;
+    return JSON.parse(JSON.stringify(cust));
+  }
+
+  public async findCustomersByPhoneSuffix(suffix: string): Promise<Customer[]> {
+    await this.init();
+    const cleanSuffix = suffix.replace(/\D/g, '');
+    if (!cleanSuffix) return [];
+    return this.customers
+      .filter((c) => c.phone && cleanPhoneNumber(c.phone).endsWith(cleanSuffix))
+      .map((c) => JSON.parse(JSON.stringify(c)));
+  }
+
+  public async getCustomerByPhone(phone: string): Promise<Customer | null> {
+    await this.init();
+    const clean = cleanPhoneNumber(phone);
+    if (!clean) return null;
+    const cust = this.customers.find((c) => c.phone && cleanPhoneNumber(c.phone) === clean);
+    return cust ? JSON.parse(JSON.stringify(cust)) : null;
+  }
+
+  // --- Payment Requests & UPI Operations ---
+
+  public async createPaymentRequest(input: {
+    entryId?: string;
+    customerId: string;
+    amount: number;
+    expiryMinutes?: number;
+    link?: string;
+    ref?: string;
+  }): Promise<PaymentRequest> {
+    await this.init();
+    const now = new Date();
+    const ref = input.ref || generatePaymentRef();
+    const expiresAt = new Date(now.getTime() + (input.expiryMinutes ?? 1440) * 60000).toISOString();
+    const req: PaymentRequest = {
+      ref,
+      entryId: input.entryId,
+      customerId: input.customerId,
+      amount: input.amount,
+      status: 'pending',
+      createdAt: now.toISOString(),
+      expiresAt,
+      link: input.link,
+    };
+    this.paymentRequests.push(JSON.parse(JSON.stringify(req)));
+    return req;
+  }
+
+  public async getPendingPaymentRequests(): Promise<PaymentRequest[]> {
+    await this.init();
+    return this.paymentRequests
+      .filter((p) => p.status === 'pending')
+      .map((p) => JSON.parse(JSON.stringify(p)));
+  }
+
+  public async markPaymentRequestPaid(
+    ref: string,
+    paidAmount?: number,
+    paidAt?: string
+  ): Promise<{ paymentRequest: PaymentRequest; entry?: LedgerEntry; isNewPayment: boolean } & PaymentRequest> {
+    await this.init();
+    const existingReq = this.paymentRequests.find((p) => p.ref === ref);
+    if (!existingReq) {
+      throw new Error(`Payment request with ref ${ref} not found`);
+    }
+
+    // Idempotency: calling twice with same ref creates only one payment entry
+    if (existingReq.status === 'paid') {
+      const entries = await this.getCustomerEntries(existingReq.customerId);
+      const matchedEntry = entries.find((e) => e.paymentRef === ref);
+      return Object.assign(
+        {
+          paymentRequest: existingReq,
+          entry: matchedEntry,
+          isNewPayment: false,
+        },
+        existingReq
+      );
+    }
+
+    const paidTimestamp = paidAt || new Date().toISOString();
+    const actualAmount = paidAmount !== undefined ? paidAmount : existingReq.amount;
+
+    existingReq.status = 'paid';
+    existingReq.paidAt = paidTimestamp;
+    existingReq.paidAmount = actualAmount;
+
+    const { entry: newEntry } = await this.addEntry({
+      customerId: existingReq.customerId,
+      amount: actualAmount,
+      type: 'payment',
+      date: paidTimestamp,
+      note: `UPI Online Payment (Ref: ${ref})`,
+      source: 'upi',
+      paymentRef: ref,
+    });
+
+    return Object.assign(
+      {
+        paymentRequest: existingReq,
+        entry: newEntry,
+        isNewPayment: true,
+      },
+      existingReq
+    );
+  }
+
   public async checkDuplicateEntry(
     customerQuery: string,
     amount: number,
@@ -957,6 +1319,26 @@ export class InMemoryLedgerService implements ILedgerService {
 
     this.customers.push(newCustomer);
     return newCustomer;
+  }
+
+  public async addCustomer(customerData: { name: string; phone?: string; notes?: string }): Promise<Customer> {
+    await this.init();
+    const trimmed = customerData.name.trim();
+    const cleanPhone = customerData.phone ? cleanPhoneNumber(customerData.phone) : '';
+    const newCustomer: Customer = {
+      id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: trimmed,
+      phone: cleanPhone,
+      totalCredit: 0,
+      totalPayment: 0,
+      balance: 0,
+      lastTransactionDate: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      notes: customerData.notes || '',
+    };
+
+    this.customers.push(newCustomer);
+    return JSON.parse(JSON.stringify(newCustomer));
   }
 
   public async getCustomerBalance(customerId: string): Promise<number> {
@@ -1136,7 +1518,7 @@ export class InMemoryLedgerService implements ILedgerService {
     return { text, url };
   }
 
-  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store'): string {
+  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store', upiId?: string): string {
     const cust = customer || { name: 'Customer', phone: '', balance: 0, totalCredit: 0, totalPayment: 0, id: '' };
     const isCredit = entry?.type === 'credit';
     const typeLabel = isCredit ? 'UDHAAR (CREDIT GIVEN)' : 'JAMA (PAYMENT RECEIVED)';
@@ -1157,7 +1539,7 @@ Amount: ₹${amt}
 ${entry?.note ? `Note: ${entry.note}` : ''}
 ----------------------------------------
 Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
-========================================
+${upiId ? `----------------------------------------\nScan & Pay via UPI:\nUPI ID: ${upiId}\n` : ''}========================================
    Thank you for shopping with us!
    Powered by Voice Khata PWA
 ========================================
@@ -1196,6 +1578,8 @@ Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
   public async clearAllData(): Promise<void> {
     this.customers = [];
     this.entries = [];
+    this.profile = null;
+    this.paymentRequests = [];
   }
 }
 

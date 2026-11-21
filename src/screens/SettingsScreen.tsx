@@ -41,14 +41,23 @@ import {
   Unlock,
   HardDrive,
   KeyRound,
+  Phone,
+  QrCode,
 } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
 import { useSettings, ASREngine, ThemeMode } from '../hooks/useSettings';
 import { useSpeak } from '../hooks/useSpeak';
 import { ledgerService } from '../services/ledgerService';
 import { useToast } from '../components/ui/Toast';
-import { LanguageCode } from '../services/types';
+import { LanguageCode, ShopProfile } from '../services/types';
 import { checkStoragePersistence, requestStoragePersistence } from '../services/db';
+import {
+  validateShopName,
+  validateShopkeeperName,
+  validatePhoneNumber,
+  validateUpiId,
+  parseSpokenUpiId,
+} from '../lib/profileValidators';
 
 interface SettingsScreenProps {
   onOpenLanguagePicker?: () => void;
@@ -60,9 +69,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
   const { speakBalance, isSpeaking } = useSpeak();
   const { showToast } = useToast();
 
-  // Local editing states
+  // Local profile & editing states
+  const [profile, setProfile] = useState<ShopProfile | null>(null);
   const [shopNameInput, setShopNameInput] = useState(settings.shopName);
-  const [isSavedShopName, setIsSavedShopName] = useState(false);
+  const [ownerNameInput, setOwnerNameInput] = useState('');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [upiIdInput, setUpiIdInput] = useState('');
+  const [isSavedProfile, setIsSavedProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [showUpiConfirmModal, setShowUpiConfirmModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   // Security & Storage Persistence States
@@ -74,8 +89,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
   const [pinConfirmInput, setPinConfirmInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
 
-  // Load PIN and persistence status
+  // Load profile, PIN and persistence status
   React.useEffect(() => {
+    ledgerService.getProfile().then((p) => {
+      if (p) {
+        setProfile(p);
+        setShopNameInput(p.shopName);
+        setOwnerNameInput(p.shopkeeperName);
+        setPhoneInput(p.phone);
+        setUpiIdInput(p.upiId);
+      }
+    });
+
     const checkSecurity = async () => {
       try {
         const pinActive = await ledgerService.isPinSet();
@@ -146,13 +171,65 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
     ledgerService.lockApp();
   };
 
-  // Handle saving shop name
+  // Handle saving shop profile
+  const handleSaveProfileClick = () => {
+    setProfileError(null);
+    const shopVal = validateShopName(shopNameInput);
+    if (!shopVal.isValid) {
+      setProfileError(t('shopNameError'));
+      return;
+    }
+    const ownerVal = validateShopkeeperName(ownerNameInput);
+    if (!ownerVal.isValid) {
+      setProfileError(t('ownerNameError'));
+      return;
+    }
+    const phoneVal = validatePhoneNumber(phoneInput);
+    if (!phoneVal.isValid) {
+      setProfileError(t('phoneError'));
+      return;
+    }
+    const upiVal = validateUpiId(upiIdInput);
+    if (!upiVal.isValid) {
+      setProfileError(t('upiError'));
+      return;
+    }
+
+    // Check if UPI ID changed
+    if (profile && profile.upiId && upiIdInput.trim().toLowerCase() !== profile.upiId.toLowerCase()) {
+      setShowUpiConfirmModal(true);
+      return;
+    }
+
+    executeSaveProfile();
+  };
+
+  const executeSaveProfile = async () => {
+    try {
+      setShowUpiConfirmModal(false);
+      setProfileError(null);
+      const cleanPhone = phoneInput.replace(/\D/g, '');
+      const saved = await ledgerService.saveProfile({
+        shopName: shopNameInput.trim(),
+        shopkeeperName: ownerNameInput.trim(),
+        phone: cleanPhone,
+        upiId: upiIdInput.trim().toLowerCase(),
+      });
+      setProfile(saved);
+      updateSetting('shopName', saved.shopName);
+      setIsSavedProfile(true);
+      showToast(t('profileUpdatedToast'), { type: 'success' });
+      window.dispatchEvent(new CustomEvent('vk_profile_updated', { detail: saved }));
+      window.dispatchEvent(new CustomEvent('vk_shop_name_updated', { detail: saved.shopName }));
+      setTimeout(() => setIsSavedProfile(false), 2500);
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+      setProfileError('Failed to save profile. Please try again.');
+    }
+  };
+
   const handleSaveShopName = () => {
-    const trimmed = shopNameInput.trim() || 'Apna Kirana Khata';
-    updateSetting('shopName', trimmed);
-    setIsSavedShopName(true);
-    showToast(`Dukan ka naam: "${trimmed}" save ho gaya!`, { type: 'success' });
-    setTimeout(() => setIsSavedShopName(false), 2000);
+    handleSaveProfileClick();
   };
 
   // Handle UI Language switch
@@ -270,44 +347,164 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
         </p>
       </div>
 
-      {/* 1. Shop Name Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-3">
+      {/* Missing PIN Reminder Banner */}
+      {!hasPinSet && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-4 flex items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="p-2 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-amber-900 dark:text-amber-200 block">
+                {t('noPinWarningBanner')}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={handleOpenSetPin}
+            className="px-3.5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shrink-0 shadow-sm transition-all whitespace-nowrap"
+          >
+            {t('setPinNow')}
+          </button>
+        </div>
+      )}
+
+      {/* 1. Shop Profile Card (F14) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-4">
         <div className="flex items-center space-x-2.5">
           <div className="p-2 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
             <Store className="w-5 h-5" />
           </div>
           <div>
             <span className="text-sm font-black text-slate-900 dark:text-white block">
-              {t('shopNameLabel')}
+              {t('settingsProfileTitle')}
             </span>
             <span className="text-[11px] font-semibold text-slate-400">
-              Receipts aur WhatsApp reminder me dikhega
+              {t('settingsProfileSubtitle')}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={shopNameInput}
-            onChange={(e) => setShopNameInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveShopName()}
-            placeholder={t('shopNamePlaceholder')}
-            className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-sm px-3.5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-teal-500 min-h-[48px]"
-          />
+        <div className="space-y-3">
+          {/* Shop Name */}
+          <div>
+            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+              {t('shopNameLabel')}
+            </label>
+            <input
+              type="text"
+              value={shopNameInput}
+              onChange={(e) => setShopNameInput(e.target.value)}
+              placeholder={t('shopNamePlaceholder')}
+              className="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-sm px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-teal-500"
+            />
+          </div>
+
+          {/* Shopkeeper Name */}
+          <div>
+            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+              {t('ownerNamePrompt')}
+            </label>
+            <input
+              type="text"
+              value={ownerNameInput}
+              onChange={(e) => setOwnerNameInput(e.target.value)}
+              placeholder={t('ownerNamePlaceholder')}
+              className="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-sm px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-teal-500"
+            />
+          </div>
+
+          {/* Phone Number */}
+          <div>
+            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+              {t('phonePrompt')}
+            </label>
+            <div className="relative flex items-center">
+              <span className="absolute left-3 text-sm font-bold text-slate-400 select-none">
+                +91
+              </span>
+              <input
+                type="tel"
+                maxLength={10}
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, ''))}
+                placeholder={t('phonePlaceholder')}
+                className="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-sm pl-11 pr-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-teal-500 tracking-wider"
+              />
+            </div>
+          </div>
+
+          {/* UPI ID */}
+          <div>
+            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+              {t('upiPrompt')}
+            </label>
+            <input
+              type="text"
+              value={upiIdInput}
+              onChange={(e) => setUpiIdInput(e.target.value.toLowerCase().trim())}
+              placeholder={t('upiPlaceholder')}
+              className="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold text-sm px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-teal-500"
+            />
+            <span className="text-[10px] text-slate-400 mt-1 block">
+              {t('upiHelperText')}
+            </span>
+          </div>
+
+          {profileError && (
+            <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-bold text-center">
+              {profileError}
+            </div>
+          )}
+
           <button
-            onClick={handleSaveShopName}
-            className={`px-4 py-3 rounded-2xl font-black text-xs transition-all min-h-[48px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
-              isSavedShopName
+            onClick={handleSaveProfileClick}
+            className={`w-full py-3 rounded-2xl font-black text-xs transition-all min-h-[48px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
+              isSavedProfile
                 ? 'bg-emerald-600 text-white'
                 : 'bg-teal-600 hover:bg-teal-500 text-white'
             }`}
           >
             <Check className="w-4 h-4" />
-            <span>{isSavedShopName ? 'Saved' : t('save')}</span>
+            <span>{isSavedProfile ? 'Profile Saved' : t('save')}</span>
           </button>
         </div>
       </div>
+
+      {/* UPI ID Change Confirmation Modal */}
+      {showUpiConfirmModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 max-w-sm w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2.5 text-amber-500">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {t('confirmUpiChangeTitle')}
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-semibold">
+              {t('confirmUpiChangeWarning')}
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowUpiConfirmModal(false)}
+                className="px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 transition-colors"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={executeSaveProfile}
+                className="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-sm transition-all"
+              >
+                {t('confirmUpiChangeButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2. UI Language Selector (Instant Switch) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-3">
@@ -504,6 +701,71 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
             </span>
           </button>
         </div>
+      </div>
+
+      {/* Customer Phone Requirement Toggle (F15) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm flex items-center justify-between gap-3">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <Phone className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-sm font-black text-slate-900 dark:text-white block">
+              {t('requireCustomerPhoneLabel')}
+            </span>
+            <span className="text-[11px] font-semibold text-slate-400">
+              {t('requireCustomerPhoneDesc')}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => updateSetting('requireCustomerPhone', !settings.requireCustomerPhone)}
+          className={`w-14 h-8 rounded-full transition-colors relative min-h-[32px] ${
+            settings.requireCustomerPhone ? 'bg-teal-600' : 'bg-slate-300 dark:bg-slate-700'
+          }`}
+          aria-label="Toggle require customer phone number"
+        >
+          <span
+            className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white transition-transform shadow-md ${
+              settings.requireCustomerPhone ? 'translate-x-6' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Auto-open Payment Request after Udhaar toggle */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <QrCode className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-sm font-black text-slate-900 dark:text-white block">
+              {t('autoOpenPaymentRequestLabel')}
+            </span>
+            <span className="text-[11px] font-semibold text-slate-400">
+              {t('autoOpenPaymentRequestDesc')}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          data-testid="toggle-auto-open-payment"
+          onClick={() => updateSetting('autoOpenPaymentRequest', !settings.autoOpenPaymentRequest)}
+          className={`w-14 h-8 rounded-full transition-colors relative min-h-[32px] ${
+            settings.autoOpenPaymentRequest ? 'bg-amber-600' : 'bg-slate-300 dark:bg-slate-700'
+          }`}
+          aria-label="Toggle auto open payment request after udhaar"
+        >
+          <span
+            className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white transition-transform shadow-md ${
+              settings.autoOpenPaymentRequest ? 'translate-x-6' : 'translate-x-0'
+            }`}
+          />
+        </button>
       </div>
 
       {/* 5. Theme Selector (Light vs High-Contrast Dark) */}

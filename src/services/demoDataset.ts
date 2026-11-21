@@ -23,7 +23,8 @@ export const PITCH_CUSTOMERS: Customer[] = [
   {
     id: 'cust-1',
     name: 'Ramesh Kumar (रमेश कुमार)',
-    phone: '9845012345',
+    phone: '9845012345', // ends in 2345
+    phoneVerified: true,
     totalCredit: 4250,
     totalPayment: 1800,
     balance: 2450, // owes ₹2,450
@@ -34,7 +35,8 @@ export const PITCH_CUSTOMERS: Customer[] = [
   {
     id: 'cust-2',
     name: 'Ramesh Gowda (ರಮೇಶ್ ಗೌಡ)',
-    phone: '9845099887',
+    phone: '9845099887', // ends in 9887 (different from Ramesh Kumar)
+    phoneVerified: true,
     totalCredit: 1640,
     totalPayment: 800,
     balance: 840, // owes ₹840
@@ -46,6 +48,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-3',
     name: 'Suresh Tailor (सुरेश प्लंबर)',
     phone: '9741234567',
+    phoneVerified: true,
     totalCredit: 1520,
     totalPayment: 1200,
     balance: 320, // owes ₹320
@@ -57,6 +60,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-4',
     name: 'Lakshmi Amma (ಲಕ್ಷ್ಮಿ ಅಮ್ಮ)',
     phone: '9880198765',
+    phoneVerified: true,
     totalCredit: 3650,
     totalPayment: 1800,
     balance: 1850, // owes ₹1,850
@@ -68,6 +72,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-5',
     name: 'Priya Bakery (பிரியா பேக்கரி)',
     phone: '9844055112',
+    phoneVerified: true,
     totalCredit: 5100,
     totalPayment: 2000,
     balance: 3100, // owes ₹3,100 (Highest pending)
@@ -79,6 +84,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-6',
     name: 'Venkatesh Rao (వెంకటేష్)',
     phone: '9448123987',
+    phoneVerified: true,
     totalCredit: 2450,
     totalPayment: 1500,
     balance: 950, // owes ₹950
@@ -90,6 +96,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-7',
     name: 'Manjunath Electrician (ಮಂಜುನಾಥ್)',
     phone: '9900334455',
+    phoneVerified: true,
     totalCredit: 2850,
     totalPayment: 1200,
     balance: 1650, // owes ₹1,650
@@ -100,7 +107,8 @@ export const PITCH_CUSTOMERS: Customer[] = [
   {
     id: 'cust-8',
     name: 'Sunita Bai (सुनीता बाई)',
-    phone: '9845566778',
+    phone: '9845568899', // ends in 8899 (shared suffix with Abdul Bhai)
+    phoneVerified: true,
     totalCredit: 3600,
     totalPayment: 1500,
     balance: 2100, // owes ₹2,100
@@ -111,7 +119,8 @@ export const PITCH_CUSTOMERS: Customer[] = [
   {
     id: 'cust-9',
     name: 'Abdul Bhai (अब्दुल भाई)',
-    phone: '9731238899',
+    phone: '9731238899', // ends in 8899 (shared suffix with Sunita Bai)
+    phoneVerified: true,
     totalCredit: 1580,
     totalPayment: 800,
     balance: 780, // owes ₹780
@@ -123,6 +132,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-10',
     name: 'Ananya Store (ಅನನ್ಯಾ)',
     phone: '9886011223',
+    phoneVerified: true,
     totalCredit: 1420,
     totalPayment: 1000,
     balance: 420, // owes ₹420
@@ -134,6 +144,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-11',
     name: 'Rajesh Carpenter (राजेश)',
     phone: '9945044332',
+    phoneVerified: true,
     totalCredit: 1500,
     totalPayment: 1000,
     balance: 500, // owes ₹500
@@ -145,6 +156,7 @@ export const PITCH_CUSTOMERS: Customer[] = [
     id: 'cust-12',
     name: 'Geetha Dairy (ಗೀತಾ ಡೈರಿ)',
     phone: '9901122334',
+    phoneVerified: true,
     totalCredit: 2200,
     totalPayment: 2200,
     balance: 0, // Settled!

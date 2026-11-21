@@ -6,10 +6,16 @@
  * and writes the encrypted records into the real IndexedDB stores.
  */
 
-import { getDB, EncryptedCustomerRecord, EncryptedEntryRecord } from './db';
+import {
+  getDB,
+  EncryptedCustomerRecord,
+  EncryptedEntryRecord,
+  EncryptedProfileRecord,
+  EncryptedPaymentRequestRecord,
+} from './db';
 import { cryptoService } from './crypto';
-import { Customer, LedgerEntry } from './types';
-import { PITCH_CUSTOMERS, PITCH_ENTRIES } from './demoDataset';
+import { Customer, LedgerEntry, ShopProfile, PaymentRequest, EntrySource } from './types';
+import { cleanPhoneNumber } from '../lib/formatters';
 
 /**
  * Encrypts a customer entity into an IndexedDB record
@@ -17,8 +23,9 @@ import { PITCH_CUSTOMERS, PITCH_ENTRIES } from './demoDataset';
 export async function encryptCustomerEntity(customer: Customer): Promise<EncryptedCustomerRecord> {
   const sensitiveData = {
     name: customer.name,
-    phone: customer.phone || '',
+    phone: customer.phone ? cleanPhoneNumber(customer.phone) : '',
     notes: customer.notes || '',
+    phoneVerified: customer.phoneVerified ?? false,
   };
 
   const { encryptedPayload, iv } = await cryptoService.encryptObject(sensitiveData);
@@ -47,6 +54,7 @@ export async function decryptCustomerEntity(
     name: string;
     phone: string;
     notes?: string;
+    phoneVerified?: boolean;
   }>({
     encryptedPayload: record.encryptedPayload,
     iv: record.iv,
@@ -55,7 +63,8 @@ export async function decryptCustomerEntity(
   return {
     id: record.id,
     name: sensitive.name,
-    phone: sensitive.phone,
+    phone: sensitive.phone ? cleanPhoneNumber(sensitive.phone) : undefined,
+    phoneVerified: sensitive.phoneVerified ?? false,
     notes: sensitive.notes,
     createdAt: record.createdAt,
     lastTransactionDate: record.lastTransactionDate,
@@ -75,6 +84,8 @@ export async function encryptEntryEntity(entry: LedgerEntry): Promise<EncryptedE
     note: entry.note || entry.notes || '',
     notes: entry.notes || entry.note || '',
     rawTranscript: entry.rawTranscript || '',
+    source: entry.source || 'voice',
+    paymentRef: entry.paymentRef,
   };
 
   const { encryptedPayload, iv } = await cryptoService.encryptObject(sensitiveData);
@@ -86,6 +97,8 @@ export async function encryptEntryEntity(entry: LedgerEntry): Promise<EncryptedE
     date: entry.date,
     createdAt: entry.createdAt,
     synced: entry.synced ?? true,
+    source: entry.source || 'voice',
+    paymentRef: entry.paymentRef,
     encryptedPayload,
     iv,
   };
@@ -101,6 +114,8 @@ export async function decryptEntryEntity(record: EncryptedEntryRecord): Promise<
     note?: string;
     notes?: string;
     rawTranscript?: string;
+    source?: EntrySource;
+    paymentRef?: string;
   }>({
     encryptedPayload: record.encryptedPayload,
     iv: record.iv,
@@ -118,6 +133,110 @@ export async function decryptEntryEntity(record: EncryptedEntryRecord): Promise<
     note: sensitive.note || sensitive.notes,
     notes: sensitive.notes || sensitive.note,
     rawTranscript: sensitive.rawTranscript,
+    source: sensitive.source || record.source || 'voice',
+    paymentRef: sensitive.paymentRef || record.paymentRef,
+  };
+}
+
+/**
+ * Encrypts a ShopProfile entity into an IndexedDB record
+ */
+export async function encryptProfileEntity(profile: ShopProfile): Promise<EncryptedProfileRecord> {
+  const sensitiveData = {
+    shopName: profile.shopName,
+    shopkeeperName: profile.shopkeeperName,
+    phone: cleanPhoneNumber(profile.phone),
+    upiId: profile.upiId,
+  };
+
+  const { encryptedPayload, iv } = await cryptoService.encryptObject(sensitiveData);
+
+  return {
+    id: 'current',
+    createdAt: profile.createdAt || new Date().toISOString(),
+    updatedAt: profile.updatedAt || new Date().toISOString(),
+    encryptedPayload,
+    iv,
+  };
+}
+
+/**
+ * Decrypts an IndexedDB profile record back into a full ShopProfile entity
+ */
+export async function decryptProfileEntity(record: EncryptedProfileRecord): Promise<ShopProfile> {
+  const sensitive = await cryptoService.decryptObject<{
+    shopName: string;
+    shopkeeperName: string;
+    phone: string;
+    upiId: string;
+  }>({
+    encryptedPayload: record.encryptedPayload,
+    iv: record.iv,
+  });
+
+  return {
+    shopName: sensitive.shopName,
+    shopkeeperName: sensitive.shopkeeperName,
+    phone: cleanPhoneNumber(sensitive.phone),
+    upiId: sensitive.upiId,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+/**
+ * Encrypts a PaymentRequest entity into an IndexedDB record
+ */
+export async function encryptPaymentRequestEntity(
+  req: PaymentRequest
+): Promise<EncryptedPaymentRequestRecord> {
+  const sensitiveData = {
+    amount: req.amount,
+    paidAmount: req.paidAmount,
+    link: req.link,
+  };
+
+  const { encryptedPayload, iv } = await cryptoService.encryptObject(sensitiveData);
+
+  return {
+    ref: req.ref,
+    entryId: req.entryId,
+    customerId: req.customerId,
+    status: req.status,
+    createdAt: req.createdAt || new Date().toISOString(),
+    expiresAt: req.expiresAt,
+    paidAt: req.paidAt,
+    encryptedPayload,
+    iv,
+  };
+}
+
+/**
+ * Decrypts an IndexedDB payment request record back into a full PaymentRequest entity
+ */
+export async function decryptPaymentRequestEntity(
+  record: EncryptedPaymentRequestRecord
+): Promise<PaymentRequest> {
+  const sensitive = await cryptoService.decryptObject<{
+    amount: number;
+    paidAmount?: number;
+    link?: string;
+  }>({
+    encryptedPayload: record.encryptedPayload,
+    iv: record.iv,
+  });
+
+  return {
+    ref: record.ref,
+    entryId: record.entryId,
+    customerId: record.customerId,
+    amount: sensitive.amount,
+    status: record.status,
+    createdAt: record.createdAt,
+    expiresAt: record.expiresAt,
+    paidAt: record.paidAt,
+    paidAmount: sensitive.paidAmount,
+    link: sensitive.link,
   };
 }
 
@@ -126,6 +245,7 @@ export async function decryptEntryEntity(record: EncryptedEntryRecord): Promise<
  * fully encrypted into the real DB.
  */
 export async function seedPitchDemoDataToDB(): Promise<void> {
+  const { PITCH_CUSTOMERS, PITCH_ENTRIES } = await import('./demoDataset');
   const db = await getDB();
 
   // Clear existing

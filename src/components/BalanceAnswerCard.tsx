@@ -30,6 +30,7 @@ import { formatRupees, formatFullRelativeDate } from '../lib/format';
 import { ledgerService } from '../services/ledgerService';
 import { useI18n } from '../i18n/I18nContext';
 import { useSpeak } from '../hooks/useSpeak';
+import { useSettings } from '../hooks/useSettings';
 import { ReminderSheet } from './ReminderSheet';
 
 export interface BalanceAnswerCardProps {
@@ -49,6 +50,7 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const { language, t } = useI18n();
+  const { settings } = useSettings();
   const { speakBalance, isSpeaking } = useSpeak();
   const [showReminderSheet, setShowReminderSheet] = useState(false);
   const [currentCustomer, setCurrentCustomer] = useState(customer);
@@ -66,7 +68,8 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
   // WhatsApp reminder URL and text
   const { url: waUrl, text: reminderText } = ledgerService.generateWhatsAppReminder(
     customer,
-    language
+    language,
+    settings.shopName
   );
 
   const isOwed = customer.balance > 0;
@@ -317,6 +320,7 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
       {/* Reminder Sheet Modal */}
       <ReminderSheet
         customer={currentCustomer}
+        shopName={settings.shopName}
         isOpen={showReminderSheet}
         onClose={() => setShowReminderSheet(false)}
         onCustomerUpdated={(updated) => setCurrentCustomer(updated)}

@@ -392,4 +392,59 @@ describe('Voice Parser Service (/services/parser.ts)', () => {
       expect(res.entries[0].lowConfidenceField).toBe('amount');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // 10. VOICE CUSTOMER REGISTRATION (F15)
+  // -------------------------------------------------------------------------
+  describe('10. Voice Customer Registration Intent (F15)', () => {
+    it('recognizes "Naya customer Suresh, number 98450 12345"', async () => {
+      const res = await parseTranscript('Naya customer Suresh, number 98450 12345');
+      expect(res.intent).toBe('register');
+      expect(res.name).toBe('Suresh');
+      expect(res.phone).toBe('9845012345');
+      expect(res.confidence).toBeGreaterThanOrEqual(0.90);
+    });
+
+    it('recognizes "Suresh ka number 9845012345 add karo"', async () => {
+      const res = await parseTranscript('Suresh ka number 9845012345 add karo');
+      expect(res.intent).toBe('register');
+      expect(res.name).toBe('Suresh');
+      expect(res.phone).toBe('9845012345');
+    });
+
+    it('recognizes "add customer Suresh phone 98450 12345"', async () => {
+      const res = await parseTranscript('add customer Suresh phone 98450 12345');
+      expect(res.intent).toBe('register');
+      expect(res.name).toBe('Suresh');
+      expect(res.phone).toBe('9845012345');
+    });
+
+    it('recognizes registration without phone: "Naya grahak Mahesh"', async () => {
+      const res = await parseTranscript('Naya grahak Mahesh');
+      expect(res.intent).toBe('register');
+      expect(res.name).toBe('Mahesh');
+      expect(res.phone).toBeUndefined();
+    });
+
+    it('recognizes Kannada registration: "ಹೊಸ ಗ್ರಾಹಕ ಸುರೇಶ್ ನಂಬರ್ 98450 12345"', async () => {
+      const res = await parseTranscript('ಹೊಸ ಗ್ರಾಹಕ ಸುರೇಶ್ ನಂಬರ್ 98450 12345');
+      expect(res.intent).toBe('register');
+      expect(res.name).toBe('ಸುರೇಶ್');
+      expect(res.phone).toBe('9845012345');
+    });
+
+    it('recognizes Tamil registration: "புதிய வாடிக்கையாளர் சுரேஷ் எண் 98450 12345"', async () => {
+      const res = await parseTranscript('புதிய வாடிக்கையாளர் சுரேஷ் எண் 98450 12345');
+      expect(res.intent).toBe('register');
+      expect(res.name).toBe('சுரேஷ்');
+      expect(res.phone).toBe('9845012345');
+    });
+
+    it('recognizes Telugu registration: "కొత్త కస్టమర్ సురేష్ నంబర్ 98450 12345"', async () => {
+      const res = await parseTranscript('కొత్త కస్టమర్ సురేష్ నంబర్ 98450 12345');
+      expect(res.intent).toBe('register');
+      expect(res.name).toBe('సురేష్');
+      expect(res.phone).toBe('9845012345');
+    });
+  });
 });

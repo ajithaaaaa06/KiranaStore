@@ -18,8 +18,9 @@
 
 import { ParsedEntry, ParsedSubEntry, TransactionType, CompoundDetails } from './types';
 import { extractAmounts, normalizeIndicDigits, parseNumberPhrase } from './numberParser';
+import { parsePhoneNumber } from './phoneParser';
 
-export type ParserIntent = 'entry' | 'query' | 'correction' | 'confirm' | 'cancel' | 'unknown';
+export type ParserIntent = 'entry' | 'query' | 'correction' | 'confirm' | 'cancel' | 'register' | 'unknown';
 
 export interface ParsedTranscriptResult {
   intent: ParserIntent;
@@ -32,6 +33,8 @@ export interface ParsedTranscriptResult {
   type: ParserIntent;
   data: ParsedEntry;
   customerName?: string;
+  name?: string;
+  phone?: string;
   queryType?: 'balance';
   rawTranscript: string;
   message?: string;
@@ -515,6 +518,60 @@ export async function parseTranscript(
       correctionAmount: correctionAmt,
       isCorrection: true,
       customerName: prevCust,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // RULE: VOICE CUSTOMER REGISTRATION (F15)
+  // e.g. "Naya customer Suresh, number 98450 12345", "Suresh ka number 9845012345 add karo"
+  // -------------------------------------------------------------------------
+  const REGISTER_PATTERNS = [
+    /\b(?:naya|naye|new|add|register|create)\s+(?:customer|grahak|khata|account)\b/i,
+    /\b(?:add|jodo|register)\s+(?:karo|kijiye|karna)\b/i,
+    /\b(?:add|register)\s+customer\b/i,
+    /\b(?:number|phone|mobile)\s+(?:add|save)\s+karo\b/i,
+    /(?:नया\s+ग्राहक|नया\s+कस्टमर|नया\s+खाता|ऐड\s+करो|जोड़ो)/i,
+    /(?:ಹೊಸ\s+ಗ್ರಾಹಕ|ಹೊಸ\s+ಕಸ್ಟಮರ್|ಸೇರಿಸಿ|ನೋಂದಾಯಿಸಿ)/i,
+    /(?:புதிய\s+வாடிக்கையாளர்|சேர்க்கவும்)/i,
+    /(?:కొత్త\s+కస్టమర్|కొత్త\s+ఖాతాదారు|చేర్చండి)/i,
+  ];
+
+  const isRegister = REGISTER_PATTERNS.some((rgx) => rgx.test(lower));
+  if (isRegister) {
+    // 1. Try to extract phone number from transcript
+    const parsedPhone = parsePhoneNumber(trimmed);
+    const phoneDigits = parsedPhone && parsedPhone.digits.length >= 10 ? parsedPhone.digits : undefined;
+
+    // 2. Extract customer name by stripping register triggers, phone markers and digits
+    let nameText = trimmed;
+    for (const pat of REGISTER_PATTERNS) {
+      nameText = nameText.replace(pat, ' ');
+    }
+    nameText = nameText.replace(/\b(?:number|phone|mobile|no|ka|ki|ko|hai|he|naam|name)\b/gi, ' ');
+    nameText = nameText.replace(/(?:नंबर|फोन|मोबाइल|का|की|को|है|ಹೆಸರು|ನಂಬರ್|ಎನ್|எண்|నంబర్|నంబరు)/g, ' ');
+
+    if (phoneDigits) {
+      nameText = nameText.replace(new RegExp(phoneDigits, 'g'), ' ');
+    }
+    nameText = nameText.replace(/\+?91/g, ' ');
+    nameText = nameText.replace(/\d+/g, ' ');
+
+    const { name: rawName, confidence: nameConf } = extractCustomerName(nameText);
+    const cleanCustomerName = rawName || 'Customer';
+
+    const regEntry: ParsedEntry = {
+      customerName: cleanCustomerName,
+      amount: 0,
+      type: 'credit',
+      date: now.toISOString(),
+      confidence: phoneDigits ? 0.95 : Math.max(0.85, nameConf),
+      rawTranscript: trimmed,
+    };
+
+    return buildResult('register', [regEntry], phoneDigits ? 0.95 : Math.max(0.85, nameConf), {
+      customerName: cleanCustomerName,
+      name: cleanCustomerName,
+      phone: phoneDigits,
     });
   }
 
