@@ -189,7 +189,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       let lastSavedCustomer: Customer | null = null;
 
       for (const item of items) {
+        const existingCusts = await ledgerService.getCustomers();
+        const existedBefore = existingCusts.some(
+          (c) => c.name.trim().toLowerCase() === item.customerName.trim().toLowerCase() || c.id === item.customerId
+        );
         const customer = await ledgerService.findOrCreateCustomer(item.customerName);
+        if (!existedBefore) {
+          showToast(`New customer added: ${customer.name}`, { type: 'success' });
+        }
         const res = await ledgerService.addEntry(
           {
             customerId: customer.id,
@@ -359,6 +366,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         } else {
           // If customer not found yet, create temporary card
           const newCust = await ledgerService.findOrCreateCustomer(targetName);
+          showToast(`New customer added: ${newCust.name}`, { type: 'success' });
           const latency = Math.round(performance.now() - queryStart);
           setQueryResponseTime(latency);
           setLatencyMetrics((prev) => ({ ...prev, queryResponseTimeMs: latency }));
@@ -439,6 +447,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
   const handleCustomerRegistered = (newCustomer: Customer, pending?: ParsedEntry | null) => {
     setShowRegisterSheet(false);
     setRegisterPendingEntry(null);
+    showToast(`New customer added: ${newCustomer.name}`, { type: 'success' });
     refreshData();
     if (pending) {
       setParsedDraft({

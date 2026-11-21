@@ -320,16 +320,30 @@ export const CustomerDetailScreen: React.FC = () => {
             title="Koi Hisaab Nahi Hai"
             description="Is grahak ke liye abhi koi entry darj nahi hui hai."
             action={
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => {
-                  setPaymentType('credit');
-                  setIsPaymentSheetOpen(true);
-                }}
-              >
-                + Udhaar Likhein
-              </Button>
+              <div className="flex items-center justify-center gap-3 w-full max-w-xs mx-auto">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => {
+                    setPaymentType('credit');
+                    setIsPaymentSheetOpen(true);
+                  }}
+                  className="flex-1 min-h-[48px]"
+                >
+                  + Add udhaar
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => {
+                    setPaymentType('payment');
+                    setIsPaymentSheetOpen(true);
+                  }}
+                  className="flex-1 min-h-[48px]"
+                >
+                  + Add payment
+                </Button>
+              </div>
             }
           />
         ) : (

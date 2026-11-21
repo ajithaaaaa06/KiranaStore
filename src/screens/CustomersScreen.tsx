@@ -13,11 +13,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronRight, User, Users, Clock } from 'lucide-react';
+import { Search, ChevronRight, User, Users, Clock, UserPlus } from 'lucide-react';
 import { Customer } from '../services/types';
 import { ledgerService } from '../services/ledgerService';
 import { formatRelativeDate } from '../lib/format';
 import { Chip, Amount, EmptyState, Skeleton, Button } from '../components/ui';
+import { AddCustomerSheet } from '../components/AddCustomerSheet';
 import { useI18n } from '../i18n/I18nContext';
 
 export const CustomersScreen: React.FC = () => {
@@ -28,6 +29,7 @@ export const CustomersScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'pending' | 'settled'>('all');
+  const [showAddCustomerSheet, setShowAddCustomerSheet] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -43,9 +45,11 @@ export const CustomersScreen: React.FC = () => {
     const handleRefresh = () => loadData();
     window.addEventListener('vk_refresh_data', handleRefresh);
     window.addEventListener('vk_entry_added', handleRefresh);
+    window.addEventListener('vk_customer_added', handleRefresh);
     return () => {
       window.removeEventListener('vk_refresh_data', handleRefresh);
       window.removeEventListener('vk_entry_added', handleRefresh);
+      window.removeEventListener('vk_customer_added', handleRefresh);
     };
   }, []);
 
@@ -167,9 +171,25 @@ export const CustomersScreen: React.FC = () => {
             }
             action={
               customers.length === 0 ? (
-                <Button variant="primary" size="lg" onClick={() => navigate('/')}>
-                  🎤 Pehla Udhaar Bolkar Jodein
-                </Button>
+                <div className="flex flex-col gap-2.5 w-full max-w-xs mx-auto">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() => setShowAddCustomerSheet(true)}
+                    className="min-h-[52px]"
+                  >
+                    <UserPlus className="w-5 h-5 mr-1" />
+                    + Add customer
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    onClick={() => navigate('/')}
+                    className="min-h-[48px]"
+                  >
+                    🎤 Pehla Udhaar Bolkar Jodein
+                  </Button>
+                </div>
               ) : undefined
             }
           />
@@ -177,6 +197,7 @@ export const CustomersScreen: React.FC = () => {
           // CUSTOMER ROWS
           filtered.map((c) => {
             const hasPending = c.balance > 0;
+            const isNewCustomer = c.totalCredit === 0 && c.totalPayment === 0;
             const initials = c.name.trim().charAt(0).toUpperCase() || 'G';
             const lastActivity = c.lastTransactionDate
               ? formatRelativeDate(c.lastTransactionDate, { lang: language })
@@ -200,9 +221,16 @@ export const CustomersScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <h4 className="text-lg font-black text-slate-900 dark:text-white tracking-tight leading-snug">
-                      {c.name}
-                    </h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-lg font-black text-slate-900 dark:text-white tracking-tight leading-snug">
+                        {c.name}
+                      </h4>
+                      {isNewCustomer && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30 shrink-0">
+                          New
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mt-0.5">
                       {c.phone && <span>📱 {c.phone}</span>}
                       {c.phone && <span>•</span>}
@@ -239,6 +267,32 @@ export const CustomersScreen: React.FC = () => {
           })
         )}
       </div>
+
+      {/* 4. Bottom Thumb Zone: "+ Add customer" Button (≥56px) */}
+      <div className="fixed bottom-20 left-0 right-0 z-30 px-4 max-w-md mx-auto pointer-events-none">
+        <button
+          type="button"
+          onClick={() => setShowAddCustomerSheet(true)}
+          className="pointer-events-auto w-full min-h-[56px] h-14 bg-teal-600 hover:bg-teal-500 active:scale-[0.98] text-white font-black text-base rounded-2xl shadow-xl flex items-center justify-center gap-2 border border-teal-500/50 transition-all cursor-pointer"
+          aria-label="Add customer"
+        >
+          <UserPlus className="w-5 h-5" />
+          <span>+ Add customer</span>
+        </button>
+      </div>
+
+      {/* 5. Add Customer Sheet */}
+      <AddCustomerSheet
+        isOpen={showAddCustomerSheet}
+        onClose={() => setShowAddCustomerSheet(false)}
+        onCustomerCreated={(newCust) => {
+          loadData();
+          navigate(`/customers/${newCust.id}`);
+        }}
+        onSelectExisting={(existing) => {
+          navigate(`/customers/${existing.id}`);
+        }}
+      />
     </div>
   );
 };
