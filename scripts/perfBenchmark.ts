@@ -1,5 +1,5 @@
 /**
- * Performance Benchmark Test Suite for Voice Khata
+ * Performance Benchmark Test Suite for Udhaar Sathi
  * 
  * Measures:
  * 1. Parse + Confirm Flow (speech transcript -> parse -> customer match -> save entry -> update summary)
@@ -38,7 +38,7 @@ function burnCpuCycles(durationMs: number) {
 
 async function runBenchmark() {
   console.log('='.repeat(70));
-  console.log('VOICE KHATA PERFORMANCE BENCHMARK & SLA VERIFICATION');
+  console.log('UDHAAR SATHI PERFORMANCE BENCHMARK & SLA VERIFICATION');
   console.log('Target: < 2.0s (2000ms) SLA under 4x CPU throttle');
   console.log('='.repeat(70));
 

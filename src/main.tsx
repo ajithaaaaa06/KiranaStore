@@ -12,7 +12,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     registerSW({
       immediate: true,
       onOfflineReady() {
-        console.log('Voice Khata is offline ready!');
+        console.log('Udhaar Sathi is offline ready!');
       },
     });
   }).catch(() => {

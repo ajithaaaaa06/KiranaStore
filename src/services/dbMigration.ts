@@ -1,5 +1,5 @@
 /**
- * Voice Khata DB Migration & Seeding Utility
+ * Udhaar Sathi DB Migration & Seeding Utility
  * 
  * Takes plaintext demo/pitch datasets (or user imports),
  * encrypts the sensitive fields using the active Web Crypto key,

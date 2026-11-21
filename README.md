@@ -1,8 +1,8 @@
-# Voice Khata (आवाज़ खाता) 🎙️📱
+# Udhaar Sathi (उधार साथी) 🎙️📱
 > **Hands-Free Offline Voice Ledger PWA for Indian Kirana Shopkeepers**  
 > *Built for Build Bengaluru 2.0 Hackathon*
 
-[![CI](https://github.com/your-username/kirana-store/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/kirana-store/actions/workflows/ci.yml)
+[![CI](https://github.com/your-username/udhaar-sathi/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/udhaar-sathi/actions/workflows/ci.yml)
 [![Bundle Size](https://img.shields.io/badge/Home%20Route%20JS-133.65%20KB%20gz-success)](file:///c:/Users/HP/Desktop/KiranaStore/scripts/bundleReport.ts)
 [![Tests](https://img.shields.io/badge/Unit%20Tests-419%20passed-brightgreen)](file:///c:/Users/HP/Desktop/KiranaStore/TEST_REPORT.md)
 [![Indic Accuracy](https://img.shields.io/badge/Indic%20ASR%20Accuracy-100%25%20(50%2F50)-brightgreen)](file:///c:/Users/HP/Desktop/KiranaStore/test-data/phrases.json)
@@ -21,9 +21,9 @@ However, recording credit at the counter is broken:
 
 ---
 
-## 💡 The Solution: Voice Khata
+## 💡 The Solution: Udhaar Sathi
 
-Voice Khata is an offline-first, hands-free Progressive Web App that turns any low-end smartphone into a voice-powered accounting terminal:
+Udhaar Sathi is an offline-first, hands-free Progressive Web App that turns any low-end smartphone into a voice-powered accounting terminal:
 1. **One Spoken Sentence $\to$ Preview $\to$ Save in $\le$ 2 Taps**: Speak naturally in Hindi, Hinglish, English, Kannada, Tamil, or Telugu.
 2. **Rule-Based Indic Language Parser**: 100% client-side, pure TypeScript engine that resolves irregular colloquial amounts (*"dedh sau"* = 150, *"dhai sau"* = 250, *"sawa do hazaar"* = 2250) and native numerals (`०-९`, `೦-೯`, `௦-௯`, `౦-౯`).
 3. **Compound Math & Spoken Corrections**: Automatically parses multi-part sentences (*"Ramesh ka 340 udhaar, kal 200 diya tha"*) and listens for natural self-corrections (*"nahi, 430"*).
@@ -34,7 +34,7 @@ Voice Khata is an offline-first, hands-free Progressive Web App that turns any l
 
 ## 📋 Features Mapped to PRD Requirements (F1 – F13)
 
-| PRD ID | Requirement & Title | Implementation Details in Voice Khata |
+| PRD ID | Requirement & Title | Implementation Details in Udhaar Sathi |
 | :---: | :--- | :--- |
 | **F1** | **Hands-Free Hero Voice Button** | Persistent 96px diameter thumb-reachable hero microphone button with pulsing soundwave ring. Supports Web Speech API with audio noise suppression constraints (`echoCancellation`, `noiseSuppression`, `autoGainControl`). |
 | **F2** | **Indic Spoken Number & Word Parser** | Pure TypeScript offline parser ([services/numberParser.ts](file:///c:/Users/HP/Desktop/KiranaStore/src/services/numberParser.ts)) with 0–100 irregular lookup tables, colloquial fractions (*dedh, dhai, aradh*), native digits (`०-९`, `೦-೯`, `௦-௯`, `౦-౯`), and confidence scoring (<0.7 alerts user). |
@@ -142,17 +142,17 @@ flowchart TD
 1. **Browser Web Speech API Online Dependency**:
    - On Google Chrome for Android, the built-in `webkitSpeechRecognition` engine typically connects to Google's cloud speech recognition service unless the user has downloaded offline Indic speech recognition language packs in Android Settings (*Settings $\to$ System $\to$ Languages $\to$ Offline Speech Recognition*).
    - If an Android phone enters Airplane Mode without offline language packs installed, browser speech recognition will throw a `network` error.
-   - **How Voice Khata Handles This**: The app detects the `network` speech error, automatically alerts the user with an *"Offline Safe (Local)"* banner, and immediately surfaces the **"Type Instead"** touch keypad fallback so no customer transaction is delayed.
+   - **How Udhaar Sathi Handles This**: The app detects the `network` speech error, automatically alerts the user with an *"Offline Safe (Local)"* banner, and immediately surfaces the **"Type Instead"** touch keypad fallback so no customer transaction is delayed.
 
 2. **Acoustic Noise in High-Decibel Bazaar Environments**:
    - In shops with extreme background ambient noise (>85 dB from vehicle horns, blenders, or loudspeakers), low-end phone microphones can drop syllables or mishear consonants.
-   - **How Voice Khata Handles This**:
+   - **How Udhaar Sathi Handles This**:
      - Pre-configures `getUserMedia` with `noiseSuppression`, `echoCancellation`, and `autoGainControl`.
      - Assigns confidence scores to parsed entities; if confidence falls below 0.7, the confirmation sheet flags the field with a yellow *"Check this"* warning.
      - Offers one-tap increment/decrement buttons (`+₹10`, `+₹50`, `+₹100`, `+₹500`) for instant touch adjustment.
 
 3. **Regional Dialect & Code-Mixed Variations**:
-   - While Voice Khata achieves 100% accuracy on our 50-phrase Indic test suite across Hindi, Kannada, Tamil, Telugu, and English, hyper-local village slang or heavily accented colloquial phrasing may require manual confirmation via the bottom sheet.
+   - While Udhaar Sathi achieves 100% accuracy on our 50-phrase Indic test suite across Hindi, Kannada, Tamil, Telugu, and English, hyper-local village slang or heavily accented colloquial phrasing may require manual confirmation via the bottom sheet.
 
 ---
 

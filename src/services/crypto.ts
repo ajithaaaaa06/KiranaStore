@@ -1,5 +1,5 @@
 /**
- * Voice Khata Web Crypto Service
+ * Udhaar Sathi Web Crypto Service
  * 
  * Hardware-backed/standard Web Crypto API:
  * 1. AES-GCM 256 for all record encryption.

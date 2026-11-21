@@ -1,15 +1,15 @@
-# Voice Khata (आवाज़ खाता) — Offline Phone Test Checklist
+# Udhaar Sathi (उधार साथी) — Offline Phone Test Checklist
 
-> **Purpose:** This document provides a step-by-step verification protocol to test Voice Khata on a physical mobile device (Android Chrome or iOS Safari) in full **Airplane Mode (100% offline)**.
+> **Purpose:** This document provides a step-by-step verification protocol to test Udhaar Sathi on a physical mobile device (Android Chrome or iOS Safari) in full **Airplane Mode (100% offline)**.
 > 
-> **Zero Network Guarantee:** Voice Khata requires no cloud server. All parsing, Indic number parsing, customer phonetic matching, AES-256 Web Crypto, and IndexedDB storage run entirely on the mobile device.
+> **Zero Network Guarantee:** Udhaar Sathi requires no cloud server. All parsing, Indic number parsing, customer phonetic matching, AES-256 Web Crypto, and IndexedDB storage run entirely on the mobile device.
 
 ---
 
 ## 📱 Pre-requisites
 
 - An Android smartphone (with Google Chrome v100+) or iPhone (with Safari iOS 16.4+).
-- The Voice Khata app deployed to a local network (`http://<your-pc-ip>:5173`) or production URL (`https://...`).
+- The Udhaar Sathi app deployed to a local network (`http://<your-pc-ip>:5173`) or production URL (`https://...`).
 
 ---
 
@@ -26,7 +26,7 @@
 ### Step 2: Install App (PWA Add to Home Screen)
 - [ ] **2.1** Notice the **"Install App / App Install Karein"** banner at the top of the screen.
 - [ ] **2.2** Tap **"Install"** (or Chrome menu `⋮` $\to$ **"Add to Home screen"** / **"Install app"**).
-- [ ] **2.3** Confirm the prompt. Verify that the **Voice Khata** icon (green ledger icon with rupee badge) appears on your phone's home screen.
+- [ ] **2.3** Confirm the prompt. Verify that the **Udhaar Sathi** icon (green ledger icon with rupee badge) appears on your phone's home screen.
 
 ---
 
@@ -39,8 +39,8 @@
 ---
 
 ### Step 4: Cold Boot in Airplane Mode
-- [ ] **4.1** Force close Chrome and swipe away Voice Khata from your recent apps list.
-- [ ] **4.2** Tap the **Voice Khata icon** directly on your phone's Home Screen.
+- [ ] **4.1** Force close Chrome and swipe away Udhaar Sathi from your recent apps list.
+- [ ] **4.2** Tap the **Udhaar Sathi icon** directly on your phone's Home Screen.
 - [ ] **4.3** **Pass Criteria:** The app shell boots instantly into standalone mode without any browser URL bar, dinosaur screen, or network connection error.
 
 ---
@@ -94,7 +94,7 @@
 ### Step 9: Reopen App & Verify Data Persistence
 - [ ] **9.1** Keep the phone in **Airplane Mode**.
 - [ ] **9.2** Close the app, restart the phone or clear recent tasks.
-- [ ] **9.3** Re-open Voice Khata from Home Screen.
+- [ ] **9.3** Re-open Udhaar Sathi from Home Screen.
 - [ ] **9.4** **Pass Criteria:** All saved customers, entries, today's summary totals, and 7-day SVG chart data remain completely intact.
 
 ---
@@ -123,4 +123,4 @@
 
 ---
 
-> **Zero Cloud Telemetry Note:** Voice Khata has no tracking pixels, external analytics, or remote sync queues. All customer transactions belong exclusively to the Kirana shopkeeper's phone.
+> **Zero Cloud Telemetry Note:** Udhaar Sathi has no tracking pixels, external analytics, or remote sync queues. All customer transactions belong exclusively to the Kirana shopkeeper's phone.

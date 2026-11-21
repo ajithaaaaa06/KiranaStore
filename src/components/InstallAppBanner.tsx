@@ -19,7 +19,7 @@ export const InstallAppBanner: React.FC = () => {
   return (
     <div
       role="banner"
-      aria-label="Install Voice Khata on your home screen"
+      aria-label="Install Udhaar Sathi on your home screen"
       className="bg-gradient-to-r from-teal-700 via-teal-800 to-teal-900 text-white px-3.5 py-2.5 shadow-md border-b border-teal-600/40 sticky top-0 z-40 transition-all animate-in slide-in-from-top duration-300"
     >
       <div className="max-w-md mx-auto flex items-center justify-between gap-3">
@@ -44,7 +44,7 @@ export const InstallAppBanner: React.FC = () => {
           <button
             onClick={triggerInstall}
             className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-black transition-transform active:scale-95 shadow-sm min-h-[44px] flex items-center gap-1.5"
-            aria-label="Install Voice Khata app"
+            aria-label="Install Udhaar Sathi app"
           >
             <Download className="w-3.5 h-3.5" />
             <span>{t('install')}</span>

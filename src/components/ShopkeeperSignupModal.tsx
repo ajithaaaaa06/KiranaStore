@@ -411,7 +411,7 @@ export const ShopkeeperSignupModal: React.FC<ShopkeeperSignupModalProps> = ({ is
             <div>
               <div className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
                 {step === 0
-                  ? 'Voice Khata Setup'
+                  ? 'Udhaar Sathi Setup'
                   : step === 6
                   ? t('reviewTitle')
                   : t('stepOf', { current: step, total: 5 })}

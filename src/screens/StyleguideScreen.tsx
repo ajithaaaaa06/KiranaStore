@@ -138,7 +138,7 @@ export const StyleguideScreen: React.FC = () => {
         <header className="mb-6">
           <Badge variant="primary" size="sm">Design System</Badge>
           <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white mt-1">
-            Voice Khata Components
+            Udhaar Sathi Components
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
             Verified for 360px viewport width & minimum 56px touch targets.

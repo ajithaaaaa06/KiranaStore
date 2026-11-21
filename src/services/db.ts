@@ -1,5 +1,5 @@
 /**
- * Voice Khata IndexedDB Layer (via 'idb' library)
+ * Udhaar Sathi IndexedDB Layer (via 'idb' library)
  * 
  * Stores:
  * - 'customers': keyPath 'id' (contains encryptedPayload, iv, id, createdAt, lastTransactionDate)
@@ -18,7 +18,8 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { TransactionType, EntrySource, PaymentRequestStatus } from './types';
 
-export const DB_NAME = 'VoiceKhataDB';
+export const DB_NAME = 'UdhaarSathiDB';
+export const LEGACY_DB_NAME = 'VoiceKhataDB';
 export const DB_VERSION = 2;
 
 export interface EncryptedCustomerRecord {
@@ -67,7 +68,7 @@ export interface MetaRecord {
   value: any;
 }
 
-export interface VoiceKhataDBSchema extends DBSchema {
+export interface UdhaarSathiDBSchema extends DBSchema {
   customers: {
     key: string;
     value: EncryptedCustomerRecord;
@@ -101,6 +102,8 @@ export interface VoiceKhataDBSchema extends DBSchema {
     };
   };
 }
+
+export type VoiceKhataDBSchema = UdhaarSathiDBSchema;
 
 // In-Memory Mock Store for Node.js / Headless environments without window.indexedDB
 class InMemoryDBMock {
@@ -180,26 +183,124 @@ class InMemoryDBMock {
   public close() {}
 }
 
-let dbInstance: IDBPDatabase<VoiceKhataDBSchema> | InMemoryDBMock | null = null;
+let dbInstance: IDBPDatabase<UdhaarSathiDBSchema> | InMemoryDBMock | null = null;
 
 /**
- * Opens or retrieves the singleton VoiceKhataDB instance
+ * Migrates existing data from legacy localStorage keys to new Udhaar Sathi keys
  */
-export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema>> {
-  if (dbInstance) {
-    return dbInstance as unknown as IDBPDatabase<VoiceKhataDBSchema>;
+export function migrateLocalStorage(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const migrations: [string, string][] = [
+      ['voice_khata_settings', 'udhaar_sathi_settings'],
+      ['voice_khata_lang', 'udhaar_sathi_lang'],
+      ['voice_khata_speech_lang', 'udhaar_sathi_speech_lang'],
+      ['voice_khata_speech_speed', 'udhaar_sathi_speech_speed'],
+      ['voice_khata_speech_muted', 'udhaar_sathi_speech_muted'],
+      ['voice_khata_theme', 'udhaar_sathi_theme'],
+      ['vk_shop_name', 'us_shop_name'],
+      ['vk_demo_mode', 'us_demo_mode'],
+      ['vk_signup_completed', 'us_signup_completed'],
+      ['vk_onboarding_completed', 'us_onboarding_completed'],
+      ['vk_skipped_pin_banner', 'us_skipped_pin_banner'],
+      ['vk_sound_enabled', 'us_sound_enabled'],
+      ['vk_speech_rate', 'us_speech_rate'],
+      ['vk_sound_muted', 'us_sound_muted'],
+      ['vk_has_custom_speech_lang', 'us_has_custom_speech_lang'],
+      ['vk_pwa_install_dismissed', 'us_pwa_install_dismissed'],
+    ];
+
+    for (const [oldKey, newKey] of migrations) {
+      const val = localStorage.getItem(oldKey);
+      if (val !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, val);
+      }
+    }
+  } catch {}
+}
+
+/**
+ * Migrates existing data from legacy VoiceKhataDB to new UdhaarSathiDB so no data is lost
+ */
+export async function migrateFromLegacyDB(newDB: IDBPDatabase<UdhaarSathiDBSchema>): Promise<void> {
+  if (typeof indexedDB === 'undefined') return;
+
+  try {
+    const newCustomersCount = await newDB.count('customers').catch(() => 0);
+    const newEntriesCount = await newDB.count('entries').catch(() => 0);
+    if (newCustomersCount > 0 || newEntriesCount > 0) {
+      return;
+    }
+
+    const oldDB = await openDB<UdhaarSathiDBSchema>(LEGACY_DB_NAME, DB_VERSION).catch(() => null);
+    if (!oldDB) return;
+
+    const oldCustomerCount = await oldDB.count('customers').catch(() => 0);
+    const oldEntriesCount = await oldDB.count('entries').catch(() => 0);
+
+    if (oldCustomerCount === 0 && oldEntriesCount === 0) {
+      oldDB.close();
+      return;
+    }
+
+    // Copy customers
+    const customers = await oldDB.getAll('customers');
+    const tx = newDB.transaction(['customers', 'entries', 'meta', 'settings', 'profile'], 'readwrite');
+    for (const c of customers) {
+      await tx.objectStore('customers').put(c);
+    }
+
+    // Copy entries
+    const entries = await oldDB.getAll('entries');
+    for (const e of entries) {
+      await tx.objectStore('entries').put(e);
+    }
+
+    // Copy meta
+    const metaList = await oldDB.getAll('meta').catch(() => []);
+    for (const m of metaList) {
+      await tx.objectStore('meta').put(m);
+    }
+
+    // Copy settings
+    const settingsList = await oldDB.getAll('settings').catch(() => []);
+    for (const s of settingsList) {
+      await tx.objectStore('settings').put(s);
+    }
+
+    // Copy profile
+    const profileList = await oldDB.getAll('profile').catch(() => []);
+    for (const p of profileList) {
+      await tx.objectStore('profile').put(p);
+    }
+
+    await tx.done;
+    oldDB.close();
+  } catch (e) {
+    console.warn('[Udhaar Sathi] Legacy DB migration notice:', e);
   }
+}
+
+/**
+ * Opens or retrieves the singleton UdhaarSathiDB instance
+ */
+export async function getDB(): Promise<IDBPDatabase<UdhaarSathiDBSchema>> {
+  if (dbInstance) {
+    return dbInstance as unknown as IDBPDatabase<UdhaarSathiDBSchema>;
+  }
+
+  migrateLocalStorage();
 
   // Check if browser IndexedDB is available
   const isIndexedDBAvailable = typeof indexedDB !== 'undefined' && typeof window !== 'undefined';
 
   if (!isIndexedDBAvailable) {
     dbInstance = new InMemoryDBMock();
-    return dbInstance as unknown as IDBPDatabase<VoiceKhataDBSchema>;
+    return dbInstance as unknown as IDBPDatabase<UdhaarSathiDBSchema>;
   }
 
   try {
-    dbInstance = await openDB<VoiceKhataDBSchema>(DB_NAME, DB_VERSION, {
+    dbInstance = await openDB<UdhaarSathiDBSchema>(DB_NAME, DB_VERSION, {
       upgrade(db, oldVersion, newVersion, transaction) {
         // Store 1: customers
         if (!db.objectStoreNames.contains('customers')) {
@@ -237,7 +338,7 @@ export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema>> {
         }
       },
       blocked() {
-        console.warn('VoiceKhataDB database upgrade blocked: please close other tabs.');
+        console.warn('UdhaarSathiDB database upgrade blocked: please close other tabs.');
       },
       blocking() {
         if (dbInstance && 'close' in dbInstance) {
@@ -247,11 +348,13 @@ export async function getDB(): Promise<IDBPDatabase<VoiceKhataDBSchema>> {
       },
     });
 
+    await migrateFromLegacyDB(dbInstance);
+
     return dbInstance;
   } catch (err) {
     console.warn('Failed to open browser IndexedDB, falling back to in-memory store:', err);
     dbInstance = new InMemoryDBMock();
-    return dbInstance as unknown as IDBPDatabase<VoiceKhataDBSchema>;
+    return dbInstance as unknown as IDBPDatabase<UdhaarSathiDBSchema>;
   }
 }
 

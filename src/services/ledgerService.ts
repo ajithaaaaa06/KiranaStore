@@ -1020,7 +1020,7 @@ export class RealLedgerService implements ILedgerService {
     const entries = await this.getEntries();
     const rows: string[] = [];
 
-    rows.push('# VOICE KHATA TRANSACTIONS');
+    rows.push('# UDHAAR SATHI TRANSACTIONS');
     rows.push('Transaction ID,Date,Customer ID,Customer Name,Type,Amount (INR),Note,Created At');
 
     for (const e of entries) {
@@ -1571,7 +1571,7 @@ export class InMemoryLedgerService implements ILedgerService {
   public async exportCSV(): Promise<string> {
     await this.init();
     const rows: string[] = [];
-    rows.push('# VOICE KHATA TRANSACTIONS');
+    rows.push('# UDHAAR SATHI TRANSACTIONS');
     rows.push('Transaction ID,Date,Customer ID,Customer Name,Type,Amount (INR),Note,Created At');
     for (const e of this.entries) {
       const cust = this.customers.find((c) => c.id === e.customerId);

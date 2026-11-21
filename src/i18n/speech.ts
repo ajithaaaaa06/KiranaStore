@@ -1,5 +1,5 @@
 /**
- * Spoken Voice Templates for Voice Khata (5 Languages + Hinglish)
+ * Spoken Voice Templates for Udhaar Sathi (5 Languages + Hinglish)
  * Native phrases used by speechSynthesis and Soundbox announcements.
  * Languages: Hindi (hi), Hinglish (hinglish), English (en), Kannada (kn), Tamil (ta), Telugu (te)
  */

@@ -74,7 +74,7 @@ export const PaymentRequestSheet: React.FC<PaymentRequestSheetProps> = ({
       amount: isCounterMode ? undefined : amount > 0 ? amount : undefined,
       note: isCounterMode
         ? `Counter Payment - ${profile.shopName || 'Shop'}`
-        : `Voice Khata - ${customer?.name || 'Customer'}`,
+        : `Udhaar Sathi - ${customer?.name || 'Customer'}`,
       ref: paymentRequest?.ref,
     });
   }, [profile, isCounterMode, amount, customer, paymentRequest]);

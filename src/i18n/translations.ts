@@ -1,5 +1,5 @@
 /**
- * Comprehensive Multi-Language Localization System for Voice Khata
+ * Comprehensive Multi-Language Localization System for Udhaar Sathi
  * Supported languages: Hindi, Hinglish, English, Kannada, Tamil, Telugu
  * Built with lightweight zero-dependency JSON dictionaries.
  */

@@ -1,5 +1,5 @@
 /**
- * UPI Payment and QR Code Utilities for Voice Khata (F17)
+ * UPI Payment and QR Code Utilities for Udhaar Sathi (F17)
  * 
  * Offline-first, on-device UPI deep link generation, QR codes,
  * and multi-language WhatsApp message formatting.
@@ -115,7 +115,7 @@ export function buildPaymentRequestWhatsAppMessage(options: PaymentRequestMessag
       break;
   }
 
-  return (body + paymentText + '\n\n- Voice Khata').trim();
+  return (body + paymentText + '\n\n- Udhaar Sathi').trim();
 }
 
 /**

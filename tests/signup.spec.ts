@@ -9,6 +9,9 @@ async function setupSignupMocks(page: any) {
     localStorage.removeItem('vk_demo_mode');
     localStorage.setItem('vk_ui_language', 'en');
     try {
+      indexedDB.deleteDatabase('UdhaarSathiDB');
+      indexedDB.deleteDatabase('VoiceKhataDB');
+      indexedDB.deleteDatabase('udhaar_sathi_db');
       indexedDB.deleteDatabase('voice_khata_db');
     } catch {}
 
@@ -77,7 +80,7 @@ test.describe('F14: Shopkeeper Sign-Up & Shop Profile E2E', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Step 0: Welcome screen appears
-    await expect(page.getByText('Voice Khata Setup')).toBeVisible({ timeout: 6000 });
+    await expect(page.getByText('Udhaar Sathi Setup')).toBeVisible({ timeout: 6000 });
     await expect(page.getByText(/data stays on this phone|isi phone par rehta hai|No cloud login/i)).toBeVisible();
 
     // Click "Get Started"
@@ -119,8 +122,8 @@ test.describe('F14: Shopkeeper Sign-Up & Shop Profile E2E', () => {
     await expect(page.getByText('+91 9812345678')).toBeVisible();
     await expect(page.getByText('guptastore@icici')).toBeVisible();
 
-    // Tap "Start Voice Khata"
-    const startButton = page.getByRole('button', { name: /start voice khata|shuru karein/i });
+    // Tap "Start Udhaar Sathi"
+    const startButton = page.getByRole('button', { name: /start udhaar sathi|shuru karein/i });
     await expect(startButton).toBeVisible();
     await startButton.click();
 
@@ -141,7 +144,7 @@ test.describe('F14: Shopkeeper Sign-Up & Shop Profile E2E', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Step 0: Welcome screen
-    await expect(page.getByText('Voice Khata Setup')).toBeVisible({ timeout: 6000 });
+    await expect(page.getByText('Udhaar Sathi Setup')).toBeVisible({ timeout: 6000 });
     await page.getByRole('button', { name: /get started|shuru karein/i }).click();
 
     // Step 1: Speak Shop Name via Mic
@@ -198,7 +201,7 @@ test.describe('F14: Shopkeeper Sign-Up & Shop Profile E2E', () => {
     await expect(page.getByText(/none \(skipped\)/i)).toBeVisible();
 
     // Start
-    const startButton = page.getByRole('button', { name: /start voice khata|shuru karein/i });
+    const startButton = page.getByRole('button', { name: /start udhaar sathi|shuru karein/i });
     await startButton.click();
 
     // Verify top bar shows "Sri Krishna Provisions"

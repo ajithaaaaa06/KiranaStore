@@ -274,7 +274,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `voice-khata-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `udhaar-sathi-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
       showToast('Khata JSON backup download ho gaya!', { type: 'success' });
@@ -296,7 +296,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `voice-khata-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `udhaar-sathi-${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       showToast('Khata CSV (Excel) download ho gaya!', { type: 'success' });
@@ -1159,7 +1159,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
       {/* App Version Info */}
       <div className="text-center pt-2 pb-6">
         <p className="text-xs font-black text-slate-500">
-          {language === 'hi' ? 'Voice Khata (आवाज़ खाता) v1.0.0' : 'Voice Khata v1.0.0'}
+          {language === 'hi' ? 'Udhaar Sathi (उधार साथी) v1.0.0' : 'Udhaar Sathi v1.0.0'}
         </p>
         <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
           Build Bengaluru 2.0 Hackathon • Made with ❤️ for Indian Kirana Stores

@@ -1,4 +1,4 @@
-# Voice Khata (आवाज़ खाता) — 3-Minute Live Demo Script 🎙️⏱️
+# Udhaar Sathi (उधार साथी) — 3-Minute Live Demo Script 🎙️⏱️
 > **Target Audience**: Hackathon Judges, Angel Investors, Product Reviewers  
 > **Duration**: Exactly 3 Minutes (180 seconds)  
 > **Pre-Demo URL**: `https://<your-app>.vercel.app?demo=1` (or `http://localhost:5173?demo=1`)
@@ -29,7 +29,7 @@
 
 ### Act 1: The Core 2-Tap Loop (0:00 – 0:35)
 **Narrative Hook**:
-> *"Indian kirana store owners have dirty, flour-covered hands, loud shops, and zero patience for typing. Watch how fast they record credit in Voice Khata."*
+> *"Indian kirana store owners have dirty, flour-covered hands, loud shops, and zero patience for typing. Watch how fast they record credit in Udhaar Sathi."*
 
 * **Physical Action**: Tap the giant **96px Hero Mic Button**.
 * **Spoken Phrase**: 
@@ -66,7 +66,7 @@
 
 ### Act 3: In-Flight Voice Self-Correction (1:10 – 1:40)
 **Narrative Hook**:
-> *"The shopkeeper makes a mistake. In any other app, you cancel, delete, and re-type. In Voice Khata, you just correct yourself out loud."*
+> *"The shopkeeper makes a mistake. In any other app, you cancel, delete, and re-type. In Udhaar Sathi, you just correct yourself out loud."*
 
 * **Physical Action**: With the bottom sheet still open from Act 2, DO NOT touch the screen.
 * **Spoken Phrase**:
@@ -101,7 +101,7 @@
 
 ### Act 5: Polite WhatsApp Reminder & Thermal Receipt (2:10 – 2:35)
 **Narrative Hook**:
-> *"Asking for money back is culturally awkward. Voice Khata generates respectful, localized reminders that preserve the relationship."*
+> *"Asking for money back is culturally awkward. Udhaar Sathi generates respectful, localized reminders that preserve the relationship."*
 
 * **Physical Action**: On the Balance Query card, tap the green **"WhatsApp Hisaab"** button.
 * **What Happens On Screen**:
@@ -127,7 +127,7 @@
   2. The transaction is already saved in **AES-256 encrypted on-device IndexedDB**.
   3. Zero network errors. Zero data loss.
 * **Closing Line**:
-  > *"Zero cloud dependency. 100% on-device privacy. Built for 13 million Indian kiranas. That is Voice Khata."*
+  > *"Zero cloud dependency. 100% on-device privacy. Built for 13 million Indian kiranas. That is Udhaar Sathi."*
 
 ---
 

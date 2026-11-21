@@ -31,12 +31,15 @@ export interface AppSettings {
   numeralScript: NumeralScript;
 }
 
-export const SETTINGS_STORAGE_KEY = 'voice_khata_settings';
-export const LEGACY_SHOP_NAME_KEY = 'vk_shop_name';
-export const LEGACY_LANG_KEY = 'voice_khata_lang';
-export const LEGACY_SPEED_KEY = 'voice_khata_speech_speed';
-export const LEGACY_MUTED_KEY = 'voice_khata_speech_muted';
-export const LEGACY_THEME_KEY = 'voice_khata_theme';
+export const SETTINGS_STORAGE_KEY = 'udhaar_sathi_settings';
+export const LEGACY_SETTINGS_STORAGE_KEY = 'voice_khata_settings';
+export const LEGACY_SHOP_NAME_KEY = 'us_shop_name';
+export const LEGACY_VK_SHOP_NAME_KEY = 'vk_shop_name';
+export const LEGACY_LANG_KEY = 'udhaar_sathi_lang';
+export const LEGACY_VK_LANG_KEY = 'voice_khata_lang';
+export const LEGACY_SPEED_KEY = 'udhaar_sathi_speech_speed';
+export const LEGACY_MUTED_KEY = 'udhaar_sathi_speech_muted';
+export const LEGACY_THEME_KEY = 'udhaar_sathi_theme';
 
 const DEFAULT_SETTINGS: AppSettings = {
   shopName: 'Apna Kirana Khata',
@@ -65,7 +68,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [settings, setSettingsState] = useState<AppSettings>(() => {
     try {
-      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY) || localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
       if (stored) {
         return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
       }
@@ -74,8 +77,8 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     // Check legacy individual keys for backwards compatibility
-    const legacyShop = localStorage.getItem(LEGACY_SHOP_NAME_KEY);
-    const legacyLang = localStorage.getItem(LEGACY_LANG_KEY) as LanguageCode | null;
+    const legacyShop = localStorage.getItem(LEGACY_SHOP_NAME_KEY) || localStorage.getItem(LEGACY_VK_SHOP_NAME_KEY);
+    const legacyLang = (localStorage.getItem(LEGACY_LANG_KEY) || localStorage.getItem(LEGACY_VK_LANG_KEY)) as LanguageCode | null;
     const legacySpeed = localStorage.getItem(LEGACY_SPEED_KEY);
     const legacyMuted = localStorage.getItem(LEGACY_MUTED_KEY);
     const legacyTheme = localStorage.getItem(LEGACY_THEME_KEY) as ThemeMode | null;

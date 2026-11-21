@@ -51,7 +51,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      const savedLang = (localStorage.getItem('voice_khata_lang') as LanguageCode) || 'en';
+      const savedLang = ((localStorage.getItem('udhaar_sathi_lang') || localStorage.getItem('voice_khata_lang')) as LanguageCode) || 'en';
       const dict = dictionaries[savedLang] || dictionaries.en;
 
       return (

@@ -1,5 +1,5 @@
 /**
- * Voice Khata Application Shell
+ * Udhaar Sathi Application Shell
  * 
  * Persistent Layout:
  * - Top Bar: Editable Shop Name, Current Speech Language Chip, OnlineBadge, Settings shortcut
@@ -143,7 +143,7 @@ const AppLayout: React.FC = () => {
   if (isCheckingLock) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-teal-400 font-bold text-sm">
-        Voice Khata Securing Ledger...
+        Udhaar Sathi Securing Ledger...
       </div>
     );
   }

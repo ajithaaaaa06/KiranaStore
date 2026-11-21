@@ -1,7 +1,7 @@
-# Voice Khata – Comprehensive Test & Accuracy Report
+# Udhaar Sathi – Comprehensive Test & Accuracy Report
 
 **Date:** 2026-11-21  
-**Project:** Voice Khata (आवाज़ खाता) – Indic Hands-Free Kirana Ledger PWA  
+**Project:** Udhaar Sathi (उधार साथी) – Indic Hands-Free Kirana Ledger PWA  
 **Operating Environment:** Windows x64, Node.js v26.13.1, Chromium Mobile Viewport (360×640)
 
 ---

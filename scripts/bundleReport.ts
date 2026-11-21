@@ -1,5 +1,5 @@
 /**
- * Bundle Size and Compression Audit for Voice Khata
+ * Bundle Size and Compression Audit for Udhaar Sathi
  * 
  * Analyzes production dist/ output:
  * 1. Pre-compresses assets to Gzip (.gz) and Brotli (.br)
@@ -87,7 +87,7 @@ function runBundleReport() {
   });
 
   console.log('='.repeat(86));
-  console.log('VOICE KHATA PRODUCTION BUNDLE & CODE-SPLITTING AUDIT');
+  console.log('UDHAAR SATHI PRODUCTION BUNDLE & CODE-SPLITTING AUDIT');
   console.log('='.repeat(86));
   console.log(
     'Asset Chunk'.padEnd(38) +

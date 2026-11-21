@@ -1,5 +1,5 @@
 /**
- * Core Data Models and Types for Voice Khata
+ * Core Data Models and Types for Udhaar Sathi
  * Designed for offline-first kirana shopkeeper operations.
  */
 

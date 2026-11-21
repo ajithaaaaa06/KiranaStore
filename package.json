@@ -1,5 +1,6 @@
 {
-  "name": "voice-khata",
+  "name": "udhaar-sathi",
+  "description": "Udhaar Sathi - Hands-free voice ledger PWA for Indian kirana shopkeepers",
   "private": true,
   "version": "1.0.0",
   "type": "module",

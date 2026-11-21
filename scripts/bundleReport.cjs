@@ -77,7 +77,7 @@ function runBundleReport() {
     return b.gzipBytes - a.gzipBytes;
   });
   console.log("=".repeat(86));
-  console.log("VOICE KHATA PRODUCTION BUNDLE & CODE-SPLITTING AUDIT");
+  console.log("UDHAAR SATHI PRODUCTION BUNDLE & CODE-SPLITTING AUDIT");
   console.log("=".repeat(86));
   console.log(
     "Asset Chunk".padEnd(38) + "Type".padEnd(12) + "Raw Size".padStart(11) + "Gzip".padStart(12) + "Brotli".padStart(12)

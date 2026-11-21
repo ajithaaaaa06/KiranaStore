@@ -1,5 +1,5 @@
 /**
- * Accuracy Benchmark Runner for Voice Khata
+ * Accuracy Benchmark Runner for Udhaar Sathi
  * 
  * Runs all phrases in /test-data/phrases.json through parseTranscript(),
  * evaluates accuracy on customer, amount, and transaction type,
@@ -82,7 +82,7 @@ async function runAccuracy() {
   const testCases: PhraseTestCase[] = JSON.parse(raw);
 
   console.log('='.repeat(70));
-  console.log(`VOICE KHATA ACCURACY BENCHMARK (${testCases.length} NOISY/CODE-MIXED PHRASES)`);
+  console.log(`UDHAAR SATHI ACCURACY BENCHMARK (${testCases.length} NOISY/CODE-MIXED PHRASES)`);
   console.log('='.repeat(70));
 
   const results: TestResult[] = [];

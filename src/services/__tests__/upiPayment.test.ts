@@ -40,7 +40,7 @@ describe('UPI Payment & QR Utilities (F17)', () => {
         upiId: 'ramesh@oksbi',
         shopName: 'Raju & Sons Kirana',
         amount: 500,
-        note: 'Voice Khata Udhaar',
+        note: 'Udhaar Sathi Udhaar',
         ref: 'a1b2c3d4e5f60718',
       });
 
@@ -49,7 +49,7 @@ describe('UPI Payment & QR Utilities (F17)', () => {
       expect(link).toContain('pn=Raju%20%26%20Sons%20Kirana');
       expect(link).toContain('am=500.00');
       expect(link).toContain('cu=INR');
-      expect(link).toContain('tn=Voice%20Khata%20Udhaar');
+      expect(link).toContain('tn=Udhaar%20Sathi%20Udhaar');
       expect(link).toContain('tr=a1b2c3d4e5f60718');
     });
 

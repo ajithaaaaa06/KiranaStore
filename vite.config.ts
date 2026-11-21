@@ -18,8 +18,8 @@ export default defineConfig({
         'manifest.webmanifest',
       ],
       manifest: {
-        name: 'Voice Khata - आवाज़ खाता',
-        short_name: 'Voice Khata',
+        name: 'Udhaar Sathi - उधार साथी',
+        short_name: 'Udhaar Sathi',
         description: 'Hands-free voice ledger PWA for Indian kirana shopkeepers',
         theme_color: '#0f766e',
         background_color: '#042f2e',
@@ -53,13 +53,14 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true,
+        cacheId: 'udhaar-sathi',
         runtimeCaching: [
           // 1. Google Fonts stylesheets
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'google-fonts-cache',
+              cacheName: 'udhaar-sathi-google-fonts',
               expiration: {
                 maxEntries: 10,
                 maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
@@ -74,7 +75,7 @@ export default defineConfig({
             urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'gstatic-fonts-cache',
+              cacheName: 'udhaar-sathi-gstatic-fonts',
               expiration: {
                 maxEntries: 30,
                 maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year

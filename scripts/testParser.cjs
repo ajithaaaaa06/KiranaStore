@@ -964,6 +964,1264 @@ var init_demoDataset = __esm({
   }
 });
 
+// src/services/phoneParser.ts
+function extractDigitSequence(text) {
+  if (!text) return "";
+  let raw = text.trim();
+  for (const [nativeChar, latinDigit] of Object.entries(NATIVE_DIGIT_MAP2)) {
+    raw = raw.split(nativeChar).join(latinDigit);
+  }
+  raw = raw.replace(/[-.,/()]/g, " ");
+  raw = raw.replace(/\bplus\s+(?:nine\s+one|91)\b/gi, "+91 ");
+  raw = raw.replace(/प्लस\s+नौ\s+एक/gi, "+91 ");
+  raw = raw.replace(/ಪ್ಲಸ್\s+ಒಂಬತ್ತು\s+ಒಂದು/gi, "+91 ");
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  let result = "";
+  let pendingMultiplier = 1;
+  for (let i = 0; i < tokens.length; i++) {
+    const rawToken = tokens[i];
+    const token = rawToken.toLowerCase();
+    if (REPEAT_DOUBLE_WORDS.has(token)) {
+      pendingMultiplier = 2;
+      continue;
+    }
+    if (REPEAT_TRIPLE_WORDS.has(token)) {
+      pendingMultiplier = 3;
+      continue;
+    }
+    if (FILLER_WORDS.has(token)) {
+      continue;
+    }
+    if (/^\+?\d+$/.test(token)) {
+      const pureDigits = token.replace(/\D/g, "");
+      if (pureDigits) {
+        if (pendingMultiplier > 1 && pureDigits.length === 1) {
+          result += pureDigits.repeat(pendingMultiplier);
+        } else {
+          result += pureDigits;
+        }
+        pendingMultiplier = 1;
+      }
+      continue;
+    }
+    const digitValue = SPOKEN_DIGIT_MAP[token];
+    if (digitValue !== void 0) {
+      result += digitValue.repeat(pendingMultiplier);
+      pendingMultiplier = 1;
+      continue;
+    }
+    pendingMultiplier = 1;
+  }
+  return result;
+}
+function normalizePrefixes(digits) {
+  let cleaned = digits;
+  if (cleaned.length === 12 && cleaned.startsWith("91")) {
+    const without91 = cleaned.substring(2);
+    if (/^[6-9]/.test(without91)) {
+      cleaned = without91;
+    }
+  }
+  if (cleaned.length === 11 && cleaned.startsWith("0")) {
+    const withoutZero = cleaned.substring(1);
+    if (/^[6-9]/.test(withoutZero)) {
+      cleaned = withoutZero;
+    }
+  }
+  return cleaned;
+}
+function formatPhone(phone) {
+  const clean = (phone || "").replace(/\D/g, "");
+  if (clean.length === 10) {
+    return `${clean.slice(0, 5)} ${clean.slice(5)}`;
+  }
+  return clean;
+}
+function parsePhoneNumber(text) {
+  if (!text || !text.trim()) return null;
+  const rawDigits = extractDigitSequence(text);
+  if (!rawDigits) {
+    return {
+      digits: "",
+      formatted: "",
+      confidence: 0,
+      issues: ["No digits found in input"]
+    };
+  }
+  const normalized = normalizePrefixes(rawDigits);
+  const issues = [];
+  if (normalized.length !== 10) {
+    if (normalized.length === 9) {
+      issues.push("Phone number has 9 digits (1 digit missing). Please speak or enter 10 digits.");
+    } else if (normalized.length === 11) {
+      issues.push("Phone number has 11 digits (1 extra digit). Indian mobile numbers must be 10 digits.");
+    } else {
+      issues.push(`Expected 10 digits, found ${normalized.length} digits.`);
+    }
+  }
+  if (normalized.length > 0 && !/^[6-9]/.test(normalized)) {
+    issues.push(`Indian mobile numbers must start with 6, 7, 8, or 9 (starts with ${normalized[0]}).`);
+  }
+  const isValid = issues.length === 0;
+  const isDirectlyTyped = /^\d{10}$/.test(text.trim().replace(/[- ]/g, ""));
+  return {
+    digits: normalized,
+    formatted: formatPhone(normalized),
+    confidence: isValid ? isDirectlyTyped ? 1 : 0.95 : 0.3,
+    issues
+  };
+}
+var NATIVE_DIGIT_MAP2, SPOKEN_DIGIT_MAP, REPEAT_DOUBLE_WORDS, REPEAT_TRIPLE_WORDS, FILLER_WORDS;
+var init_phoneParser = __esm({
+  "src/services/phoneParser.ts"() {
+    "use strict";
+    NATIVE_DIGIT_MAP2 = {
+      // Devanagari (० - ९)
+      "\u0966": "0",
+      "\u0967": "1",
+      "\u0968": "2",
+      "\u0969": "3",
+      "\u096A": "4",
+      "\u096B": "5",
+      "\u096C": "6",
+      "\u096D": "7",
+      "\u096E": "8",
+      "\u096F": "9",
+      // Kannada (೦ - ೯)
+      "\u0CE6": "0",
+      "\u0CE7": "1",
+      "\u0CE8": "2",
+      "\u0CE9": "3",
+      "\u0CEA": "4",
+      "\u0CEB": "5",
+      "\u0CEC": "6",
+      "\u0CED": "7",
+      "\u0CEE": "8",
+      "\u0CEF": "9",
+      // Tamil (௦ - ௯)
+      "\u0BE6": "0",
+      "\u0BE7": "1",
+      "\u0BE8": "2",
+      "\u0BE9": "3",
+      "\u0BEA": "4",
+      "\u0BEB": "5",
+      "\u0BEC": "6",
+      "\u0BED": "7",
+      "\u0BEE": "8",
+      "\u0BEF": "9",
+      // Telugu (౦ - ౯)
+      "\u0C66": "0",
+      "\u0C67": "1",
+      "\u0C68": "2",
+      "\u0C69": "3",
+      "\u0C6A": "4",
+      "\u0C6B": "5",
+      "\u0C6C": "6",
+      "\u0C6D": "7",
+      "\u0C6E": "8",
+      "\u0C6F": "9"
+    };
+    SPOKEN_DIGIT_MAP = {
+      // 0 - Zero
+      "zero": "0",
+      "oh": "0",
+      "o": "0",
+      "zeros": "0",
+      "zeroes": "0",
+      "shunya": "0",
+      "soonya": "0",
+      "shunyaa": "0",
+      "\u0936\u0942\u0928\u094D\u092F": "0",
+      "sonne": "0",
+      "soone": "0",
+      "\u0CB8\u0CCA\u0CA8\u0CCD\u0CA8\u0CC6": "0",
+      // TODO_REVIEW: Check colloquial Kannada "soone" variant
+      "poojyam": "0",
+      "pujyam": "0",
+      "poojiyam": "0",
+      "\u0BAA\u0BC2\u0B9C\u0BCD\u0BAF\u0BAE\u0BCD": "0",
+      "\u0BAA\u0BC2\u0B9C\u0BCD\u0B9C\u0BBF\u0BAF\u0BAE\u0BCD": "0",
+      // TODO_REVIEW: Check colloquial Tamil "poojiyam"
+      "sunna": "0",
+      "soonna": "0",
+      "\u0C38\u0C41\u0C28\u0C4D\u0C28\u0C3E": "0",
+      // 1 - One
+      "one": "1",
+      "won": "1",
+      "ek": "1",
+      "aek": "1",
+      "ik": "1",
+      "\u090F\u0915": "1",
+      "ondu": "1",
+      "wondu": "1",
+      "\u0C92\u0C82\u0CA6\u0CC1": "1",
+      "ondru": "1",
+      "onnu": "1",
+      "\u0B92\u0BA9\u0BCD\u0BB1\u0BC1": "1",
+      "\u0B92\u0BA9\u0BCD\u0BA9\u0BC1": "1",
+      // TODO_REVIEW: Spoken Tamil "onnu" vs formal "ondru"
+      "okati": "1",
+      "vokati": "1",
+      "\u0C12\u0C15\u0C1F\u0C3F": "1",
+      // 2 - Two
+      "two": "2",
+      "to": "2",
+      "too": "2",
+      "do": "2",
+      "doo": "2",
+      "dow": "2",
+      "\u0926\u094B": "2",
+      "eradu": "2",
+      "yeradu": "2",
+      "\u0C8E\u0CB0\u0CA1\u0CC1": "2",
+      "irandu": "2",
+      "rendu": "2",
+      "\u0B87\u0BB0\u0BA3\u0BCD\u0B9F\u0BC1": "2",
+      "\u0BB0\u0BC6\u0BA3\u0BCD\u0B9F\u0BC1": "2",
+      "moodu_dummy": "3",
+      // placeholder
+      // Telugu rendu
+      "\u0C30\u0C46\u0C02\u0C21\u0C41": "2",
+      // 3 - Three
+      "three": "3",
+      "tree": "3",
+      "teen": "3",
+      "tin": "3",
+      "\u0924\u0940\u0928": "3",
+      "mooru": "3",
+      "muru": "3",
+      "\u0CAE\u0CC2\u0CB0\u0CC1": "3",
+      "moondru": "3",
+      "moonu": "3",
+      "\u0BAE\u0BC2\u0BA9\u0BCD\u0BB1\u0BC1": "3",
+      "\u0BAE\u0BC2\u0BA3\u0BC1": "3",
+      "moodu": "3",
+      "mudu": "3",
+      "\u0C2E\u0C42\u0C21\u0C41": "3",
+      // 4 - Four
+      "four": "4",
+      "for": "4",
+      "fore": "4",
+      "char": "4",
+      "chaar": "4",
+      "\u091A\u093E\u0930": "4",
+      "naalku": "4",
+      "nalku": "4",
+      "\u0CA8\u0CBE\u0CB2\u0CCD\u0C95\u0CC1": "4",
+      "naangu": "4",
+      "naalu": "4",
+      "\u0BA8\u0BBE\u0BA9\u0BCD\u0B95\u0BC1": "4",
+      "\u0BA8\u0BBE\u0BB2\u0BC1": "4",
+      "naalugu": "4",
+      "nalugu": "4",
+      "\u0C28\u0C3E\u0C32\u0C41\u0C17\u0C41": "4",
+      // 5 - Five
+      "five": "5",
+      "paanch": "5",
+      "panch": "5",
+      "\u092A\u093E\u0902\u091A": "5",
+      "\u092A\u093E\u0901\u091A": "5",
+      "aidu": "5",
+      "aydu": "5",
+      "\u0C90\u0CA6\u0CC1": "5",
+      "\u0C10\u0C26\u0C41": "5",
+      "aindhu": "5",
+      "anju": "5",
+      "anchu": "5",
+      "\u0B90\u0BA8\u0BCD\u0BA4\u0BC1": "5",
+      "\u0B85\u0B9E\u0BCD\u0B9A\u0BC1": "5",
+      // Telugu aidu covered by 'aidu' / 'aydu'
+      // 6 - Six
+      "six": "6",
+      "chhe": "6",
+      "chhah": "6",
+      "che": "6",
+      "cheh": "6",
+      "\u091B\u0939": "6",
+      "\u091B\u0903": "6",
+      "\u091B\u0947": "6",
+      "aaru": "6",
+      "aru": "6",
+      "\u0C86\u0CB0\u0CC1": "6",
+      "\u0B86\u0BB1\u0BC1": "6",
+      "\u0C06\u0C30\u0C41": "6",
+      // 7 - Seven
+      "seven": "7",
+      "saat": "7",
+      "sat": "7",
+      "\u0938\u093E\u0924": "7",
+      "eelu": "7",
+      "yelu": "7",
+      "\u0C8F\u0CB3\u0CC1": "7",
+      "eezhu": "7",
+      "yezhu": "7",
+      "\u0B8F\u0BB4\u0BC1": "7",
+      "eedu": "7",
+      "yedu": "7",
+      "\u0C0F\u0C21\u0C41": "7",
+      // 8 - Eight
+      "eight": "8",
+      "ate": "8",
+      "aath": "8",
+      "ath": "8",
+      "\u0906\u0920": "8",
+      "entu": "8",
+      "yentu": "8",
+      "\u0C8E\u0C82\u0C9F\u0CC1": "8",
+      "ettu": "8",
+      "\u0B8E\u0B9F\u0BCD\u0B9F\u0BC1": "8",
+      "enimidi": "8",
+      "yenimidi": "8",
+      "\u0C0E\u0C28\u0C3F\u0C2E\u0C3F\u0C26\u0C3F": "8",
+      // 9 - Nine
+      "nine": "9",
+      "nau": "9",
+      "no": "9",
+      "nav": "9",
+      "\u0928\u094C": "9",
+      "ombattu": "9",
+      "ombatu": "9",
+      "\u0C92\u0C82\u0CAC\u0CA4\u0CCD\u0CA4\u0CC1": "9",
+      "onbadhu": "9",
+      "onbathu": "9",
+      "ombadhu": "9",
+      "\u0B92\u0BA9\u0BCD\u0BAA\u0BA4\u0BC1": "9",
+      "tommidi": "9",
+      "\u0C24\u0C4A\u0C2E\u0C4D\u0C2E\u0C3F\u0C26\u0C3F": "9"
+    };
+    REPEAT_DOUBLE_WORDS = /* @__PURE__ */ new Set([
+      "double",
+      "dabal",
+      "dubble",
+      "dabbel",
+      "\u0921\u092C\u0932",
+      "\u0CA1\u0CAC\u0CB2\u0CCD",
+      "\u0B9F\u0BAA\u0BC1\u0BB3\u0BCD",
+      "\u0C21\u0C2C\u0C41\u0C32\u0C4D"
+    ]);
+    REPEAT_TRIPLE_WORDS = /* @__PURE__ */ new Set([
+      "triple",
+      "treepal",
+      "tripple",
+      "tripal",
+      "\u091F\u094D\u0930\u093F\u092A\u0932",
+      "\u0C9F\u0CCD\u0CB0\u0CBF\u0CAA\u0CB2\u0CCD",
+      "\u0B9F\u0BBF\u0BB0\u0BBF\u0BAA\u0BBF\u0BB3\u0BCD",
+      "\u0C1F\u0C4D\u0C30\u0C3F\u0C2A\u0C41\u0C32\u0C4D"
+    ]);
+    FILLER_WORDS = /* @__PURE__ */ new Set([
+      "number",
+      "no",
+      "ph",
+      "phone",
+      "mobile",
+      "ka",
+      "ki",
+      "ke",
+      "ko",
+      "hai",
+      "he",
+      "daalo",
+      "likho",
+      "add",
+      "karo",
+      "kariye",
+      "kijiye",
+      "umm",
+      "um",
+      "wo",
+      "arre",
+      "are",
+      "ha",
+      "haa",
+      "na",
+      "hisaab",
+      "grahak",
+      "customer",
+      "nambar",
+      "namber",
+      "\u0C28\u0C02\u0C2C\u0C30\u0C4D",
+      "\u0BA8\u0BAE\u0BCD\u0BAA\u0BB0\u0BCD",
+      "\u0CA8\u0C82\u0CAC\u0CB0\u0CCD",
+      "\u0928\u0902\u092C\u0930",
+      "\u092B\u094B\u0928",
+      "matlab",
+      "bolo",
+      "batao",
+      "bataiye"
+    ]);
+  }
+});
+
+// src/services/customerMatcher.ts
+var customerMatcher_exports = {};
+__export(customerMatcher_exports, {
+  ORDINAL_MAP: () => ORDINAL_MAP,
+  computeCustomerMatchScore: () => computeCustomerMatchScore,
+  findCustomers: () => findCustomers,
+  getIndianPhoneticKey: () => getIndianPhoneticKey,
+  isDuplicateEntry: () => isDuplicateEntry,
+  jaroSimilarity: () => jaroSimilarity,
+  jaroWinklerSimilarity: () => jaroWinklerSimilarity,
+  levenshteinDistance: () => levenshteinDistance,
+  levenshteinSimilarity: () => levenshteinSimilarity,
+  normalizeName: () => normalizeName,
+  resolveDisambiguationChoice: () => resolveDisambiguationChoice,
+  transliterateIndicToLatin: () => transliterateIndicToLatin
+});
+function getIndicScriptMap(code) {
+  if (code >= 2304 && code <= 2431) return DEVANAGARI_MAP;
+  if (code >= 3200 && code <= 3327) return KANNADA_MAP;
+  if (code >= 2944 && code <= 3071) return TAMIL_MAP;
+  if (code >= 3072 && code <= 3199) return TELUGU_MAP;
+  return null;
+}
+function transliterateIndicToLatin(text) {
+  if (!text) return "";
+  let working = text.replace(/[శशಶஶ]్రీ/g, "sri").replace(/[शశಶஶ]्रि/g, "sri");
+  let result = "";
+  for (let i = 0; i < working.length; i++) {
+    const code = working.charCodeAt(i);
+    const scriptMap = getIndicScriptMap(code);
+    if (!scriptMap) {
+      result += working.charAt(i);
+      continue;
+    }
+    if (scriptMap.vowels[code]) {
+      result += scriptMap.vowels[code];
+      continue;
+    }
+    if (code === scriptMap.anusvara || code === 2305) {
+      result += "n";
+      continue;
+    }
+    if (code === scriptMap.visarga) {
+      result += "h";
+      continue;
+    }
+    let cons = scriptMap.consonants[code];
+    if (cons) {
+      if (code === 2965 && result.length > 0) {
+        const lastChar = result.charAt(result.length - 1);
+        if (/[aeiour]/.test(lastChar)) {
+          cons = "g";
+        }
+      }
+      const nextCode = i + 1 < working.length ? working.charCodeAt(i + 1) : 0;
+      const isNextHalant = nextCode === scriptMap.halant;
+      const nextMatra = scriptMap.matras[nextCode];
+      if (isNextHalant) {
+        result += cons;
+        i++;
+      } else if (nextMatra) {
+        result += cons + nextMatra;
+        i++;
+      } else {
+        const isEndOfWord = i + 1 >= working.length || /\s|[.,!?]/.test(working.charAt(i + 1));
+        if (isEndOfWord) {
+          result += cons;
+        } else {
+          result += cons + "a";
+        }
+      }
+      continue;
+    }
+    if (scriptMap.matras[code]) {
+      result += scriptMap.matras[code];
+      continue;
+    }
+  }
+  return result;
+}
+function normalizeName(name) {
+  if (!name) return "";
+  let s = name.replace(/\([^)]*\)/g, " ");
+  s = transliterateIndicToLatin(s);
+  s = s.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  const tokens = s.split(/\s+/).filter(Boolean);
+  const filteredTokens = tokens.filter((tok) => !HONORIFICS.has(tok));
+  const base = filteredTokens.length > 0 ? filteredTokens.join(" ") : tokens.join(" ");
+  let collapsed = base.replace(/aa+/g, "a").replace(/ee+/g, "e").replace(/ii+/g, "i").replace(/oo+/g, "u").replace(/uu+/g, "u");
+  collapsed = collapsed.replace(/([b-df-hj-np-tv-z])\1+/g, "$1");
+  return collapsed.trim();
+}
+function getIndianPhoneticKey(name) {
+  const norm = normalizeName(name);
+  if (!norm) return "";
+  let word = norm.split(/\s+/)[0] || "";
+  if (!word) return "";
+  word = word.replace(/ph/g, "f").replace(/bh/g, "b").replace(/dh/g, "d").replace(/th/g, "t").replace(/kh/g, "k").replace(/gh/g, "g").replace(/ch/g, "s").replace(/sh/g, "s").replace(/w/g, "v").replace(/z/g, "s").replace(/c([eiy])/g, "s$1").replace(/c/g, "k").replace(/q/g, "k").replace(/x/g, "ks");
+  word = word.replace(/(?:a|h|an|ar)$/g, "");
+  if (word.length === 0) return "";
+  const firstChar = word.charAt(0).toUpperCase();
+  const charCode = (c) => {
+    switch (c) {
+      case "b":
+      case "f":
+      case "p":
+      case "v":
+        return "1";
+      case "c":
+      case "g":
+      case "j":
+      case "k":
+      case "q":
+      case "s":
+      case "x":
+      case "z":
+        return "2";
+      case "d":
+      case "t":
+        return "3";
+      case "l":
+        return "4";
+      case "m":
+      case "n":
+        return "5";
+      case "r":
+        return "6";
+      default:
+        return "0";
+    }
+  };
+  let code = firstChar;
+  let prevCode = charCode(word.charAt(0));
+  for (let i = 1; i < word.length; i++) {
+    const curCode = charCode(word.charAt(i));
+    if (curCode !== "0" && curCode !== prevCode) {
+      code += curCode;
+      prevCode = curCode;
+    }
+  }
+  return (code + "000").slice(0, 4);
+}
+function levenshteinDistance(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const row = Array.from({ length: a.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= b.length; i++) {
+    let prev = i;
+    for (let j = 1; j <= a.length; j++) {
+      const val = b.charAt(i - 1) === a.charAt(j - 1) ? row[j - 1] : Math.min(row[j - 1] + 1, prev + 1, row[j] + 1);
+      row[j - 1] = prev;
+      prev = val;
+    }
+    row[a.length] = prev;
+  }
+  return row[a.length];
+}
+function levenshteinSimilarity(a, b) {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  const dist = levenshteinDistance(a, b);
+  return Math.max(0, 1 - dist / maxLen);
+}
+function jaroSimilarity(s1, s2) {
+  if (s1 === s2) return 1;
+  const len1 = s1.length;
+  const len2 = s2.length;
+  if (len1 === 0 || len2 === 0) return 0;
+  const matchDistance = Math.floor(Math.max(len1, len2) / 2) - 1;
+  const s1Matches = new Array(len1).fill(false);
+  const s2Matches = new Array(len2).fill(false);
+  let matches = 0;
+  for (let i = 0; i < len1; i++) {
+    const start = Math.max(0, i - matchDistance);
+    const end = Math.min(i + matchDistance + 1, len2);
+    for (let j = start; j < end; j++) {
+      if (s2Matches[j]) continue;
+      if (s1.charAt(i) !== s2.charAt(j)) continue;
+      s1Matches[i] = true;
+      s2Matches[j] = true;
+      matches++;
+      break;
+    }
+  }
+  if (matches === 0) return 0;
+  let transpositions = 0;
+  let k = 0;
+  for (let i = 0; i < len1; i++) {
+    if (!s1Matches[i]) continue;
+    while (!s2Matches[k]) k++;
+    if (s1.charAt(i) !== s2.charAt(k)) {
+      transpositions++;
+    }
+    k++;
+  }
+  const m = matches;
+  return (m / len1 + m / len2 + (m - transpositions / 2) / m) / 3;
+}
+function jaroWinklerSimilarity(s1, s2, prefixScale = 0.1) {
+  const jaro = jaroSimilarity(s1, s2);
+  if (jaro < 0.7) return jaro;
+  let prefix = 0;
+  const maxPrefix = Math.min(4, Math.min(s1.length, s2.length));
+  for (let i = 0; i < maxPrefix; i++) {
+    if (s1.charAt(i) === s2.charAt(i)) {
+      prefix++;
+    } else {
+      break;
+    }
+  }
+  return jaro + prefix * prefixScale * (1 - jaro);
+}
+function computeCustomerMatchScore(query, customer) {
+  const rawQuery = query.trim();
+  if (!rawQuery) return { score: 0, matchType: "fuzzy" };
+  const cleanPhoneQuery = rawQuery.replace(/[^0-9]/g, "");
+  if (cleanPhoneQuery.length >= 4 && customer.phone) {
+    const cleanCustomerPhone = customer.phone.replace(/[^0-9]/g, "");
+    if (cleanCustomerPhone.includes(cleanPhoneQuery) || cleanPhoneQuery === cleanCustomerPhone) {
+      return { score: 1, matchType: "phone" };
+    }
+  }
+  const normQuery = normalizeName(rawQuery);
+  const normCustomer = normalizeName(customer.name);
+  if (normQuery === normCustomer) {
+    return { score: 1, matchType: "exact" };
+  }
+  const queryTokens = normQuery.split(/\s+/).filter(Boolean);
+  const customerTokens = normCustomer.split(/\s+/).filter(Boolean);
+  if (queryTokens.length === 1 && customerTokens.length > 1) {
+    const singleQuery = queryTokens[0];
+    const tokenMatch = customerTokens.some((tok) => tok === singleQuery);
+    if (tokenMatch) {
+      return { score: 0.9, matchType: "partial" };
+    }
+  }
+  if (queryTokens.length > 1 && customerTokens.length >= queryTokens.length) {
+    const allTokensMatch = queryTokens.every(
+      (qTok) => customerTokens.some((cTok) => cTok === qTok || jaroWinklerSimilarity(qTok, cTok) >= 0.9)
+    );
+    if (allTokensMatch) {
+      return { score: 0.94, matchType: "partial" };
+    }
+  }
+  let hasPhoneticMatch = false;
+  if (queryTokens.length === customerTokens.length) {
+    const queryPhonetic = queryTokens.map(getIndianPhoneticKey).join("-");
+    const customerPhonetic = customerTokens.map(getIndianPhoneticKey).join("-");
+    hasPhoneticMatch = Boolean(queryPhonetic && queryPhonetic === customerPhonetic);
+  } else if (queryTokens.length === 1) {
+    const qPhonetic = getIndianPhoneticKey(queryTokens[0]);
+    hasPhoneticMatch = customerTokens.some((cTok) => getIndianPhoneticKey(cTok) === qPhonetic);
+  }
+  const jwSim = jaroWinklerSimilarity(normQuery, normCustomer);
+  const levSim = levenshteinSimilarity(normQuery, normCustomer);
+  let combinedScore = 0.65 * jwSim + 0.35 * levSim;
+  if (hasPhoneticMatch) {
+    combinedScore = Math.max(combinedScore, 0.93);
+    return { score: Math.min(0.99, Number(combinedScore.toFixed(2))), matchType: "phonetic" };
+  }
+  return {
+    score: Number(combinedScore.toFixed(2)),
+    matchType: "fuzzy"
+  };
+}
+function findCustomers(query, customers) {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return {
+      action: "create_new",
+      candidates: [],
+      selectedCustomer: null,
+      topScore: 0
+    };
+  }
+  const ranked = [];
+  for (const c of customers) {
+    const { score, matchType } = computeCustomerMatchScore(trimmed, c);
+    if (score >= 0.55) {
+      ranked.push({ customer: c, score, matchType });
+    }
+  }
+  ranked.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return b.customer.balance - a.customer.balance;
+  });
+  if (ranked.length === 0 || ranked[0].score < 0.6) {
+    return {
+      action: "create_new",
+      candidates: ranked,
+      selectedCustomer: null,
+      topScore: ranked[0]?.score || 0
+    };
+  }
+  const topCandidate = ranked[0];
+  const runnerUp = ranked[1];
+  const queryTokens = normalizeName(trimmed).split(/\s+/).filter(Boolean);
+  const isSharedFirstName = queryTokens.length === 1 && ranked.filter(
+    (r) => normalizeName(r.customer.name).split(/\s+/).includes(queryTokens[0])
+  ).length >= 2;
+  if (topCandidate.score >= 0.92 && !isSharedFirstName) {
+    if (!runnerUp || topCandidate.score - runnerUp.score > 0.1) {
+      return {
+        action: "auto_select",
+        candidates: ranked,
+        selectedCustomer: topCandidate.customer,
+        topScore: topCandidate.score
+      };
+    }
+  }
+  return {
+    action: "disambiguate",
+    candidates: ranked,
+    selectedCustomer: topCandidate.customer,
+    topScore: topCandidate.score
+  };
+}
+function isDuplicateEntry(entry, existingEntries, withinMs = 6e5) {
+  if (!entry || !entry.amount) return false;
+  const targetName = entry.customerName ? normalizeName(entry.customerName) : "";
+  const targetId = entry.customerId || "";
+  const entryTime = entry.date ? new Date(entry.date).getTime() : Date.now();
+  return existingEntries.some((existing) => {
+    if (Math.abs(existing.amount - entry.amount) >= 0.01) {
+      return false;
+    }
+    if (existing.type !== entry.type) {
+      return false;
+    }
+    const existingTime = new Date(existing.date || existing.createdAt).getTime();
+    if (Math.abs(entryTime - existingTime) > withinMs) {
+      return false;
+    }
+    if (targetId && existing.customerId === targetId) {
+      return true;
+    }
+    const existingNormName = normalizeName(existing.customerName || "");
+    if (targetName && existingNormName) {
+      if (targetName === existingNormName) return true;
+      if (jaroWinklerSimilarity(targetName, existingNormName) >= 0.9) return true;
+    }
+    return false;
+  });
+}
+function resolveDisambiguationChoice(speechTranscript, candidates, language = "hi", requiredDigitsCount = 4) {
+  const trimmed = speechTranscript.trim();
+  if (!trimmed || candidates.length === 0) {
+    return { status: "no_match", rawQuery: speechTranscript };
+  }
+  const extractedDigits = extractDigitSequence(trimmed);
+  if (extractedDigits.length >= 3) {
+    const targetSuffix = extractedDigits.slice(-requiredDigitsCount);
+    const suffixMatches = candidates.filter((c) => {
+      if (!c.phone) return false;
+      const cleanPhone = c.phone.replace(/\D/g, "");
+      return cleanPhone.endsWith(targetSuffix) || cleanPhone.endsWith(extractedDigits) || extractedDigits.length <= cleanPhone.length && cleanPhone.endsWith(extractedDigits) || cleanPhone.length >= targetSuffix.length && extractedDigits.endsWith(cleanPhone.slice(-requiredDigitsCount));
+    });
+    if (suffixMatches.length === 1) {
+      return {
+        status: "matched",
+        customer: suffixMatches[0],
+        method: "digits",
+        matchedValue: targetSuffix
+      };
+    }
+    if (suffixMatches.length > 1) {
+      if (requiredDigitsCount < 10) {
+        const nextDigits = requiredDigitsCount === 4 ? 6 : 10;
+        return {
+          status: "need_more_digits",
+          digitsNeeded: nextDigits,
+          matchingCandidates: suffixMatches
+        };
+      } else {
+        const exact = suffixMatches.find((c) => c.phone?.replace(/\D/g, "") === extractedDigits);
+        if (exact) {
+          return {
+            status: "matched",
+            customer: exact,
+            method: "digits",
+            matchedValue: extractedDigits
+          };
+        }
+        return {
+          status: "need_more_digits",
+          digitsNeeded: 10,
+          matchingCandidates: suffixMatches
+        };
+      }
+    }
+    if (extractedDigits.length >= 4) {
+      return { status: "no_match", rawQuery: speechTranscript };
+    }
+  }
+  const normSpeech = normalizeName(trimmed);
+  const speechTokens = normSpeech.split(/\s+/).filter(Boolean);
+  for (const ord of ORDINAL_MAP) {
+    const isOrdinalMatch = ord.words.some((word) => {
+      const normWord = normalizeName(word);
+      return normSpeech === normWord || speechTokens.includes(normWord) || trimmed.toLowerCase().includes(word.toLowerCase());
+    });
+    if (isOrdinalMatch && ord.index < candidates.length) {
+      return {
+        status: "matched",
+        customer: candidates[ord.index],
+        method: "ordinal",
+        matchedValue: ord.words[0]
+      };
+    }
+  }
+  const nameMatches = [];
+  for (const candidate of candidates) {
+    const normCandName = normalizeName(candidate.name);
+    const candTokens = normCandName.split(/\s+/).filter(Boolean);
+    const notesTokens = candidate.notes ? normalizeName(candidate.notes).split(/\s+/).filter(Boolean) : [];
+    const allCandTokens = [...candTokens, ...notesTokens];
+    if (normCandName === normSpeech || jaroWinklerSimilarity(normCandName, normSpeech) >= 0.88) {
+      nameMatches.push(candidate);
+      continue;
+    }
+    const distinctiveTokens = allCandTokens.filter((token) => {
+      if (token.length <= 2) return false;
+      const appearsInOthers = candidates.some((other) => {
+        if (other.id === candidate.id) return false;
+        const otherTokens = [
+          ...normalizeName(other.name).split(/\s+/),
+          ...other.notes ? normalizeName(other.notes).split(/\s+/) : []
+        ];
+        return otherTokens.includes(token);
+      });
+      return !appearsInOthers;
+    });
+    const matchesDistinctive = distinctiveTokens.some(
+      (dTok) => speechTokens.includes(dTok) || normSpeech.includes(dTok) || jaroWinklerSimilarity(dTok, normSpeech) >= 0.9
+    );
+    if (matchesDistinctive) {
+      nameMatches.push(candidate);
+    }
+  }
+  if (nameMatches.length === 1) {
+    return {
+      status: "matched",
+      customer: nameMatches[0],
+      method: "name",
+      matchedValue: nameMatches[0].name
+    };
+  }
+  return { status: "no_match", rawQuery: speechTranscript };
+}
+var HONORIFICS, DEVANAGARI_MAP, KANNADA_MAP, TAMIL_MAP, TELUGU_MAP, ORDINAL_MAP;
+var init_customerMatcher = __esm({
+  "src/services/customerMatcher.ts"() {
+    "use strict";
+    init_phoneParser();
+    HONORIFICS = /* @__PURE__ */ new Set([
+      "bhai",
+      "ji",
+      "anna",
+      "akka",
+      "sir",
+      "madam",
+      "aunty",
+      "auntie",
+      "uncle",
+      "shri",
+      "sri",
+      "shree",
+      "garu",
+      "avargal",
+      "sahab",
+      "saheb",
+      "seth",
+      "sethji",
+      "didi",
+      "bhabhi",
+      "chettan",
+      "chechi"
+    ]);
+    DEVANAGARI_MAP = {
+      halant: 2381,
+      anusvara: 2306,
+      visarga: 2307,
+      vowels: {
+        2309: "a",
+        2310: "a",
+        2311: "i",
+        2312: "i",
+        2313: "u",
+        2314: "u",
+        2315: "ri",
+        2319: "e",
+        2320: "ai",
+        2323: "o",
+        2324: "au"
+      },
+      matras: {
+        2366: "a",
+        2367: "i",
+        2368: "i",
+        2369: "u",
+        2370: "u",
+        2371: "ri",
+        2375: "e",
+        2376: "ai",
+        2379: "o",
+        2380: "au"
+      },
+      consonants: {
+        2325: "k",
+        2326: "kh",
+        2327: "g",
+        2328: "gh",
+        2329: "ng",
+        2330: "ch",
+        2331: "chh",
+        2332: "j",
+        2333: "jh",
+        2334: "ny",
+        2335: "t",
+        2336: "th",
+        2337: "d",
+        2338: "dh",
+        2339: "n",
+        2340: "t",
+        2341: "th",
+        2342: "d",
+        2343: "dh",
+        2344: "n",
+        2346: "p",
+        2347: "ph",
+        2348: "b",
+        2349: "bh",
+        2350: "m",
+        2351: "y",
+        2352: "r",
+        2354: "l",
+        2357: "v",
+        2358: "sh",
+        2359: "sh",
+        2360: "s",
+        2361: "h",
+        2392: "q",
+        2393: "kh",
+        2394: "gh",
+        2395: "z",
+        2396: "r",
+        2397: "rh",
+        2398: "f"
+      }
+    };
+    KANNADA_MAP = {
+      halant: 3277,
+      anusvara: 3202,
+      visarga: 3203,
+      vowels: {
+        3205: "a",
+        3206: "a",
+        3207: "i",
+        3208: "i",
+        3209: "u",
+        3210: "u",
+        3211: "ri",
+        3214: "e",
+        3215: "e",
+        3216: "ai",
+        3218: "o",
+        3219: "o",
+        3220: "au"
+      },
+      matras: {
+        3262: "a",
+        3263: "i",
+        3264: "i",
+        3265: "u",
+        3266: "u",
+        3267: "ri",
+        3270: "e",
+        3271: "e",
+        3272: "ai",
+        3274: "o",
+        3275: "o",
+        3276: "au"
+      },
+      consonants: {
+        3221: "k",
+        3222: "kh",
+        3223: "g",
+        3224: "gh",
+        3225: "ng",
+        3226: "ch",
+        3227: "chh",
+        3228: "j",
+        3229: "jh",
+        3230: "ny",
+        3231: "t",
+        3232: "th",
+        3233: "d",
+        3234: "dh",
+        3235: "n",
+        3236: "t",
+        3237: "th",
+        3238: "d",
+        3239: "dh",
+        3240: "n",
+        3242: "p",
+        3243: "ph",
+        3244: "b",
+        3245: "bh",
+        3246: "m",
+        3247: "y",
+        3248: "r",
+        3249: "r",
+        3250: "l",
+        3251: "l",
+        3253: "v",
+        3254: "sh",
+        3255: "sh",
+        3256: "s",
+        3257: "h"
+      }
+    };
+    TAMIL_MAP = {
+      halant: 3021,
+      anusvara: 2946,
+      visarga: 2947,
+      vowels: {
+        2949: "a",
+        2950: "a",
+        2951: "i",
+        2952: "i",
+        2953: "u",
+        2954: "u",
+        2958: "e",
+        2959: "e",
+        2960: "ai",
+        2962: "o",
+        2963: "o",
+        2964: "au"
+      },
+      matras: {
+        3006: "a",
+        3007: "i",
+        3008: "i",
+        3009: "u",
+        3010: "u",
+        3014: "e",
+        3015: "e",
+        3016: "ai",
+        3018: "o",
+        3019: "o",
+        3020: "au"
+      },
+      consonants: {
+        2965: "k",
+        2969: "ng",
+        2970: "s",
+        2974: "ny",
+        2975: "t",
+        2979: "n",
+        2980: "t",
+        2984: "n",
+        2986: "p",
+        2990: "m",
+        2991: "y",
+        2992: "r",
+        2993: "r",
+        2994: "l",
+        2995: "l",
+        2996: "zh",
+        2997: "v",
+        2998: "sh",
+        2999: "sh",
+        3e3: "s",
+        3001: "h",
+        2985: "n",
+        2972: "j"
+      }
+    };
+    TELUGU_MAP = {
+      halant: 3149,
+      anusvara: 3074,
+      visarga: 3075,
+      vowels: {
+        3077: "a",
+        3078: "a",
+        3079: "i",
+        3080: "i",
+        3081: "u",
+        3082: "u",
+        3083: "ri",
+        3086: "e",
+        3087: "e",
+        3088: "ai",
+        3090: "o",
+        3091: "o",
+        3092: "au"
+      },
+      matras: {
+        3134: "a",
+        3135: "i",
+        3136: "i",
+        3137: "u",
+        3138: "u",
+        3142: "e",
+        3143: "e",
+        3144: "ai",
+        3146: "o",
+        3147: "o",
+        3148: "au"
+      },
+      consonants: {
+        3093: "k",
+        3094: "kh",
+        3095: "g",
+        3096: "gh",
+        3097: "ng",
+        3098: "ch",
+        3099: "chh",
+        3100: "j",
+        3101: "jh",
+        3102: "ny",
+        3103: "t",
+        3104: "th",
+        3105: "d",
+        3106: "dh",
+        3107: "n",
+        3108: "t",
+        3109: "th",
+        3110: "d",
+        3111: "dh",
+        3112: "n",
+        3114: "p",
+        3115: "ph",
+        3116: "b",
+        3117: "bh",
+        3118: "m",
+        3119: "y",
+        3120: "r",
+        3121: "r",
+        3122: "l",
+        3123: "l",
+        3125: "v",
+        3126: "sh",
+        3127: "sh",
+        3128: "s",
+        3129: "h"
+      }
+    };
+    ORDINAL_MAP = [
+      {
+        index: 0,
+        // First / Pehla
+        words: [
+          "first",
+          "1st",
+          "one",
+          "pehla",
+          "pehli",
+          "pehle",
+          "ek",
+          "number one",
+          "modala",
+          "modalane",
+          "modalaneya",
+          "ondu",
+          "\u0CAE\u0CCA\u0CA6\u0CB2",
+          "\u0CAE\u0CCA\u0CA6\u0CB2\u0CA8\u0CC6\u0CAF",
+          "\u0C92\u0C82\u0CA6\u0CC1",
+          "mudal",
+          "mudhal",
+          "mudhalaavathu",
+          "onnu",
+          "\u0B92\u0BA9\u0BCD\u0BB1\u0BC1",
+          "\u0BAE\u0BC1\u0BA4\u0BB2\u0BCD",
+          "\u0BAE\u0BC1\u0BA4\u0BB2\u0BBE\u0BB5\u0BA4\u0BC1",
+          "modati",
+          "modata",
+          "okati",
+          "\u0C2E\u0C4A\u0C26\u0C1F\u0C3F",
+          "\u0C12\u0C15\u0C1F\u0C3F"
+        ]
+      },
+      {
+        index: 1,
+        // Second / Doosra
+        words: [
+          "second",
+          "2nd",
+          "two",
+          "doosra",
+          "doosri",
+          "doosre",
+          "do",
+          "number two",
+          "eradu",
+          "eradane",
+          "eradaneya",
+          "\u0C8E\u0CB0\u0CA1\u0CA8\u0CC6\u0CAF",
+          "\u0C8E\u0CB0\u0CA1\u0CC1",
+          "irandavathu",
+          "irandu",
+          "\u0B87\u0BB0\u0BA3\u0BCD\u0B9F\u0BBE\u0BB5\u0BA4\u0BC1",
+          "\u0B87\u0BB0\u0BA3\u0BCD\u0B9F\u0BC1",
+          "rendava",
+          "rendu",
+          "\u0C30\u0C46\u0C02\u0C21\u0C35",
+          "\u0C30\u0C46\u0C02\u0C21\u0C41"
+        ]
+      },
+      {
+        index: 2,
+        // Third / Teesra
+        words: [
+          "third",
+          "3rd",
+          "three",
+          "teesra",
+          "teesri",
+          "teesre",
+          "teen",
+          "muru",
+          "murane",
+          "muraneya",
+          "\u0CAE\u0CC2\u0CB0\u0CA8\u0CC6\u0CAF",
+          "\u0CAE\u0CC2\u0CB0\u0CC1",
+          "moondravathu",
+          "moondru",
+          "\u0BAE\u0BC2\u0BA9\u0BCD\u0BB1\u0BBE\u0BB5\u0BA4\u0BC1",
+          "\u0BAE\u0BC2\u0BA9\u0BCD\u0BB1\u0BC1",
+          "moodava",
+          "moodu",
+          "\u0C2E\u0C42\u0C21\u0C35",
+          "\u0C2E\u0C42\u0C21\u0C41"
+        ]
+      },
+      {
+        index: 3,
+        // Fourth / Chautha
+        words: [
+          "fourth",
+          "4th",
+          "four",
+          "chautha",
+          "chauthi",
+          "chauthe",
+          "char",
+          "nalku",
+          "naalku",
+          "nalkane",
+          "nalkaneya",
+          "\u0CA8\u0CBE\u0CB2\u0CCD\u0C95\u0CA8\u0CC6\u0CAF",
+          "\u0CA8\u0CBE\u0CB2\u0CCD\u0C95\u0CC1",
+          "naangavathu",
+          "naangu",
+          "\u0BA8\u0BBE\u0BA9\u0BCD\u0B95\u0BBE\u0BB5\u0BA4\u0BC1",
+          "\u0BA8\u0BBE\u0BA9\u0BCD\u0B95\u0BC1",
+          "naalgava",
+          "naalugu",
+          "\u0C28\u0C3E\u0C32\u0C41\u0C17\u0C35",
+          "\u0C28\u0C3E\u0C32\u0C41\u0C17\u0C41"
+        ]
+      }
+    ];
+  }
+});
+
 // src/lib/voiceParser.ts
 var NUMBER_WORDS = {
   // English
@@ -1364,17 +2622,54 @@ function parseVoiceTranscript(transcript, previousContext) {
 }
 
 // src/lib/format.ts
+var NATIVE_DIGIT_MAP = {
+  hi: ["\u0966", "\u0967", "\u0968", "\u0969", "\u096A", "\u096B", "\u096C", "\u096D", "\u096E", "\u096F"],
+  kn: ["\u0CE6", "\u0CE7", "\u0CE8", "\u0CE9", "\u0CEA", "\u0CEB", "\u0CEC", "\u0CED", "\u0CEE", "\u0CEF"],
+  ta: ["\u0BE6", "\u0BE7", "\u0BE8", "\u0BE9", "\u0BEA", "\u0BEB", "\u0BEC", "\u0BED", "\u0BEE", "\u0BEF"],
+  te: ["\u0C66", "\u0C67", "\u0C68", "\u0C69", "\u0C6A", "\u0C6B", "\u0C6C", "\u0C6D", "\u0C6E", "\u0C6F"]
+};
+function getLocaleForLang(lang = "en") {
+  switch (lang) {
+    case "hi":
+      return "hi-IN";
+    case "kn":
+      return "kn-IN";
+    case "ta":
+      return "ta-IN";
+    case "te":
+      return "te-IN";
+    case "en":
+    case "hinglish":
+    default:
+      return "en-IN";
+  }
+}
+function convertToNativeDigits(text, lang) {
+  const digits = NATIVE_DIGIT_MAP[lang];
+  if (!digits) return text;
+  return text.replace(/[0-9]/g, (d) => digits[parseInt(d, 10)]);
+}
 function formatRupees(amount, options = {}) {
-  const { showSign = false, showSymbol = true, decimals = 0 } = options;
+  const {
+    showSign = false,
+    showSymbol = true,
+    decimals = 0,
+    lang = "en",
+    numeralScript = "latin"
+  } = options;
   if (isNaN(amount) || amount === null || amount === void 0) {
-    return showSymbol ? "\u20B90" : "0";
+    const zeroStr = showSymbol ? "\u20B90" : "0";
+    return numeralScript === "native" ? convertToNativeDigits(zeroStr, lang) : zeroStr;
   }
   const isNegative = amount < 0;
   const absAmount = Math.abs(amount);
-  const formattedNumber = new Intl.NumberFormat("en-IN", {
+  let formattedNumber = new Intl.NumberFormat("en-IN", {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals
   }).format(absAmount);
+  if (numeralScript === "native") {
+    formattedNumber = convertToNativeDigits(formattedNumber, lang);
+  }
   let prefix = "";
   if (showSign) {
     if (amount > 0) prefix = "+";
@@ -1386,7 +2681,7 @@ function formatRupees(amount, options = {}) {
   return `${prefix}${symbol}${formattedNumber}`;
 }
 function formatRelativeDate(dateInput, options = {}) {
-  const { lang = "hinglish", includeTime = false } = options;
+  const { lang = "hinglish", includeTime = false, numeralScript = "latin" } = options;
   if (!dateInput) return "";
   const target = new Date(dateInput);
   if (isNaN(target.getTime())) return String(dateInput);
@@ -1465,43 +2760,59 @@ function formatRelativeDate(dateInput, options = {}) {
     }
   } else {
     const isSameYear = target.getFullYear() === now.getFullYear();
-    dayLabel = target.toLocaleDateString("en-IN", {
+    const locale = getLocaleForLang(lang);
+    dayLabel = target.toLocaleDateString(locale, {
       day: "numeric",
       month: "short",
       year: isSameYear ? void 0 : "numeric"
     });
+    if (numeralScript === "native") {
+      dayLabel = convertToNativeDigits(dayLabel, lang);
+    }
   }
   if (includeTime) {
-    const timeStr = target.toLocaleTimeString("en-IN", {
+    const locale = getLocaleForLang(lang);
+    let timeStr = target.toLocaleTimeString(locale, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true
     });
+    if (numeralScript === "native") {
+      timeStr = convertToNativeDigits(timeStr, lang);
+    }
     return `${dayLabel}, ${timeStr}`;
   }
   return dayLabel;
 }
 function formatFullRelativeDate(dateInput, options = {}) {
-  const { lang = "hinglish" } = options;
+  const { lang = "hinglish", numeralScript = "latin" } = options;
   if (!dateInput) return "";
   const target = new Date(dateInput);
   if (isNaN(target.getTime())) return String(dateInput);
-  const rel = formatRelativeDate(target, { lang });
-  const dayMonth = target.toLocaleDateString("en-IN", {
+  const rel = formatRelativeDate(target, { lang, numeralScript });
+  const locale = getLocaleForLang(lang);
+  let dayMonth = target.toLocaleDateString(locale, {
     day: "numeric",
     month: "short"
   });
+  if (numeralScript === "native") {
+    dayMonth = convertToNativeDigits(dayMonth, lang);
+  }
   return `${rel}, ${dayMonth}`;
 }
 
 // src/lib/formatters.ts
-function formatINR(amount) {
+function formatINR(amount, options = {}) {
+  const { lang = "en", numeralScript = "latin" } = options;
   const rounded = Math.round(amount);
   const isNegative = rounded < 0;
   const absVal = Math.abs(rounded);
-  const formatted = new Intl.NumberFormat("en-IN", {
+  let formatted = new Intl.NumberFormat("en-IN", {
     maximumFractionDigits: 0
   }).format(absVal);
+  if (numeralScript === "native") {
+    formatted = convertToNativeDigits(formatted, lang);
+  }
   return `${isNegative ? "-" : ""}\u20B9${formatted}`;
 }
 function cleanPhoneNumber(phone) {
@@ -1510,2316 +2821,126 @@ function cleanPhoneNumber(phone) {
   if (digits.length === 10) return digits;
   if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
   if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
-  if (digits.length > 10) return digits.slice(-10);
-  return digits;
+  return digits.slice(-10);
 }
 
-// src/i18n/locales/en.json
-var en_default = {
-  appName: "Voice Khata",
-  tagline: "Hands-free Kirana Voice Ledger",
-  online: "Online",
-  offlineSafe: "Offline Safe (Local)",
-  navHome: "Home",
-  navCustomers: "Customers",
-  navSummary: "Summary",
-  navSettings: "Settings",
-  navStyleguide: "Styleguide",
-  save: "Save",
-  cancel: "Cancel",
-  delete: "Delete",
-  edit: "Edit",
-  close: "Close",
-  search: "Search",
-  back: "Back",
-  done: "Done",
-  creditGiven: "Credit Given",
-  paymentReceived: "Payment Received",
-  balanceOwed: "Total Balance",
-  netBalance: "Net Balance",
-  todaySummary: "Today's Summary",
-  recentEntries: "Recent Entries",
-  noEntries: "No entries recorded yet",
-  micIdle: "Tap mic & speak",
-  micListening: "Listening... Speak now",
-  micProcessing: "Processing voice entry...",
-  micError: "Could not hear clearly. Please try again.",
-  typeInstead: "Type instead",
-  trySpeaking: "Try speaking",
-  customersTitle: "Customer Ledger",
-  searchCustomerPlaceholder: "Search by name or mobile...",
-  filterAll: "All",
-  filterOwes: "Owes Money",
-  filterSettled: "Settled",
-  addJama: "+ Add Payment",
-  printSlip: "Print Slip",
-  sendWhatsApp: "WhatsApp Reminder",
-  summaryTitle: "Daily Summary",
-  todayUdhaar: "Udhaar Given",
-  todayJama: "Jama Received",
-  todayNet: "Net Change",
-  weeklyTrend: "Last 7 Days Trend",
-  topPending: "Top Pending Customers",
-  settingsTitle: "Settings",
-  settingsSubtitle: "Shop details, languages, soundbox and data backup",
-  shopNameLabel: "Shop Name",
-  shopNamePlaceholder: "e.g. Ramesh Kirana Store",
-  uiLanguageLabel: "UI Language",
-  uiLanguageDesc: "Language for buttons, text and navigation",
-  speechLanguageLabel: "Speech Language",
-  speechLanguageDesc: "Used for speech recognition & soundbox voice replies",
-  speechSpeedLabel: "Soundbox Speech Speed",
-  speedSlow: "Slow",
-  speedNormal: "Normal",
-  speedFast: "Fast",
-  muteRepliesLabel: "Mute Spoken Replies",
-  muteRepliesDesc: "Only play chime tones without speaking totals aloud",
-  themeLabel: "App Theme",
-  themeLight: "Light Theme",
-  themeHighContrast: "High Contrast (Dark)",
-  themeDesc: "High contrast optimized for outdoor sunlight & dim shops",
-  asrEngineLabel: "Speech Engine (ASR)",
-  asrEngineDesc: "Provider used to transcribe spoken transactions",
-  asrBrowser: "Browser On-Device (Free, Offline, Instant)",
-  asrBhashini: "Bhashini AI (Digital India Speech) [Stubbed]",
-  asrSarvam: "Sarvam AI (Saaras Indic Speech) [Stubbed]",
-  exportLedgerLabel: "Export Ledger Data",
-  exportJson: "Export Ledger (JSON)",
-  exportCsv: "Export Ledger (CSV / Excel)",
-  dangerZoneLabel: "Danger Zone",
-  clearAllData: "Clear All Ledger Data",
-  clearConfirm: "Are you sure you want to delete all customers and transactions? This cannot be undone.",
-  clearSuccess: "All ledger data cleared successfully!",
-  resetDemo: "Restore Sample Demo Khata",
-  resetSuccess: "Sample demo data restored!",
-  localFirstInfo: "Voice Khata is 100% offline-first. Your ledger is safely stored on your device (IndexedDB) and never leaves your phone.",
-  signupWelcomeTitle: "Welcome to Voice Khata",
-  signupWelcomeSubtitle: "Hands-free voice ledger built for Indian Kirana stores",
-  dataStaysOnPhone: "Your data stays on this phone",
-  getStarted: "Get Started",
-  stepOf: "Step {current} of {total}",
-  shopNamePrompt: "What is your shop name?",
-  shopNameSpoken: "Please speak your shop name",
-  shopNameHelper: "Spoken or typed name of your store",
-  shopNameError: "Please enter a valid shop name (at least 2 characters)",
-  ownerNamePrompt: "What is your name?",
-  ownerNameSpoken: "Please speak your name",
-  ownerNamePlaceholder: "e.g. Ramesh Kumar",
-  ownerNameHelper: "Your name as store owner",
-  ownerNameError: "Please enter your name (at least 2 characters)",
-  phonePrompt: "Your mobile phone number",
-  phoneSpoken: "Please enter your 10-digit mobile number",
-  phonePlaceholder: "e.g. 9876543210",
-  phoneHelper: "10-digit mobile number for reminders & WhatsApp",
-  phoneError: "Enter a valid 10-digit Indian mobile number starting with 6-9",
-  upiPrompt: "Your UPI ID",
-  upiSpoken: "Speak or enter your UPI ID",
-  upiPlaceholder: "e.g. ramesh@oksbi",
-  upiHelperText: "Only your UPI ID is needed. We never ask for bank account numbers.",
-  upiPaste: "Paste",
-  upiReadBack: "Read back",
-  upiReadingBack: "Reading back...",
-  upiError: "Enter a valid UPI ID (e.g. name@bank)",
-  pinPrompt: "Set Security PIN (Optional)",
-  pinSpoken: "Choose a 4 to 6 digit security PIN or skip",
-  pinPlaceholder: "4-6 digit PIN",
-  pinHelperText: "Protects your ledger with on-device encryption. You can also set it later in Settings.",
-  pinSkip: "Skip for now",
-  pinSkipWarning: "Without a PIN, anyone opening this app can view your ledger. You can set a PIN anytime in Settings.",
-  pinSkipConfirm: "Skip PIN",
-  pinError: "PIN must be 4-6 digits and not a simple sequence (e.g. 1234, 0000)",
-  reviewTitle: "Review Shop Profile",
-  reviewSubtitle: "Confirm your store details. You can update these anytime in Settings.",
-  startAppButton: "Start Voice Khata",
-  editField: "Edit",
-  nextStep: "Next",
-  prevStep: "Back",
-  settingsProfileTitle: "Shop Profile",
-  settingsProfileSubtitle: "Manage store details, owner information and payment UPI ID",
-  confirmUpiChangeTitle: "Change UPI ID?",
-  confirmUpiChangeWarning: "Changing your UPI ID will update payment QR codes and links sent to all customers. Are you sure?",
-  confirmUpiChangeButton: "Yes, Update UPI ID",
-  noPinWarningBanner: "Your ledger is not protected with a PIN. Set a PIN to secure your customer data.",
-  setPinNow: "Set PIN Now",
-  profileUpdatedToast: "Shop profile updated successfully!",
-  registerCustomerTitle: "Register Customer",
-  registerCustomerSubtitle: "Add customer details to save in your encrypted ledger",
-  enterCustomerPhone: "Customer Phone Number",
-  phoneReadBackQuestion: "{phone}. Is this correct?",
-  readBackConfirm: "Yes, Correct",
-  readBackWrong: "No, Change",
-  skipPhoneForNow: "Skip for now",
-  noNumberWarning: "No phone number saved. Reminders will ask for the number.",
-  duplicatePhoneWarning: "This phone number belongs to {name}. Is it the same person?",
-  openExistingCustomer: "Yes, Open {name}",
-  useAnotherNumber: "Use another number",
-  requireCustomerPhoneLabel: "Require Phone Number",
-  requireCustomerPhoneDesc: "Require phone number when registering new customers",
-  customerRegisteredSpoken: "{name} added successfully",
-  customerNewAskPhoneSpoken: "{name} is a new customer. Please tell the phone number.",
-  whichCustomerTitle: "Which {name}?",
-  tellLast4DigitsSubtitle: "Tell the last 4 digits of phone number or tap card",
-  noNumberSavedChip: "No number saved",
-  disambiguateRetryToast: "Number not found. Please say again or tap card.",
-  disambiguateConfirmSpoken: "{name}, confirmed.",
-  autoOpenPaymentRequestLabel: "Auto-open payment request after udhaar",
-  autoOpenPaymentRequestDesc: "Show UPI QR code and WhatsApp link immediately after recording credit",
-  showMyQr: "Show My QR",
-  showMyQrDesc: "Counter payment QR for walk-in customers",
-  showMyQrTitle: "Shop Counter QR",
-  paymentRequestTitle: "Payment Request",
-  paymentRequestSubtitle: "Share QR code or WhatsApp link to collect payment",
-  sendWhatsAppPayment: "WhatsApp bhejein",
-  sendWhatsAppHint: "Tap to open WhatsApp, then press Send",
-  shareQr: "QR share karein",
-  downloadQr: "Download QR",
-  laterDismiss: "Baad mein",
-  noPhoneAddNumber: "Add phone number",
-  noPhoneWarning: "No phone number saved for this customer",
-  noUpiIdWarning: "No UPI ID set in shop profile. Set up in Settings to enable QR payments.",
-  setupUpiNow: "Set up UPI ID",
-  whatsappOfflineHint: "Internet required for WhatsApp",
-  qrSavedToast: "QR code ready to share",
-  receiptQrTitle: "Scan & Pay via UPI"
-};
-
-// src/i18n/locales/hi.json
-var hi_default = {
-  appName: "\u0906\u0935\u093E\u091C\u093C \u0916\u093E\u0924\u093E",
-  tagline: "\u092C\u094B\u0932\u0915\u0930 \u0909\u0927\u093E\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
-  online: "\u0911\u0928\u0932\u093E\u0907\u0928",
-  offlineSafe: "\u0911\u092B\u0932\u093E\u0907\u0928 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 (\u0932\u094B\u0915\u0932)",
-  navHome: "\u0939\u094B\u092E (\u092E\u093E\u0907\u0915)",
-  navCustomers: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0916\u093E\u0924\u093E",
-  navSummary: "\u0926\u0948\u0928\u093F\u0915 \u0939\u093F\u0938\u093E\u092C",
-  navSettings: "\u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938",
-  navStyleguide: "\u0938\u094D\u091F\u093E\u0907\u0932\u0917\u093E\u0907\u0921",
-  save: "\u0938\u0939\u0947\u091C\u0947\u0902",
-  cancel: "\u0930\u0926\u094D\u0926 \u0915\u0930\u0947\u0902",
-  delete: "\u0939\u091F\u093E\u090F\u0902",
-  edit: "\u0938\u0902\u092A\u093E\u0926\u093F\u0924 \u0915\u0930\u0947\u0902",
-  close: "\u092C\u0902\u0926 \u0915\u0930\u0947\u0902",
-  search: "\u0916\u094B\u091C\u0947\u0902",
-  back: "\u092A\u0940\u091B\u0947",
-  done: "\u092A\u0942\u0930\u094D\u0923",
-  creditGiven: "\u0909\u0927\u093E\u0930 \u0926\u093F\u092F\u093E",
-  paymentReceived: "\u091C\u092E\u093E \u092E\u093F\u0932\u093E",
-  balanceOwed: "\u0915\u0941\u0932 \u092C\u093E\u0915\u0940",
-  netBalance: "\u0936\u0941\u0926\u094D\u0927 \u092C\u093E\u0915\u0940",
-  todaySummary: "\u0906\u091C \u0915\u093E \u0939\u093F\u0938\u093E\u092C",
-  recentEntries: "\u0939\u093E\u0932 \u0915\u0947 \u0932\u0947\u0928-\u0926\u0947\u0928",
-  noEntries: "\u0905\u092D\u0940 \u0915\u094B\u0908 \u0932\u0947\u0928-\u0926\u0947\u0928 \u0926\u0930\u094D\u091C \u0928\u0939\u0940\u0902 \u0939\u0948",
-  micIdle: "\u092E\u093E\u0907\u0915 \u0926\u092C\u093E\u0915\u0930 \u092C\u094B\u0932\u0947\u0902",
-  micListening: "\u0938\u0941\u0928 \u0930\u0939\u093E \u0939\u0942\u0901... \u092C\u094B\u0932\u093F\u090F",
-  micProcessing: "\u0939\u093F\u0938\u093E\u092C \u0938\u092E\u091D \u0930\u0939\u093E \u0939\u0942\u0901...",
-  micError: "\u0938\u093E\u092B\u093C \u0938\u0941\u0928\u093E\u0908 \u0928\u0939\u0940\u0902 \u0926\u093F\u092F\u093E\u0964 \u0915\u0943\u092A\u092F\u093E \u092A\u0941\u0928\u0903 \u092A\u094D\u0930\u092F\u093E\u0938 \u0915\u0930\u0947\u0902\u0964",
-  typeInstead: "\u0932\u093F\u0916\u0915\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
-  trySpeaking: "\u092C\u094B\u0932\u0915\u0930 \u0926\u0947\u0916\u0947\u0902",
-  customersTitle: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0916\u093E\u0924\u093E",
-  searchCustomerPlaceholder: "\u0928\u093E\u092E \u092F\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0916\u094B\u091C\u0947\u0902...",
-  filterAll: "\u0938\u092D\u0940",
-  filterOwes: "\u092C\u093E\u0915\u0940 \u0935\u093E\u0932\u0947",
-  filterSettled: "\u091A\u0941\u0915\u0924\u093E",
-  addJama: "+ \u091C\u092E\u093E \u091C\u094B\u0921\u093C\u0947\u0902",
-  printSlip: "\u092A\u0930\u094D\u091A\u0940 \u092A\u094D\u0930\u093F\u0902\u091F \u0915\u0930\u0947\u0902",
-  sendWhatsApp: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930",
-  summaryTitle: "\u0926\u0948\u0928\u093F\u0915 \u0939\u093F\u0938\u093E\u092C",
-  todayUdhaar: "\u0909\u0927\u093E\u0930 \u0926\u093F\u092F\u093E",
-  todayJama: "\u091C\u092E\u093E \u092E\u093F\u0932\u093E",
-  todayNet: "\u0936\u0941\u0926\u094D\u0927 \u092C\u0926\u0932\u093E\u0935",
-  weeklyTrend: "\u092A\u093F\u091B\u0932\u0947 7 \u0926\u093F\u0928\u094B\u0902 \u0915\u093E \u0939\u093F\u0938\u093E\u092C",
-  topPending: "\u0936\u0940\u0930\u094D\u0937 \u092C\u093E\u0915\u0940 \u0935\u093E\u0932\u0947 \u0917\u094D\u0930\u093E\u0939\u0915",
-  settingsTitle: "\u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938",
-  settingsSubtitle: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E, \u092D\u093E\u0937\u093E, \u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u0914\u0930 \u0921\u0947\u091F\u093E \u092C\u0948\u0915\u0905\u092A",
-  shopNameLabel: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E",
-  shopNamePlaceholder: "\u0909\u0926\u093E. \u0930\u092E\u0947\u0936 \u0915\u093F\u0930\u093E\u0928\u093E \u0938\u094D\u091F\u094B\u0930",
-  uiLanguageLabel: "\u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0915\u0940 \u092D\u093E\u0937\u093E",
-  uiLanguageDesc: "\u092C\u091F\u0928, \u092E\u0947\u0928\u0942 \u0914\u0930 \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u0926\u093F\u0916\u0928\u0947 \u0935\u093E\u0932\u0940 \u092D\u093E\u0937\u093E",
-  speechLanguageLabel: "\u092C\u094B\u0932\u0928\u0947 \u0915\u0940 \u092D\u093E\u0937\u093E",
-  speechLanguageDesc: "\u092E\u093E\u0907\u0915 \u0938\u0947 \u0938\u092E\u091D\u0928\u0947 \u0914\u0930 \u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u0906\u0935\u093E\u091C\u093C \u0915\u0947 \u0932\u093F\u090F",
-  speechSpeedLabel: "\u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u092C\u094B\u0932\u0928\u0947 \u0915\u0940 \u0930\u092B\u094D\u0924\u093E\u0930",
-  speedSlow: "\u0927\u0940\u092E\u0940",
-  speedNormal: "\u0938\u093E\u092E\u093E\u0928\u094D\u092F",
-  speedFast: "\u0924\u0947\u091C\u093C",
-  muteRepliesLabel: "\u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u0906\u0935\u093E\u091C\u093C \u092C\u0902\u0926 \u0930\u0916\u0947\u0902",
-  muteRepliesDesc: "\u0915\u0947\u0935\u0932 \u0918\u0902\u091F\u0940 \u092C\u091C\u0947\u0917\u0940, \u092C\u094B\u0932\u0915\u0930 \u0939\u093F\u0938\u093E\u092C \u0928\u0939\u0940\u0902 \u092C\u0924\u093E\u090F\u0917\u093E",
-  themeLabel: "\u0910\u092A \u0925\u0940\u092E",
-  themeLight: "\u0932\u093E\u0907\u091F \u0925\u0940\u092E",
-  themeHighContrast: "\u0939\u093E\u0908 \u0915\u0902\u091F\u094D\u0930\u093E\u0938\u094D\u091F (\u0921\u093E\u0930\u094D\u0915)",
-  themeDesc: "\u0927\u0942\u092A \u092E\u0947\u0902 \u092F\u093E \u0930\u093E\u0924 \u092E\u0947\u0902 \u0938\u093E\u092B\u093C \u0926\u093F\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0905\u0928\u0941\u0915\u0942\u0932\u093F\u0924",
-  asrEngineLabel: "\u0938\u094D\u092A\u0940\u091A \u0907\u0902\u091C\u0928 (ASR)",
-  asrEngineDesc: "\u0906\u0935\u093E\u091C\u093C \u0915\u094B \u091F\u0947\u0915\u094D\u0938\u094D\u091F \u092E\u0947\u0902 \u092C\u0926\u0932\u0928\u0947 \u0935\u093E\u0932\u093E \u0907\u0902\u091C\u0928",
-  asrBrowser: "\u092C\u094D\u0930\u093E\u0909\u091C\u093C\u0930 \u0911\u0928-\u0921\u093F\u0935\u093E\u0907\u0938 (\u092E\u0941\u092B\u093C\u094D\u0924, \u0911\u092B\u0932\u093E\u0907\u0928, \u0924\u0941\u0930\u0902\u0924)",
-  asrBhashini: "\u092D\u093E\u0937\u093F\u0923\u0940 AI (\u092D\u093E\u0930\u0924 \u0938\u0930\u0915\u093E\u0930 \u0921\u093F\u091C\u093F\u091F\u0932 \u0907\u0902\u0921\u093F\u092F\u093E) [Stubbed]",
-  asrSarvam: "\u0938\u0930\u094D\u0935\u092E AI (\u0938\u093E\u0930\u0938 \u0907\u0902\u0921\u093F\u0915 \u0938\u094D\u092A\u0940\u091A) [Stubbed]",
-  exportLedgerLabel: "\u0916\u093E\u0924\u093E \u0921\u0947\u091F\u093E \u0928\u093F\u0930\u094D\u092F\u093E\u0924 \u0915\u0930\u0947\u0902",
-  exportJson: "\u0916\u093E\u0924\u093E \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930\u0947\u0902 (JSON)",
-  exportCsv: "\u0916\u093E\u0924\u093E \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930\u0947\u0902 (CSV / Excel)",
-  dangerZoneLabel: "\u0921\u0947\u091F\u093E \u0939\u091F\u093E\u090F\u0902",
-  clearAllData: "\u0938\u093E\u0930\u093E \u0916\u093E\u0924\u093E \u0921\u0947\u091F\u093E \u092E\u093F\u091F\u093E\u090F\u0902",
-  clearConfirm: "\u0915\u094D\u092F\u093E \u0906\u092A \u0935\u093E\u0915\u0908 \u0938\u093E\u0930\u093E \u0916\u093E\u0924\u093E \u0921\u0947\u091F\u093E \u092E\u093F\u091F\u093E\u0928\u093E \u091A\u093E\u0939\u0924\u0947 \u0939\u0948\u0902? \u092F\u0939 \u0935\u093E\u092A\u0938 \u0928\u0939\u0940\u0902 \u0932\u093E\u092F\u093E \u091C\u093E \u0938\u0915\u0947\u0917\u093E\u0964",
-  clearSuccess: "\u0938\u093E\u0930\u093E \u0921\u0947\u091F\u093E \u0938\u092B\u0932\u0924\u093E\u092A\u0942\u0930\u094D\u0935\u0915 \u092E\u093F\u091F\u093E \u0926\u093F\u092F\u093E \u0917\u092F\u093E!",
-  resetDemo: "\u0938\u0948\u0902\u092A\u0932 \u0921\u0947\u092E\u094B \u0916\u093E\u0924\u093E \u0932\u094B\u0921 \u0915\u0930\u0947\u0902",
-  resetSuccess: "\u0921\u0947\u092E\u094B \u0916\u093E\u0924\u093E \u0932\u094B\u0921 \u0939\u094B \u0917\u092F\u093E!",
-  localFirstInfo: "\u0906\u0935\u093E\u091C\u093C \u0916\u093E\u0924\u093E 100% \u0911\u092B\u0932\u093E\u0907\u0928 \u0939\u0948\u0964 \u0906\u092A\u0915\u093E \u0938\u093E\u0930\u093E \u0921\u0947\u091F\u093E \u0906\u092A\u0915\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0939\u0940 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 (IndexedDB) \u0930\u0939\u0924\u093E \u0939\u0948 \u0914\u0930 \u0915\u0939\u0940\u0902 \u0928\u0939\u0940\u0902 \u092D\u0947\u091C\u093E \u091C\u093E\u0924\u093E\u0964",
-  signupWelcomeTitle: "\u0935\u0949\u0907\u0938 \u0916\u093E\u0924\u093E \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948",
-  signupWelcomeSubtitle: "\u092D\u093E\u0930\u0924\u0940\u092F \u0915\u093F\u0930\u093E\u0928\u093E \u0926\u0941\u0915\u093E\u0928\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F \u0939\u0948\u0902\u0921\u094D\u0938-\u092B\u094D\u0930\u0940 \u0906\u0935\u093E\u091C\u093C \u0916\u093E\u0924\u093E",
-  dataStaysOnPhone: "\u0906\u092A\u0915\u093E \u0921\u0947\u091F\u093E \u0907\u0938\u0940 \u092B\u094B\u0928 \u092A\u0930 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0930\u0939\u0924\u093E \u0939\u0948",
-  getStarted: "\u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902",
-  stepOf: "\u091A\u0930\u0923 {current} / {total}",
-  shopNamePrompt: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
-  shopNameSpoken: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
-  shopNameHelper: "\u0905\u092A\u0928\u0940 \u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u092C\u094B\u0932\u0947\u0902 \u092F\u093E \u0932\u093F\u0916\u0947\u0902",
-  shopNameError: "\u0915\u0943\u092A\u092F\u093E \u092E\u093E\u0928\u094D\u092F \u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E 2 \u0905\u0915\u094D\u0937\u0930)",
-  ownerNamePrompt: "\u0905\u092A\u0928\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
-  ownerNameSpoken: "\u0905\u092A\u0928\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
-  ownerNamePlaceholder: "\u0909\u0926\u093E. \u0930\u092E\u0947\u0936 \u0915\u0941\u092E\u093E\u0930",
-  ownerNameHelper: "\u0926\u0941\u0915\u093E\u0928\u0926\u093E\u0930 \u0915\u093E \u0928\u093E\u092E",
-  ownerNameError: "\u0915\u0943\u092A\u092F\u093E \u0905\u092A\u0928\u093E \u0928\u093E\u092E \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E 2 \u0905\u0915\u094D\u0937\u0930)",
-  phonePrompt: "\u0906\u092A\u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930",
-  phoneSpoken: "\u0905\u092A\u0928\u093E 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0921\u093E\u0932\u093F\u090F",
-  phonePlaceholder: "\u0909\u0926\u093E. 9876543210",
-  phoneHelper: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0914\u0930 \u0924\u0917\u093E\u0926\u093E \u0938\u0902\u0926\u0947\u0936\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930",
-  phoneError: "6-9 \u0938\u0947 \u0936\u0941\u0930\u0942 \u0939\u094B\u0928\u0947 \u0935\u093E\u0932\u093E 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092D\u093E\u0930\u0924\u0940\u092F \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
-  upiPrompt: "\u0906\u092A\u0915\u0940 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940",
-  upiSpoken: "\u0905\u092A\u0928\u0940 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u094B\u0932\u093F\u090F \u092F\u093E \u0932\u093F\u0916\u093F\u090F",
-  upiPlaceholder: "\u0909\u0926\u093E. ramesh@oksbi",
-  upiHelperText: "\u0915\u0947\u0935\u0932 \u0906\u092A\u0915\u0940 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u0906\u0935\u0936\u094D\u092F\u0915 \u0939\u0948\u0964 \u0939\u092E \u0915\u092D\u0940 \u092C\u0948\u0902\u0915 \u0916\u093E\u0924\u093E \u0938\u0902\u0916\u094D\u092F\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0902\u0917\u0924\u0947\u0964",
-  upiPaste: "\u092A\u0947\u0938\u094D\u091F \u0915\u0930\u0947\u0902",
-  upiReadBack: "\u0905\u0915\u094D\u0937\u0930\u0936\u0903 \u0938\u0941\u0928\u0947\u0902",
-  upiReadingBack: "\u092A\u0922\u093C \u0930\u0939\u0947 \u0939\u0948\u0902...",
-  upiError: "\u092E\u093E\u0928\u094D\u092F \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902 (\u0909\u0926\u093E. name@bank)",
-  pinPrompt: "\u0938\u0941\u0930\u0915\u094D\u0937\u093E \u092A\u093F\u0928 \u0938\u0947\u091F \u0915\u0930\u0947\u0902 (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915)",
-  pinSpoken: "4 \u0938\u0947 6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0938\u0941\u0930\u0915\u094D\u0937\u093E \u092A\u093F\u0928 \u091A\u0941\u0928\u0947\u0902 \u092F\u093E \u091B\u094B\u0921\u093C \u0926\u0947\u0902",
-  pinPlaceholder: "4-6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092A\u093F\u0928",
-  pinHelperText: "\u0921\u093F\u0935\u093E\u0907\u0938 \u090F\u0928\u094D\u0915\u094D\u0930\u093F\u092A\u094D\u0936\u0928 \u0915\u0947 \u0938\u093E\u0925 \u0916\u093E\u0924\u0947 \u0915\u094B \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0915\u0930\u0924\u093E \u0939\u0948\u0964 \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u092C\u093E\u0926 \u092E\u0947\u0902 \u092D\u0940 \u0938\u0947\u091F \u0915\u0930 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964",
-  pinSkip: "\u0905\u092D\u0940 \u091B\u094B\u0921\u093C\u0947\u0902",
-  pinSkipWarning: "\u092A\u093F\u0928 \u0915\u0947 \u092C\u093F\u0928\u093E \u0915\u094B\u0908 \u092D\u0940 \u092F\u0939 \u0910\u092A \u0916\u094B\u0932\u0915\u0930 \u0906\u092A\u0915\u093E \u0916\u093E\u0924\u093E \u0926\u0947\u0916 \u0938\u0915\u0924\u093E \u0939\u0948\u0964 \u0906\u092A \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u0915\u092D\u0940 \u092D\u0940 \u092A\u093F\u0928 \u0932\u0917\u093E \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964",
-  pinSkipConfirm: "\u092A\u093F\u0928 \u091B\u094B\u0921\u093C\u0947\u0902",
-  pinError: "\u092A\u093F\u0928 4-6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0939\u094B\u0928\u093E \u091A\u093E\u0939\u093F\u090F \u0914\u0930 \u0906\u0938\u093E\u0928 \u0915\u094D\u0930\u092E \u0928\u0939\u0940\u0902 (\u091C\u0948\u0938\u0947 1234, 0000)",
-  reviewTitle: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932 \u0915\u0940 \u091C\u093E\u0902\u091A \u0915\u0930\u0947\u0902",
-  reviewSubtitle: "\u0905\u092A\u0928\u0940 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u091C\u093E\u0902\u091A \u0932\u0947\u0902\u0964 \u0907\u0928\u094D\u0939\u0947\u0902 \u0915\u092D\u0940 \u092D\u0940 \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u092C\u0926\u0932\u093E \u091C\u093E \u0938\u0915\u0924\u093E \u0939\u0948\u0964",
-  startAppButton: "\u0935\u0949\u0907\u0938 \u0916\u093E\u0924\u093E \u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902",
-  editField: "\u092C\u0926\u0932\u0947\u0902",
-  nextStep: "\u0906\u0917\u0947",
-  prevStep: "\u092A\u0940\u091B\u0947",
-  settingsProfileTitle: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932",
-  settingsProfileSubtitle: "\u0926\u0941\u0915\u093E\u0928, \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u093E\u092E \u0914\u0930 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092A\u094D\u0930\u092C\u0902\u0927\u093F\u0924 \u0915\u0930\u0947\u0902",
-  confirmUpiChangeTitle: "\u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u0926\u0932\u0947\u0902?",
-  confirmUpiChangeWarning: "\u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u0926\u0932\u0928\u0947 \u092A\u0930 \u0938\u092D\u0940 \u0917\u094D\u0930\u093E\u0939\u0915\u094B\u0902 \u0915\u094B \u092D\u0947\u091C\u0947 \u091C\u093E\u0928\u0947 \u0935\u093E\u0932\u0947 \u092D\u0941\u0917\u0924\u093E\u0928 \u0915\u094D\u092F\u0942\u0906\u0930 \u0915\u094B\u0921 \u0914\u0930 \u0932\u093F\u0902\u0915 \u092C\u0926\u0932 \u091C\u093E\u090F\u0902\u0917\u0947\u0964 \u0915\u094D\u092F\u093E \u0906\u092A \u0928\u093F\u0936\u094D\u091A\u093F\u0924 \u0939\u0948\u0902?",
-  confirmUpiChangeButton: "\u0939\u093E\u0902, \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u0926\u0932\u0947\u0902",
-  noPinWarningBanner: "\u0906\u092A\u0915\u093E \u0916\u093E\u0924\u093E \u092A\u093F\u0928 \u0938\u0947 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0921\u0947\u091F\u093E \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0915\u0930\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0905\u092D\u0940 \u092A\u093F\u0928 \u0932\u0917\u093E\u090F\u0902\u0964",
-  setPinNow: "\u0905\u092D\u0940 \u092A\u093F\u0928 \u0932\u0917\u093E\u090F\u0902",
-  profileUpdatedToast: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932 \u0938\u092B\u0932\u0924\u093E\u092A\u0942\u0930\u094D\u0935\u0915 \u0905\u092A\u0921\u0947\u091F \u0939\u094B \u0917\u092F\u093E!",
-  registerCustomerTitle: "\u0928\u092F\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0947\u0902",
-  registerCustomerSubtitle: "\u090F\u0928\u094D\u0915\u094D\u0930\u093F\u092A\u094D\u091F\u0947\u0921 \u0916\u093E\u0924\u0947 \u092E\u0947\u0902 \u0938\u0939\u0947\u091C\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0917\u094D\u0930\u093E\u0939\u0915 \u0935\u093F\u0935\u0930\u0923 \u092D\u0930\u0947\u0902",
-  enterCustomerPhone: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930",
-  phoneReadBackQuestion: "{phone}\u0964 \u0915\u094D\u092F\u093E \u092F\u0939 \u0938\u0939\u0940 \u0939\u0948?",
-  readBackConfirm: "\u0939\u093E\u0901, \u0938\u0939\u0940 \u0939\u0948",
-  readBackWrong: "\u0928\u0939\u0940\u0902, \u092C\u0926\u0932\u094B",
-  skipPhoneForNow: "\u0905\u092D\u0940 \u091B\u094B\u0921\u093C\u0947\u0902",
-  noNumberWarning: "\u092C\u093F\u0928\u093E \u0928\u0902\u092C\u0930 \u0915\u0947 \u0938\u0939\u0947\u091C\u093E \u0917\u092F\u093E\u0964 \u0924\u0917\u093E\u0926\u093E \u0938\u0902\u0926\u0947\u0936\u094B\u0902 \u092E\u0947\u0902 \u0928\u0902\u092C\u0930 \u092E\u093E\u0902\u0917\u093E \u091C\u093E\u090F\u0917\u093E\u0964",
-  duplicatePhoneWarning: "\u092F\u0939 \u0928\u0902\u092C\u0930 {name} \u0915\u093E \u0939\u0948\u0964 \u0915\u094D\u092F\u093E \u092F\u0939 \u0935\u0939\u0940 \u0917\u094D\u0930\u093E\u0939\u0915 \u0939\u0948\u0902?",
-  openExistingCustomer: "\u0939\u093E\u0901, {name} \u0915\u094B \u0916\u094B\u0932\u0947\u0902",
-  useAnotherNumber: "\u0926\u0942\u0938\u0930\u093E \u0928\u0902\u092C\u0930 \u0921\u093E\u0932\u0947\u0902",
-  requireCustomerPhoneLabel: "\u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0905\u0928\u093F\u0935\u093E\u0930\u094D\u092F \u0915\u0930\u0947\u0902",
-  requireCustomerPhoneDesc: "\u0928\u090F \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0924\u0947 \u0938\u092E\u092F \u092B\u094B\u0928 \u0928\u0902\u092C\u0930 \u0905\u0928\u093F\u0935\u093E\u0930\u094D\u092F \u0930\u0916\u0947\u0902",
-  customerRegisteredSpoken: "{name} \u0915\u094B \u091C\u094B\u0921\u093C \u0926\u093F\u092F\u093E \u0917\u092F\u093E",
-  customerNewAskPhoneSpoken: "{name} \u0928\u092F\u093E \u0939\u0948\u0964 \u0928\u0902\u092C\u0930 \u092C\u0924\u093E\u0907\u090F",
-  whichCustomerTitle: "\u0915\u094C\u0928 \u0938\u093E {name}?",
-  tellLast4DigitsSubtitle: "\u0928\u0902\u092C\u0930 \u0915\u0947 \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915 \u092C\u0924\u093E\u0907\u090F \u092F\u093E \u0915\u093E\u0930\u094D\u0921 \u092A\u0930 \u091F\u0948\u092A \u0915\u0930\u0947\u0902",
-  noNumberSavedChip: "\u0928\u0902\u092C\u0930 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u0948",
-  disambiguateRetryToast: "\u092F\u0939 \u0928\u0902\u092C\u0930 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u0964 \u0915\u0943\u092A\u092F\u093E \u0926\u094B\u092C\u093E\u0930\u093E \u092C\u094B\u0932\u0947\u0902 \u092F\u093E \u0915\u093E\u0930\u094D\u0921 \u091F\u0948\u092A \u0915\u0930\u0947\u0902\u0964",
-  disambiguateConfirmSpoken: "{name}, \u0920\u0940\u0915 \u0939\u0948\u0964",
-  autoOpenPaymentRequestLabel: "\u0909\u0927\u093E\u0930 \u0915\u0947 \u092C\u093E\u0926 \u092A\u0947\u092E\u0947\u0902\u091F \u0930\u093F\u0915\u094D\u0935\u0947\u0938\u094D\u091F \u0926\u093F\u0916\u093E\u090F\u0902",
-  autoOpenPaymentRequestDesc: "\u0909\u0927\u093E\u0930 \u0926\u0930\u094D\u091C \u0939\u094B\u0924\u0947 \u0939\u0940 \u0924\u0941\u0930\u0902\u0924 \u092F\u0942\u092A\u0940\u0906\u0908 \u0915\u094D\u092F\u0942\u0906\u0930 \u0914\u0930 \u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0932\u093F\u0902\u0915 \u0926\u093F\u0916\u093E\u090F\u0902",
-  showMyQr: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0915\u094D\u092F\u0942\u0906\u0930",
-  showMyQrDesc: "\u0915\u093E\u0909\u0902\u091F\u0930 \u092A\u0930 \u0916\u0921\u093C\u0947 \u0917\u094D\u0930\u093E\u0939\u0915\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F \u092F\u0942\u092A\u0940\u0906\u0908 \u0915\u094D\u092F\u0942\u0906\u0930",
-  showMyQrTitle: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E\u0909\u0902\u091F\u0930 \u0915\u094D\u092F\u0942\u0906\u0930",
-  paymentRequestTitle: "\u092A\u0947\u092E\u0947\u0902\u091F \u0930\u093F\u0915\u094D\u0935\u0947\u0938\u094D\u091F",
-  paymentRequestSubtitle: "\u092D\u0941\u0917\u0924\u093E\u0928 \u092A\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0915\u094D\u092F\u0942\u0906\u0930 \u092F\u093E \u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0932\u093F\u0902\u0915 \u0938\u093E\u091D\u093E \u0915\u0930\u0947\u0902",
-  sendWhatsAppPayment: "WhatsApp \u092D\u0947\u091C\u0947\u0902",
-  sendWhatsAppHint: "WhatsApp \u0916\u0941\u0932\u0947\u0917\u093E, \u092B\u093F\u0930 \u0938\u0947\u0902\u0921 \u092C\u091F\u0928 \u0926\u092C\u093E\u090F\u0902",
-  shareQr: "QR \u0936\u0947\u092F\u0930 \u0915\u0930\u0947\u0902",
-  downloadQr: "QR \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930\u0947\u0902",
-  laterDismiss: "\u092C\u093E\u0926 \u092E\u0947\u0902",
-  noPhoneAddNumber: "\u0928\u0902\u092C\u0930 \u091C\u094B\u0921\u093C\u0947\u0902",
-  noPhoneWarning: "\u0907\u0938 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u092B\u094B\u0928 \u0928\u0902\u092C\u0930 \u0926\u0930\u094D\u091C \u0928\u0939\u0940\u0902 \u0939\u0948",
-  noUpiIdWarning: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932 \u092E\u0947\u0902 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u0938\u0947\u091F \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0915\u094D\u092F\u0942\u0906\u0930 \u0915\u0947 \u0932\u093F\u090F \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u091C\u094B\u0921\u093C\u0947\u0902\u0964",
-  setupUpiNow: "UPI ID \u091C\u094B\u0921\u093C\u0947\u0902",
-  whatsappOfflineHint: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0915\u0947 \u0932\u093F\u090F \u0907\u0902\u091F\u0930\u0928\u0947\u091F \u0906\u0935\u0936\u094D\u092F\u0915 \u0939\u0948",
-  qrSavedToast: "\u0915\u094D\u092F\u0942\u0906\u0930 \u0915\u094B\u0921 \u0924\u0948\u092F\u093E\u0930 \u0939\u0948",
-  receiptQrTitle: "UPI \u0938\u0947 \u0938\u094D\u0915\u0948\u0928 \u0914\u0930 \u092A\u0947 \u0915\u0930\u0947\u0902"
-};
-
-// src/i18n/locales/kn.json
-var kn_default = {
-  appName: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C96\u0CBE\u0CA4\u0CC6",
-  tagline: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF \u0CB8\u0CBE\u0CB2 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
-  online: "\u0C86\u0CA8\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD",
-  offlineSafe: "\u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4 (\u0CB8\u0CCD\u0CA5\u0CB3\u0CC0\u0CAF)",
-  navHome: "\u0CAE\u0CC1\u0C96\u0CAA\u0CC1\u0C9F (\u0CAE\u0CC8\u0C95\u0CCD)",
-  navCustomers: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0C96\u0CBE\u0CA4\u0CC6",
-  navSummary: "\u0CA6\u0CC8\u0CA8\u0C82\u0CA6\u0CBF\u0CA8 \u0CB8\u0CBE\u0CB0\u0CBE\u0C82\u0CB6",
-  navSettings: "\u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u200C\u0C97\u0CB3\u0CC1",
-  navStyleguide: "\u0CB6\u0CC8\u0CB2\u0CBF \u0CAE\u0CBE\u0CB0\u0CCD\u0C97\u0CA6\u0CB0\u0CCD\u0CB6\u0CBF",
-  save: "\u0C89\u0CB3\u0CBF\u0CB8\u0CBF",
-  cancel: "\u0CB0\u0CA6\u0CCD\u0CA6\u0CC1\u0CAE\u0CBE\u0CA1\u0CBF",
-  delete: "\u0C85\u0CB3\u0CBF\u0CB8\u0CBF",
-  edit: "\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC1",
-  close: "\u0CAE\u0CC1\u0C9A\u0CCD\u0C9A\u0CBF",
-  search: "\u0CB9\u0CC1\u0CA1\u0CC1\u0C95\u0CBF",
-  back: "\u0CB9\u0CBF\u0C82\u0CA6\u0C95\u0CCD\u0C95\u0CC6",
-  done: "\u0CAA\u0CC2\u0CB0\u0CCD\u0CA3",
-  creditGiven: "\u0CB8\u0CBE\u0CB2 \u0CA8\u0CC0\u0CA1\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
-  paymentReceived: "\u0CB9\u0CA3 \u0CAC\u0C82\u0CA6\u0CBF\u0CA6\u0CC6",
-  balanceOwed: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF",
-  netBalance: "\u0CA8\u0CBF\u0CB5\u0CCD\u0CB5\u0CB3 \u0CAC\u0CBE\u0C95\u0CBF",
-  todaySummary: "\u0C87\u0C82\u0CA6\u0CBF\u0CA8 \u0CB2\u0CC6\u0C95\u0CCD\u0C95",
-  recentEntries: "\u0C87\u0CA4\u0CCD\u0CA4\u0CC0\u0C9A\u0CBF\u0CA8 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1",
-  noEntries: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1 \u0CB2\u0CAD\u0CCD\u0CAF\u0CB5\u0CBF\u0CB2\u0CCD\u0CB2",
-  micIdle: "\u0CAE\u0CC8\u0C95\u0CCD \u0C92\u0CA4\u0CCD\u0CA4\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
-  micListening: "\u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC7\u0CA8\u0CC6... \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
-  micProcessing: "\u0CB2\u0CC6\u0C95\u0CCD\u0C95 \u0CAA\u0CB0\u0CBF\u0CB6\u0CC0\u0CB2\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
-  micError: "\u0CB8\u0CCD\u0CAA\u0CB7\u0CCD\u0C9F\u0CB5\u0CBE\u0C97\u0CBF \u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CB2\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAA\u0CC1\u0CA8\u0C83 \u0CAA\u0CCD\u0CB0\u0CAF\u0CA4\u0CCD\u0CA8\u0CBF\u0CB8\u0CBF.",
-  typeInstead: "\u0C9F\u0CC8\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0CAC\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
-  trySpeaking: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF \u0CA8\u0CCB\u0CA1\u0CBF",
-  customersTitle: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0C96\u0CBE\u0CA4\u0CC6",
-  searchCustomerPlaceholder: "\u0CB9\u0CC6\u0CB8\u0CB0\u0CC1 \u0C85\u0CA5\u0CB5\u0CBE \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB9\u0CC1\u0CA1\u0CC1\u0C95\u0CBF...",
-  filterAll: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE",
-  filterOwes: "\u0CAC\u0CBE\u0C95\u0CBF \u0C87\u0CB0\u0CC1\u0CB5\u0CB5\u0CB0\u0CC1",
-  filterSettled: "\u0C9A\u0CC1\u0C95\u0CCD\u0CA4\u0CBE",
-  addJama: "+ \u0CB9\u0CA3 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
-  printSlip: "\u0CB0\u0CB6\u0CC0\u0CA6\u0CBF \u0CAE\u0CC1\u0CA6\u0CCD\u0CB0\u0CBF\u0CB8\u0CBF",
-  sendWhatsApp: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6",
-  summaryTitle: "\u0CA6\u0CC8\u0CA8\u0C82\u0CA6\u0CBF\u0CA8 \u0CB8\u0CBE\u0CB0\u0CBE\u0C82\u0CB6",
-  todayUdhaar: "\u0CB8\u0CBE\u0CB2 \u0CA8\u0CC0\u0CA1\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
-  todayJama: "\u0CB9\u0CA3 \u0CB8\u0CCD\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
-  todayNet: "\u0CA8\u0CBF\u0CB5\u0CCD\u0CB5\u0CB3 \u0CAC\u0CA6\u0CB2\u0CBE\u0CB5\u0CA3\u0CC6",
-  weeklyTrend: "\u0C95\u0CB3\u0CC6\u0CA6 7 \u0CA6\u0CBF\u0CA8\u0C97\u0CB3 \u0CB5\u0CBF\u0CB5\u0CB0",
-  topPending: "\u0CB9\u0CC6\u0C9A\u0CCD\u0C9A\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF \u0C87\u0CB0\u0CC1\u0CB5\u0CB5\u0CB0\u0CC1",
-  settingsTitle: "\u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u200C\u0C97\u0CB3\u0CC1",
-  settingsSubtitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CC1, \u0CAD\u0CBE\u0CB7\u0CC6, \u0CB8\u0CCC\u0C82\u0CA1\u0CCD\u200C\u0CAC\u0CBE\u0C95\u0CCD\u0CB8\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAC\u0CCD\u0CAF\u0CBE\u0C95\u0CAA\u0CCD",
-  shopNameLabel: "\u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CC1",
-  shopNamePlaceholder: "\u0C89\u0CA6\u0CBE. \u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C95\u0CBF\u0CB0\u0CBE\u0CA3\u0CBF \u0C85\u0C82\u0C97\u0CA1\u0CBF",
-  uiLanguageLabel: "\u0CAA\u0CB0\u0CA6\u0CC6\u0CAF \u0CAD\u0CBE\u0CB7\u0CC6",
-  uiLanguageDesc: "\u0CAC\u0C9F\u0CA8\u0CCD\u200C\u0C97\u0CB3\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAA\u0CB0\u0CA6\u0CC6\u0CAF \u0CAE\u0CC7\u0CB2\u0CBF\u0CA8 \u0CAD\u0CBE\u0CB7\u0CC6",
-  speechLanguageLabel: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CC1\u0CB5 \u0CAD\u0CBE\u0CB7\u0CC6",
-  speechLanguageDesc: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C97\u0CC1\u0CB0\u0CC1\u0CA4\u0CBF\u0CB8\u0CC1\u0CB5\u0CBF\u0C95\u0CC6 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB8\u0CCC\u0C82\u0CA1\u0CCD\u200C\u0CAC\u0CBE\u0C95\u0CCD\u0CB8\u0CCD\u200C\u0C97\u0CC6",
-  speechSpeedLabel: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0CB5\u0CC7\u0C97 (Soundbox)",
-  speedSlow: "\u0CA8\u0CBF\u0CA7\u0CBE\u0CA8",
-  speedNormal: "\u0CB8\u0CBE\u0CAE\u0CBE\u0CA8\u0CCD\u0CAF",
-  speedFast: "\u0CB5\u0CC7\u0C97",
-  muteRepliesLabel: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C89\u0CA4\u0CCD\u0CA4\u0CB0 \u0CAE\u0CCD\u0CAF\u0CC2\u0C9F\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
-  muteRepliesDesc: "\u0CAC\u0CC6\u0CB2\u0CCD \u0CAE\u0CBE\u0CA4\u0CCD\u0CB0 \u0CB0\u0CBF\u0C82\u0C97\u0CCD \u0C86\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6, \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C93\u0CA6\u0CC1\u0CB5\u0CC1\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2",
-  themeLabel: "\u0CA5\u0CC0\u0CAE\u0CCD",
-  themeLight: "\u0CB2\u0CC8\u0C9F\u0CCD \u0CA5\u0CC0\u0CAE\u0CCD",
-  themeHighContrast: "\u0CB9\u0CC8 \u0C95\u0CBE\u0C82\u0C9F\u0CCD\u0CB0\u0CBE\u0CB8\u0CCD\u0C9F\u0CCD (\u0C95\u0CAA\u0CCD\u0CAA\u0CC1)",
-  themeDesc: "\u0CAC\u0CBF\u0CB8\u0CBF\u0CB2\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB0\u0CBE\u0CA4\u0CCD\u0CB0\u0CBF\u0CAF \u0CAC\u0CC6\u0CB3\u0C95\u0CBF\u0C97\u0CC6 \u0CB8\u0CC2\u0C95\u0CCD\u0CA4\u0CB5\u0CBE\u0CA6 \u0C95\u0CBE\u0C82\u0C9F\u0CCD\u0CB0\u0CBE\u0CB8\u0CCD\u0C9F\u0CCD",
-  asrEngineLabel: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C8E\u0C82\u0C9C\u0CBF\u0CA8\u0CCD (ASR)",
-  asrEngineDesc: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAA\u0CA0\u0CCD\u0CAF\u0CB5\u0CBE\u0C97\u0CBF \u0CAA\u0CB0\u0CBF\u0CB5\u0CB0\u0CCD\u0CA4\u0CBF\u0CB8\u0CC1\u0CB5 \u0C8E\u0C82\u0C9C\u0CBF\u0CA8\u0CCD",
-  asrBrowser: "\u0CAC\u0CCD\u0CB0\u0CCC\u0CB8\u0CB0\u0CCD \u0C86\u0CA8\u0CCD\u200C-\u0CA1\u0CBF\u0CB5\u0CC8\u0CB8\u0CCD (\u0C89\u0C9A\u0CBF\u0CA4, \u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD)",
-  asrBhashini: "\u0CAD\u0CBE\u0CB7\u0CBF\u0CA3\u0CBF AI (\u0CA1\u0CBF\u0C9C\u0CBF\u0C9F\u0CB2\u0CCD \u0C87\u0C82\u0CA1\u0CBF\u0CAF\u0CBE) [Stubbed]",
-  asrSarvam: "\u0CB8\u0CB0\u0CCD\u0CB5\u0C82 AI (\u0C87\u0C82\u0CA1\u0CBF\u0C95\u0CCD \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF) [Stubbed]",
-  exportLedgerLabel: "\u0C96\u0CBE\u0CA4\u0CC6 \u0CA1\u0CC7\u0C9F\u0CBE \u0CB0\u0CAB\u0CCD\u0CA4\u0CC1",
-  exportJson: "JSON \u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CA1\u0CCC\u0CA8\u0CCD\u200C\u0CB2\u0CCB\u0CA1\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
-  exportCsv: "CSV \u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CA1\u0CCC\u0CA8\u0CCD\u200C\u0CB2\u0CCB\u0CA1\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
-  dangerZoneLabel: "\u0C85\u0CAA\u0CBE\u0CAF \u0CB5\u0CB2\u0CAF",
-  clearAllData: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0C96\u0CBE\u0CA4\u0CC6 \u0CA1\u0CC7\u0C9F\u0CBE\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u0C85\u0CB3\u0CBF\u0CB8\u0CBF",
-  clearConfirm: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB5\u0CB9\u0CBF\u0CB5\u0CBE\u0C9F\u0CC1\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0C85\u0CB3\u0CBF\u0CB8\u0CB2\u0CC1 \u0CA8\u0CC0\u0CB5\u0CC1 \u0C96\u0C9A\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CCD\u0CA6\u0CC0\u0CB0\u0CBE? \u0C87\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB0\u0CA6\u0CCD\u0CA6\u0CC1\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CB5\u0CC1\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2.",
-  clearSuccess: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0CA1\u0CC7\u0C9F\u0CBE\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAF\u0CB6\u0CB8\u0CCD\u0CB5\u0CBF\u0CAF\u0CBE\u0C97\u0CBF \u0C85\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
-  resetDemo: "\u0CA1\u0CC6\u0CAE\u0CCA \u0CA1\u0CC7\u0C9F\u0CBE \u0CAE\u0CB0\u0CC1\u0CB8\u0CCD\u0CA5\u0CBE\u0CAA\u0CBF\u0CB8\u0CBF",
-  resetSuccess: "\u0CA1\u0CC6\u0CAE\u0CCA \u0CA1\u0CC7\u0C9F\u0CBE \u0CB2\u0CCB\u0CA1\u0CCD \u0C86\u0C97\u0CBF\u0CA6\u0CC6!",
-  localFirstInfo: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CC1 100% \u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD \u0C86\u0C97\u0CBF\u0CA6\u0CC6. \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0CA1\u0CC7\u0C9F\u0CBE \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6 (IndexedDB).",
-  signupWelcomeTitle: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C96\u0CBE\u0CA4\u0CC6\u0C97\u0CC6 \u0CB8\u0CC1\u0CB8\u0CCD\u0CB5\u0CBE\u0C97\u0CA4",
-  signupWelcomeSubtitle: "\u0CAD\u0CBE\u0CB0\u0CA4\u0CC0\u0CAF \u0C95\u0CBF\u0CB0\u0CBE\u0CA3\u0CBF \u0C85\u0C82\u0C97\u0CA1\u0CBF\u0C97\u0CB3\u0CBF\u0C97\u0CBE\u0C97\u0CBF \u0CB9\u0CCD\u0CAF\u0CBE\u0C82\u0CA1\u0CCD\u0CB8\u0CCD-\u0CAB\u0CCD\u0CB0\u0CC0 \u0CB5\u0CBE\u0CAF\u0CCD\u0CB8\u0CCD \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD",
-  dataStaysOnPhone: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CA1\u0CC7\u0C9F\u0CBE \u0C88 \u0CAB\u0CCB\u0CA8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAE\u0CBE\u0CA4\u0CCD\u0CB0 \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CB0\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6",
-  getStarted: "\u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD\u0CBF\u0CB8\u0CBF",
-  stepOf: "\u0CB9\u0C82\u0CA4 {current} / {total}",
-  shopNamePrompt: "\u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CC7\u0CA8\u0CC1?",
-  shopNameSpoken: "\u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF",
-  shopNameHelper: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CAC\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
-  shopNameError: "\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CBE\u0CA8\u0CCD\u0CAF \u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF (\u0C95\u0CA8\u0CBF\u0CB7\u0CCD\u0CA0 2 \u0C85\u0C95\u0CCD\u0CB7\u0CB0\u0C97\u0CB3\u0CC1)",
-  ownerNamePrompt: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB9\u0CC6\u0CB8\u0CB0\u0CC7\u0CA8\u0CC1?",
-  ownerNameSpoken: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF",
-  ownerNamePlaceholder: "\u0C89\u0CA6\u0CBE. \u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C95\u0CC1\u0CAE\u0CBE\u0CB0\u0CCD",
-  ownerNameHelper: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAE\u0CBE\u0CB2\u0CC0\u0C95\u0CB0 \u0CB9\u0CC6\u0CB8\u0CB0\u0CC1",
-  ownerNameError: "\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF (\u0C95\u0CA8\u0CBF\u0CB7\u0CCD\u0CA0 2 \u0C85\u0C95\u0CCD\u0CB7\u0CB0\u0C97\u0CB3\u0CC1)",
-  phonePrompt: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6",
-  phoneSpoken: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE 10 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
-  phonePlaceholder: "\u0C89\u0CA6\u0CBE. 9876543210",
-  phoneHelper: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF \u0CA8\u0CC6\u0CA8\u0CAA\u0CBF\u0CB8\u0CB2\u0CC1 10 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6",
-  phoneError: "6-9 \u0CB0\u0CBF\u0C82\u0CA6 \u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD\u0CB5\u0CBE\u0C97\u0CC1\u0CB5 10 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
-  upiPrompt: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF",
-  upiSpoken: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CB9\u0CC7\u0CB3\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CAC\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
-  upiPlaceholder: "\u0C89\u0CA6\u0CBE. ramesh@oksbi",
-  upiHelperText: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAE\u0CBE\u0CA4\u0CCD\u0CB0 \u0CB8\u0CBE\u0C95\u0CC1. \u0CA8\u0CBE\u0CB5\u0CC1 \u0C8E\u0C82\u0CA6\u0CBF\u0C97\u0CC2 \u0CAC\u0CCD\u0CAF\u0CBE\u0C82\u0C95\u0CCD \u0C96\u0CBE\u0CA4\u0CC6 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C95\u0CC7\u0CB3\u0CC1\u0CB5\u0CC1\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2.",
-  upiPaste: "\u0CAA\u0CC7\u0CB8\u0CCD\u0C9F\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
-  upiReadBack: "\u0C85\u0C95\u0CCD\u0CB7\u0CB0\u0CB6\u0C83 \u0C95\u0CC7\u0CB3\u0CBF",
-  upiReadingBack: "\u0C93\u0CA6\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
-  upiError: "\u0CAE\u0CBE\u0CA8\u0CCD\u0CAF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF (\u0C89\u0CA6\u0CBE. name@bank)",
-  pinPrompt: "\u0CB8\u0CC6\u0C95\u0CCD\u0CAF\u0CC1\u0CB0\u0CBF\u0C9F\u0CBF \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF (\u0C90\u0C9A\u0CCD\u0C9B\u0CBF\u0C95)",
-  pinSpoken: "4 \u0CB0\u0CBF\u0C82\u0CA6 6 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAA\u0CBF\u0CA8\u0CCD \u0C86\u0CAF\u0CCD\u0C95\u0CC6\u0CAE\u0CBE\u0CA1\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
-  pinPlaceholder: "4-6 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAA\u0CBF\u0CA8\u0CCD",
-  pinHelperText: "\u0CB8\u0CBE\u0CA7\u0CA8\u0CA6 \u0C8E\u0CA8\u0CCD\u200C\u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0CB6\u0CA8\u0CCD \u0CAE\u0CC2\u0CB2\u0C95 \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6. \u0CA8\u0C82\u0CA4\u0CB0 \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CC2 \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1.",
-  pinSkip: "\u0C88\u0C97 \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
-  pinSkipWarning: "\u0CAA\u0CBF\u0CA8\u0CCD \u0C87\u0CB2\u0CCD\u0CB2\u0CA6\u0CC6 \u0CAF\u0CBE\u0CB0\u0CBE\u0CA6\u0CB0\u0CC2 \u0C88 \u0C86\u0CCD\u0CAF\u0CAA\u0CCD \u0CA4\u0CC6\u0CB0\u0CC6\u0CA6\u0CC1 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CCB\u0CA1\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1. \u0CA8\u0CC0\u0CB5\u0CC1 \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CBE\u0CB5\u0CBE\u0C97 \u0CAC\u0CC7\u0C95\u0CBE\u0CA6\u0CB0\u0CC2 \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1.",
-  pinSkipConfirm: "\u0CAA\u0CBF\u0CA8\u0CCD \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
-  pinError: "\u0CAA\u0CBF\u0CA8\u0CCD 4-6 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CBE\u0C97\u0CBF\u0CB0\u0CAC\u0CC7\u0C95\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB8\u0CB0\u0CB3 \u0C85\u0CA8\u0CC1\u0C95\u0CCD\u0CB0\u0CAE\u0CB5\u0CBE\u0C97\u0CBF\u0CB0\u0CAC\u0CBE\u0CB0\u0CA6\u0CC1 (\u0C89\u0CA6\u0CBE. 1234, 0000)",
-  reviewTitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD \u0CAA\u0CB0\u0CBF\u0CB6\u0CC0\u0CB2\u0CBF\u0CB8\u0CBF",
-  reviewSubtitle: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAA\u0CB0\u0CBF\u0CB6\u0CC0\u0CB2\u0CBF\u0CB8\u0CBF. \u0C87\u0CB5\u0CC1\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CBE\u0CB5\u0CBE\u0C97 \u0CAC\u0CC7\u0C95\u0CBE\u0CA6\u0CB0\u0CC2 \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1.",
-  startAppButton: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C96\u0CBE\u0CA4\u0CC6 \u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD\u0CBF\u0CB8\u0CBF",
-  editField: "\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC1",
-  nextStep: "\u0CAE\u0CC1\u0C82\u0CA6\u0CC6",
-  prevStep: "\u0CB9\u0CBF\u0C82\u0CA6\u0CC6",
-  settingsProfileTitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD",
-  settingsProfileSubtitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CC1, \u0CAE\u0CBE\u0CB2\u0CC0\u0C95\u0CB0 \u0CB9\u0CC6\u0CB8\u0CB0\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF",
-  confirmUpiChangeTitle: "\u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CAC\u0CC7\u0C95\u0CC7?",
-  confirmUpiChangeWarning: "\u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CC1\u0CB5\u0CC1\u0CA6\u0CB0\u0CBF\u0C82\u0CA6 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0C97\u0CC6 \u0C95\u0CB3\u0CC1\u0CB9\u0CBF\u0CB8\u0CC1\u0CB5 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0C95\u0CCB\u0CA1\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB2\u0CBF\u0C82\u0C95\u0CCD\u200C\u0C97\u0CB3\u0CC1 \u0CAC\u0CA6\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CB5\u0CC6. \u0CA8\u0CC0\u0CB5\u0CC1 \u0C96\u0C9A\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CCD\u0CA6\u0CC0\u0CB0\u0CBE?",
-  confirmUpiChangeButton: "\u0CB9\u0CCC\u0CA6\u0CC1, \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CBF",
-  noPinWarningBanner: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CC1 \u0CAA\u0CBF\u0CA8\u0CCD\u200C\u0CA8\u0CBF\u0C82\u0CA6 \u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CB2\u0CCD\u0CAA\u0C9F\u0CCD\u0C9F\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA1\u0CC7\u0C9F\u0CBE \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CB0\u0CBF\u0CB8\u0CB2\u0CC1 \u0C88\u0C97\u0CB2\u0CC7 \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF.",
-  setPinNow: "\u0C88\u0C97\u0CB2\u0CC7 \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF",
-  profileUpdatedToast: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD \u0CAF\u0CB6\u0CB8\u0CCD\u0CB5\u0CBF\u0CAF\u0CBE\u0C97\u0CBF \u0CA8\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
-  registerCustomerTitle: "\u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CA8\u0CCB\u0C82\u0CA6\u0CA3\u0CBF",
-  registerCustomerSubtitle: "\u0C8E\u0CA8\u0CCD\u200C\u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0C9F\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF\u0CA6 \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CC1 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CC1",
-  enterCustomerPhone: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6",
-  phoneReadBackQuestion: "{phone}. \u0CB8\u0CB0\u0CBF\u0CAF\u0CBE\u0C97\u0CBF\u0CA6\u0CC6\u0CAF\u0CC7?",
-  readBackConfirm: "\u0CB9\u0CCC\u0CA6\u0CC1, \u0CB8\u0CB0\u0CBF",
-  readBackWrong: "\u0C87\u0CB2\u0CCD\u0CB2, \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CBF",
-  skipPhoneForNow: "\u0C88\u0C97 \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
-  noNumberWarning: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CBF\u0CB2\u0CCD\u0CB2\u0CA6\u0CC6 \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6. \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6\u0C97\u0CB3\u0CB2\u0CCD\u0CB2\u0CBF \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C95\u0CC7\u0CB3\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6.",
-  duplicatePhoneWarning: "\u0C88 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 {name} \u0C85\u0CB5\u0CB0\u0CA6\u0CCD\u0CA6\u0CC1. \u0C87\u0CB5\u0CB0\u0CC7 \u0C86 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC7?",
-  openExistingCustomer: "\u0CB9\u0CCC\u0CA6\u0CC1, {name} \u0CA4\u0CC6\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
-  useAnotherNumber: "\u0CAC\u0CC7\u0CB0\u0CC6 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CAC\u0CB3\u0CB8\u0CBF",
-  requireCustomerPhoneLabel: "\u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C95\u0CA1\u0CCD\u0CA1\u0CBE\u0CAF\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CBF",
-  requireCustomerPhoneDesc: "\u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CC1\u0CB5\u0CBE\u0C97 \u0CAB\u0CCB\u0CA8\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C95\u0CA1\u0CCD\u0CA1\u0CBE\u0CAF\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CBF",
-  customerRegisteredSpoken: "{name} \u0C85\u0CB5\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
-  customerNewAskPhoneSpoken: "{name} \u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95. \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CB9\u0CC7\u0CB3\u0CBF",
-  whichCustomerTitle: "\u0CAF\u0CBE\u0CB5 {name}?",
-  tellLast4DigitsSubtitle: "\u0CAB\u0CCB\u0CA8\u0CCD \u0CA8\u0C82\u0CAC\u0CB0\u0CCD\u200C\u0CA8 \u0C95\u0CCA\u0CA8\u0CC6\u0CAF 4 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA4\u0CBF\u0CB3\u0CBF\u0CB8\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0C95\u0CBE\u0CB0\u0CCD\u0CA1\u0CCD \u0CB8\u0CCD\u0CAA\u0CB0\u0CCD\u0CB6\u0CBF\u0CB8\u0CBF",
-  noNumberSavedChip: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C89\u0CB3\u0CBF\u0CB8\u0CBF\u0CB2\u0CCD\u0CB2",
-  disambiguateRetryToast: "\u0C88 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0C95\u0CC6\u0CAF\u0CBE\u0C97\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CCA\u0CAE\u0CCD\u0CAE\u0CC6 \u0CB9\u0CC7\u0CB3\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0C95\u0CBE\u0CB0\u0CCD\u0CA1\u0CCD \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF.",
-  disambiguateConfirmSpoken: "{name}, \u0CB8\u0CB0\u0CBF.",
-  autoOpenPaymentRequestLabel: "\u0CB8\u0CBE\u0CB2\u0CA6 \u0CA8\u0C82\u0CA4\u0CB0 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB5\u0CBF\u0CA8\u0C82\u0CA4\u0CBF \u0CA4\u0CCB\u0CB0\u0CBF\u0CB8\u0CBF",
-  autoOpenPaymentRequestDesc: "\u0CB8\u0CBE\u0CB2 \u0CA6\u0CBE\u0C96\u0CB2\u0CBF\u0CB8\u0CBF\u0CA6 \u0CA4\u0C95\u0CCD\u0CB7\u0CA3 \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0CB2\u0CBF\u0C82\u0C95\u0CCD \u0CA4\u0CCB\u0CB0\u0CBF\u0CB8\u0CBF",
-  showMyQr: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD",
-  showMyQrDesc: "\u0C95\u0CCC\u0C82\u0C9F\u0CB0\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF\u0CB0\u0CC1\u0CB5 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0C97\u0CBE\u0C97\u0CBF \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD",
-  showMyQrTitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0C95\u0CCC\u0C82\u0C9F\u0CB0\u0CCD \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD",
-  paymentRequestTitle: "\u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB5\u0CBF\u0CA8\u0C82\u0CA4\u0CBF",
-  paymentRequestSubtitle: "\u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB8\u0C82\u0C97\u0CCD\u0CB0\u0CB9\u0CBF\u0CB8\u0CB2\u0CC1 \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0C85\u0CA5\u0CB5\u0CBE \u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0CB2\u0CBF\u0C82\u0C95\u0CCD \u0CB9\u0C82\u0C9A\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CBF",
-  sendWhatsAppPayment: "WhatsApp \u0C95\u0CB3\u0CC1\u0CB9\u0CBF\u0CB8\u0CBF",
-  sendWhatsAppHint: "WhatsApp \u0CA4\u0CC6\u0CB0\u0CC6\u0CAF\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6, \u0CA8\u0C82\u0CA4\u0CB0 Send \u0C92\u0CA4\u0CCD\u0CA4\u0CBF",
-  shareQr: "QR \u0CB9\u0C82\u0C9A\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CBF",
-  downloadQr: "QR \u0CA1\u0CCC\u0CA8\u0CCD\u200C\u0CB2\u0CCB\u0CA1\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
-  laterDismiss: "\u0CA8\u0C82\u0CA4\u0CB0",
-  noPhoneAddNumber: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
-  noPhoneWarning: "\u0C88 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CAB\u0CCB\u0CA8\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C89\u0CB3\u0CBF\u0CB8\u0CBF\u0CB2\u0CCD\u0CB2",
-  noUpiIdWarning: "\u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0C87\u0CB2\u0CCD\u0CB2. \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF.",
-  setupUpiNow: "UPI ID \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
-  whatsappOfflineHint: "WhatsApp \u0C97\u0CBE\u0C97\u0CBF \u0C87\u0C82\u0C9F\u0CB0\u0CCD\u0CA8\u0CC6\u0C9F\u0CCD \u0C85\u0C97\u0CA4\u0CCD\u0CAF\u0CB5\u0CBF\u0CA6\u0CC6",
-  qrSavedToast: "\u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0C95\u0CCB\u0CA1\u0CCD \u0CB8\u0CBF\u0CA6\u0CCD\u0CA7\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
-  receiptQrTitle: "UPI \u0CAE\u0CC2\u0CB2\u0C95 \u0CB8\u0CCD\u0C95\u0CCD\u0CAF\u0CBE\u0CA8\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF\u0CB8\u0CBF"
-};
-
-// src/i18n/locales/ta.json
-var ta_default = {
-  appName: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1",
-  tagline: "\u0BAA\u0BC7\u0B9A\u0BBF \u0B95\u0B9F\u0BA9\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  online: "\u0B86\u0BA9\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD",
-  offlineSafe: "\u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0BA9\u0BA4\u0BC1 (\u0BB2\u0BCB\u0B95\u0BCD\u0B95\u0BB2\u0BCD)",
-  navHome: "\u0BAE\u0BC1\u0B95\u0BAA\u0BCD\u0BAA\u0BC1 (\u0BAE\u0BC8\u0B95\u0BCD)",
-  navCustomers: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD",
-  navSummary: "\u0BA4\u0BBF\u0BA9\u0B9A\u0BB0\u0BBF \u0B9A\u0BC1\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BAE\u0BCD",
-  navSettings: "\u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BCD",
-  navStyleguide: "\u0BB5\u0B9F\u0BBF\u0BB5\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1",
-  save: "\u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95",
-  cancel: "\u0BB0\u0BA4\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD",
-  delete: "\u0BA8\u0BC0\u0B95\u0BCD\u0B95\u0BC1",
-  edit: "\u0BA4\u0BBF\u0BB0\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1",
-  close: "\u0BAE\u0BC2\u0B9F\u0BC1",
-  search: "\u0BA4\u0BC7\u0B9F\u0BC1",
-  back: "\u0BAA\u0BBF\u0BA9\u0BCD\u0B9A\u0BC6\u0BB2\u0BCD",
-  done: "\u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
-  creditGiven: "\u0B95\u0B9F\u0BA9\u0BCD \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BA4\u0BC1",
-  paymentReceived: "\u0BAA\u0BA3\u0BAE\u0BCD \u0BB5\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
-  balanceOwed: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
-  netBalance: "\u0BA8\u0BBF\u0B95\u0BB0 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
-  todaySummary: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC8\u0BAF \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1",
-  recentEntries: "\u0B9A\u0BAE\u0BC0\u0BAA\u0BA4\u0BCD\u0BA4\u0BBF\u0BAF \u0B89\u0BB3\u0BCD\u0BB3\u0BC0\u0B9F\u0BC1\u0B95\u0BB3\u0BCD",
-  noEntries: "\u0B87\u0BA9\u0BCD\u0BA9\u0BC1\u0BAE\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8",
-  micIdle: "\u0BAE\u0BC8\u0B95\u0BCD \u0B85\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BBF \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  micListening: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1... \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  micProcessing: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBF\u0B9F\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
-  micError: "\u0BA4\u0BC6\u0BB3\u0BBF\u0BB5\u0BBE\u0B95 \u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAE\u0BC1\u0BAF\u0BB1\u0BCD\u0B9A\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.",
-  typeInstead: "\u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BB5\u0BC1\u0BAE\u0BCD",
-  trySpeaking: "\u0BAA\u0BC7\u0B9A\u0BBF\u0BAA\u0BCD \u0BAA\u0BBE\u0BB0\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  customersTitle: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1",
-  searchCustomerPlaceholder: "\u0BAA\u0BC6\u0BAF\u0BB0\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0BA4\u0BC7\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD...",
-  filterAll: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1\u0BAE\u0BCD",
-  filterOwes: "\u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0B89\u0BB3\u0BCD\u0BB3\u0BB5\u0BB0\u0BCD\u0B95\u0BB3\u0BCD",
-  filterSettled: "\u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
-  addJama: "+ \u0BAA\u0BA3\u0BAE\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD",
-  printSlip: "\u0BB0\u0B9A\u0BC0\u0BA4\u0BC1 \u0B85\u0B9A\u0BCD\u0B9A\u0BBF\u0B9F\u0BC1\u0B95",
-  sendWhatsApp: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD",
-  summaryTitle: "\u0BA4\u0BBF\u0BA9\u0B9A\u0BB0\u0BBF \u0B9A\u0BC1\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BAE\u0BCD",
-  todayUdhaar: "\u0B95\u0B9F\u0BA9\u0BCD \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BA4\u0BC1",
-  todayJama: "\u0BAA\u0BA3\u0BAE\u0BCD \u0BB5\u0BB0\u0BB5\u0BC1",
-  todayNet: "\u0BA8\u0BBF\u0B95\u0BB0 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BAE\u0BCD",
-  weeklyTrend: "\u0B95\u0B9F\u0BA8\u0BCD\u0BA4 7 \u0BA8\u0BBE\u0B9F\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BCB\u0B95\u0BCD\u0B95\u0BC1",
-  topPending: "\u0B85\u0BA4\u0BBF\u0B95 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0B89\u0BB3\u0BCD\u0BB3\u0BB5\u0BB0\u0BCD\u0B95\u0BB3\u0BCD",
-  settingsTitle: "\u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BCD",
-  settingsSubtitle: "\u0B95\u0B9F\u0BC8 \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BCD, \u0BAE\u0BCA\u0BB4\u0BBF, \u0B92\u0BB2\u0BBF\u0BAA\u0BCD\u0BAA\u0BC6\u0B9F\u0BCD\u0B9F\u0BBF \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BC1\u0BAA\u0BCD\u0BAA\u0BBF\u0BB0\u0BA4\u0BBF",
-  shopNameLabel: "\u0B95\u0B9F\u0BC8 \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD",
-  shopNamePlaceholder: "\u0B8E.\u0B95\u0BBE. \u0BB0\u0BAE\u0BC7\u0BB7\u0BCD \u0BAE\u0BB3\u0BBF\u0B95\u0BC8\u0B95\u0BCD \u0B95\u0B9F\u0BC8",
-  uiLanguageLabel: "\u0BA4\u0BBF\u0BB0\u0BC8 \u0BAE\u0BCA\u0BB4\u0BBF",
-  uiLanguageDesc: "\u0BAA\u0BCA\u0BA4\u0BCD\u0BA4\u0BBE\u0BA9\u0BCD\u0B95\u0BB3\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BA4\u0BBF\u0BB0\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAE\u0BCA\u0BB4\u0BBF",
-  speechLanguageLabel: "\u0BAA\u0BC7\u0B9A\u0BC1\u0BAE\u0BCD \u0BAE\u0BCA\u0BB4\u0BBF",
-  speechLanguageDesc: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B85\u0B99\u0BCD\u0B95\u0BC0\u0B95\u0BBE\u0BB0\u0BAE\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B92\u0BB2\u0BBF\u0BAA\u0BCD\u0BAA\u0BC6\u0B9F\u0BCD\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC1",
-  speechSpeedLabel: "\u0BAA\u0BC7\u0B9A\u0BCD\u0B9A\u0BC1 \u0BB5\u0BC7\u0B95\u0BAE\u0BCD (Soundbox)",
-  speedSlow: "\u0BAE\u0BC6\u0BA4\u0BC1\u0BB5\u0BBE\u0B95",
-  speedNormal: "\u0B87\u0BAF\u0BB2\u0BCD\u0BAA\u0BBE\u0BA9\u0BA4\u0BC1",
-  speedFast: "\u0BB5\u0BC7\u0B95\u0BAE\u0BBE\u0B95",
-  muteRepliesLabel: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAA\u0BA4\u0BBF\u0BB2\u0BCD\u0B95\u0BB3\u0BC8 \u0BAE\u0BC1\u0B9F\u0B95\u0BCD\u0B95\u0BC1",
-  muteRepliesDesc: "\u0BAE\u0BA3\u0BBF \u0BAE\u0B9F\u0BCD\u0B9F\u0BC1\u0BAE\u0BC7 \u0B92\u0BB2\u0BBF\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD, \u0BAA\u0BC7\u0B9A\u0BBE\u0BA4\u0BC1",
-  themeLabel: "\u0BA4\u0BC0\u0BAE\u0BCD",
-  themeLight: "\u0BB2\u0BC8\u0B9F\u0BCD \u0BA4\u0BC0\u0BAE\u0BCD",
-  themeHighContrast: "\u0BB9\u0BC8 \u0B95\u0BBE\u0BA9\u0BCD\u0B9F\u0BCD\u0BB0\u0BBE\u0BB8\u0BCD\u0B9F\u0BCD (\u0B9F\u0BBE\u0BB0\u0BCD\u0B95\u0BCD)",
-  themeDesc: "\u0BB5\u0BC6\u0BAF\u0BBF\u0BB2\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B87\u0BB0\u0BB5\u0BC1 \u0BAA\u0BBE\u0BB0\u0BCD\u0BB5\u0BC8\u0B95\u0BCD\u0B95\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1 \u0BAE\u0BBE\u0BB1\u0BC1\u0BAA\u0BBE\u0B9F\u0BC1",
-  asrEngineLabel: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B87\u0BAF\u0BA8\u0BCD\u0BA4\u0BBF\u0BB0\u0BAE\u0BCD (ASR)",
-  asrEngineDesc: "\u0BAA\u0BC7\u0B9A\u0BCD\u0B9A\u0BC8 \u0B89\u0BB0\u0BC8\u0BAF\u0BBE\u0B95 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B87\u0BAF\u0BA8\u0BCD\u0BA4\u0BBF\u0BB0\u0BAE\u0BCD",
-  asrBrowser: "\u0B89\u0BB2\u0BB5\u0BBF \u0B86\u0BA9\u0BCD-\u0B9F\u0BBF\u0BB5\u0BC8\u0BB8\u0BCD (\u0B87\u0BB2\u0BB5\u0B9A\u0BAE\u0BCD, \u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD)",
-  asrBhashini: "\u0BAA\u0BBE\u0BB7\u0BBF\u0BA9\u0BBF AI (\u0B9F\u0BBF\u0B9C\u0BBF\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD \u0B87\u0BA8\u0BCD\u0BA4\u0BBF\u0BAF\u0BBE) [Stubbed]",
-  asrSarvam: "\u0B9A\u0BB0\u0BCD\u0BB5\u0BAE\u0BCD AI (\u0B87\u0BA3\u0BCD\u0B9F\u0BBF\u0B95\u0BCD \u0B95\u0BC1\u0BB0\u0BB2\u0BCD) [Stubbed]",
-  exportLedgerLabel: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BA4\u0BB0\u0BB5\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BA4\u0BBF",
-  exportJson: "JSON \u0B87\u0BB2\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1",
-  exportCsv: "CSV \u0B87\u0BB2\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1",
-  dangerZoneLabel: "\u0B86\u0BAA\u0BA4\u0BCD\u0BA4\u0BC1 \u0BAA\u0B95\u0BC1\u0BA4\u0BBF",
-  clearAllData: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0BA4\u0BB0\u0BB5\u0BC8\u0BAF\u0BC1\u0BAE\u0BCD \u0BA8\u0BC0\u0B95\u0BCD\u0B95\u0BC1",
-  clearConfirm: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BC8\u0BAF\u0BC1\u0BAE\u0BCD \u0B89\u0BB3\u0BCD\u0BB3\u0BC0\u0B9F\u0BC1\u0B95\u0BB3\u0BC8\u0BAF\u0BC1\u0BAE\u0BCD \u0BA8\u0BC0\u0B95\u0BCD\u0B95 \u0BB5\u0BBF\u0BB0\u0BC1\u0BAE\u0BCD\u0BAA\u0BC1\u0B95\u0BBF\u0BB1\u0BC0\u0BB0\u0BCD\u0B95\u0BB3\u0BBE? \u0B87\u0BA4\u0BC8 \u0BAE\u0BC0\u0B9F\u0BCD\u0B9F\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95 \u0BAE\u0BC1\u0B9F\u0BBF\u0BAF\u0BBE\u0BA4\u0BC1.",
-  clearSuccess: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0BA4\u0BB0\u0BB5\u0BC1\u0B95\u0BB3\u0BC1\u0BAE\u0BCD \u0BB5\u0BC6\u0BB1\u0BCD\u0BB1\u0BBF\u0B95\u0BB0\u0BAE\u0BBE\u0B95 \u0BA8\u0BC0\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA9!",
-  resetDemo: "\u0B9F\u0BC6\u0BAE\u0BCB \u0BA4\u0BB0\u0BB5\u0BC8 \u0BAE\u0BC0\u0B9F\u0BCD\u0B9F\u0BC6\u0B9F\u0BC1",
-  resetSuccess: "\u0B9F\u0BC6\u0BAE\u0BCB \u0BA4\u0BB0\u0BB5\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1!",
-  localFirstInfo: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 100% \u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD. \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B8E\u0BB2\u0BCD\u0BB2\u0BBE \u0BA4\u0BB0\u0BB5\u0BC1\u0BAE\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF\u0BAF\u0BBF\u0BB2\u0BC7\u0BAF\u0BC7 \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1 (IndexedDB).",
-  signupWelcomeTitle: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BCD\u0B95\u0BC1 \u0BA8\u0BB2\u0BCD\u0BB5\u0BB0\u0BB5\u0BC1",
-  signupWelcomeSubtitle: "\u0B87\u0BA8\u0BCD\u0BA4\u0BBF\u0BAF \u0BAE\u0BB3\u0BBF\u0B95\u0BC8\u0B95\u0BCD \u0B95\u0B9F\u0BC8\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BBE\u0BA9 \u0B95\u0BC8\u0B95\u0BB3\u0BCD-\u0B87\u0BB2\u0BB5\u0B9A \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BB2\u0BC6\u0B9F\u0BCD\u0B9C\u0BB0\u0BCD",
-  dataStaysOnPhone: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BA4\u0BB0\u0BB5\u0BC1 \u0B87\u0BA8\u0BCD\u0BA4 \u0BAA\u0BCB\u0BA9\u0BBF\u0BB2\u0BCD \u0BAE\u0B9F\u0BCD\u0B9F\u0BC1\u0BAE\u0BC7 \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0B95 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD",
-  getStarted: "\u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  stepOf: "\u0BAA\u0B9F\u0BBF {current} / {total}",
-  shopNamePrompt: "\u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD \u0B8E\u0BA9\u0BCD\u0BA9?",
-  shopNameSpoken: "\u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  shopNameHelper: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  shopNameError: "\u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9 \u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD (\u0B95\u0BC1\u0BB1\u0BC8\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1 2 \u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BCD\u0B95\u0BB3\u0BCD)",
-  ownerNamePrompt: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD \u0B8E\u0BA9\u0BCD\u0BA9?",
-  ownerNameSpoken: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  ownerNamePlaceholder: "\u0B89\u0BA4\u0BBE. \u0BB0\u0BAE\u0BC7\u0BB7\u0BCD \u0B95\u0BC1\u0BAE\u0BBE\u0BB0\u0BCD",
-  ownerNameHelper: "\u0B95\u0B9F\u0BC8 \u0B89\u0BB0\u0BBF\u0BAE\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD",
-  ownerNameError: "\u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD (\u0B95\u0BC1\u0BB1\u0BC8\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1 2 \u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BCD\u0B95\u0BB3\u0BCD)",
-  phonePrompt: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD",
-  phoneSpoken: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD 10 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
-  phonePlaceholder: "\u0B89\u0BA4\u0BBE. 9876543210",
-  phoneHelper: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BBE\u0BA9 10 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD",
-  phoneError: "6-9 \u0B87\u0BB2\u0BCD \u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BC1\u0BAE\u0BCD 10 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
-  upiPrompt: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF",
-  upiSpoken: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  upiPlaceholder: "\u0B89\u0BA4\u0BBE. ramesh@oksbi",
-  upiHelperText: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF \u0BAE\u0B9F\u0BCD\u0B9F\u0BC1\u0BAE\u0BC7 \u0BA4\u0BC7\u0BB5\u0BC8. \u0BA8\u0BBE\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B92\u0BB0\u0BC1\u0BAA\u0BCB\u0BA4\u0BC1\u0BAE\u0BCD \u0BB5\u0B99\u0BCD\u0B95\u0BBF \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8\u0B95\u0BCD \u0B95\u0BC7\u0B9F\u0BCD\u0BAA\u0BA4\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8.",
-  upiPaste: "\u0B92\u0B9F\u0BCD\u0B9F\u0BC1",
-  upiReadBack: "\u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1 \u0BB5\u0BBE\u0BB0\u0BBF\u0BAF\u0BBE\u0B95\u0B95\u0BCD \u0B95\u0BC7\u0BB3\u0BCD",
-  upiReadingBack: "\u0BB5\u0BBE\u0B9A\u0BBF\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
-  upiError: "\u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9 \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD (\u0B89\u0BA4\u0BBE. name@bank)",
-  pinPrompt: "\u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8 \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD (\u0BB5\u0BBF\u0BB0\u0BC1\u0BAA\u0BCD\u0BAA\u0BA4\u0BCD\u0BA4\u0BC7\u0BB0\u0BCD\u0BB5\u0BC1)",
-  pinSpoken: "4 \u0BAE\u0BC1\u0BA4\u0BB2\u0BCD 6 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8\u0BA4\u0BCD \u0BA4\u0BC7\u0BB0\u0BCD\u0BA8\u0BCD\u0BA4\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
-  pinPlaceholder: "4-6 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAA\u0BBF\u0BA9\u0BCD",
-  pinHelperText: "\u0B9A\u0BBE\u0BA4\u0BA9 \u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BBE\u0B95\u0BCD\u0B95\u0BA4\u0BCD\u0BA4\u0BC1\u0B9F\u0BA9\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BB0\u0BC1\u0BAE\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD.",
-  pinSkip: "\u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD",
-  pinSkipWarning: "\u0BAA\u0BBF\u0BA9\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BBE\u0BAE\u0BB2\u0BCD \u0B87\u0BA8\u0BCD\u0BA4 \u0B9A\u0BC6\u0BAF\u0BB2\u0BBF\u0BAF\u0BC8\u0BA4\u0BCD \u0BA4\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD \u0B8E\u0BB5\u0BB0\u0BC1\u0BAE\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B8E\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BBE\u0BA9\u0BBE\u0BB2\u0BC1\u0BAE\u0BCD \u0BAA\u0BBF\u0BA9\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD.",
-  pinSkipConfirm: "\u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8\u0BA4\u0BCD \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD",
-  pinError: "\u0BAA\u0BBF\u0BA9\u0BCD 4-6 \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BBE\u0B95 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B8E\u0BB3\u0BBF\u0BAF \u0BB5\u0BB0\u0BBF\u0B9A\u0BC8\u0BAF\u0BBE\u0B95 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0B95\u0BCD\u0B95\u0BC2\u0B9F\u0BBE\u0BA4\u0BC1 (\u0B89\u0BA4\u0BBE. 1234, 0000)",
-  reviewTitle: "\u0B95\u0B9F\u0BC8 \u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BA4\u0BCD\u0BA4\u0BC8 \u0B9A\u0BB0\u0BBF\u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
-  reviewSubtitle: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BC8 \u0B89\u0BB1\u0BC1\u0BA4\u0BBF\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B8E\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BBE\u0BA9\u0BBE\u0BB2\u0BC1\u0BAE\u0BCD \u0BAA\u0BC1\u0BA4\u0BC1\u0BAA\u0BCD\u0BAA\u0BBF\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD.",
-  startAppButton: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC8\u0BA4\u0BCD \u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  editField: "\u0BA4\u0BBF\u0BB0\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1",
-  nextStep: "\u0B85\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1",
-  prevStep: "\u0BAA\u0BBF\u0BA9\u0BCD\u0B9A\u0BC6\u0BB2\u0BCD",
-  settingsProfileTitle: "\u0B95\u0B9F\u0BC8 \u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BAE\u0BCD",
-  settingsProfileSubtitle: "\u0B95\u0B9F\u0BC8 \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BCD, \u0B89\u0BB0\u0BBF\u0BAE\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BA4\u0B95\u0BB5\u0BB2\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BA3 \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF",
-  confirmUpiChangeTitle: "\u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BB5\u0BBE?",
-  confirmUpiChangeWarning: "\u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BBF\u0BA9\u0BBE\u0BB2\u0BCD \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u0B85\u0BA9\u0BC1\u0BAA\u0BCD\u0BAA\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BA3 \u0B95\u0BBF\u0BAF\u0BC2\u0B86\u0BB0\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B87\u0BA3\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BCD \u0BAE\u0BBE\u0BB1\u0BC1\u0BAE\u0BCD. \u0BA8\u0BC0\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B89\u0BB1\u0BC1\u0BA4\u0BBF\u0BAF\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BC0\u0BB0\u0BCD\u0B95\u0BB3\u0BBE?",
-  confirmUpiChangeButton: "\u0B86\u0BAE\u0BCD, \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BC1",
-  noPinWarningBanner: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BBE\u0BB2\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BA4\u0BB0\u0BB5\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95 \u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.",
-  setPinNow: "\u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
-  profileUpdatedToast: "\u0B95\u0B9F\u0BC8 \u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BAE\u0BCD \u0BB5\u0BC6\u0BB1\u0BCD\u0BB1\u0BBF\u0B95\u0BB0\u0BAE\u0BBE\u0B95 \u0BAA\u0BC1\u0BA4\u0BC1\u0BAA\u0BCD\u0BAA\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1!",
-  registerCustomerTitle: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1",
-  registerCustomerSubtitle: "\u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BBE\u0B95\u0BCD\u0B95\u0BAE\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBF\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95 \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
-  enterCustomerPhone: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD",
-  phoneReadBackQuestion: "{phone}. \u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9\u0BA4\u0BBE?",
-  readBackConfirm: "\u0B86\u0BAE\u0BCD, \u0B9A\u0BB0\u0BBF",
-  readBackWrong: "\u0B87\u0BB2\u0BCD\u0BB2\u0BC8, \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BC1",
-  skipPhoneForNow: "\u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD",
-  noNumberWarning: "\u0B8E\u0BA3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BBE\u0BAE\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1. \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD \u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD.",
-  duplicatePhoneWarning: "\u0B87\u0BA8\u0BCD\u0BA4 \u0B8E\u0BA3\u0BCD {name} \u0B89\u0B9F\u0BC8\u0BAF\u0BA4\u0BC1. \u0B85\u0BA4\u0BC7 \u0BA8\u0BAA\u0BB0\u0BBE?",
-  openExistingCustomer: "\u0B86\u0BAE\u0BCD, {name} \u0BA4\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
-  useAnotherNumber: "\u0BB5\u0BC7\u0BB1\u0BC1 \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8\u0BAA\u0BCD \u0BAA\u0BAF\u0BA9\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD",
-  requireCustomerPhoneLabel: "\u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BBE\u0BAF\u0BAE\u0BCD",
-  requireCustomerPhoneDesc: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BBE\u0BAF\u0BAE\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD",
-  customerRegisteredSpoken: "{name} \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BBE\u0BB0\u0BCD",
-  customerNewAskPhoneSpoken: "{name} \u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD. \u0BAA\u0BCB\u0BA9\u0BCD \u0BA8\u0BAE\u0BCD\u0BAA\u0BB0\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
-  whichCustomerTitle: "\u0B8E\u0BA8\u0BCD\u0BA4 {name}?",
-  tellLast4DigitsSubtitle: "\u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD\u0BA3\u0BBF\u0BA9\u0BCD \u0B95\u0B9F\u0BC8\u0B9A\u0BBF 4 \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0B95\u0BBE\u0BB0\u0BCD\u0B9F\u0BC8\u0BA4\u0BCD \u0BA4\u0BCA\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
-  noNumberSavedChip: "\u0B8E\u0BA3\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
-  disambiguateRetryToast: "\u0B87\u0BA8\u0BCD\u0BA4 \u0B8E\u0BA3\u0BCD \u0BAA\u0BCA\u0BB0\u0BC1\u0BA8\u0BCD\u0BA4\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0B95\u0BBE\u0BB0\u0BCD\u0B9F\u0BC8\u0BA4\u0BCD \u0BA4\u0BCA\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD.",
-  disambiguateConfirmSpoken: "{name}, \u0B9A\u0BB0\u0BBF.",
-  autoOpenPaymentRequestLabel: "\u0B95\u0B9F\u0BA9\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAA\u0BCD \u0BAA\u0BBF\u0BB1\u0B95\u0BC1 \u0B95\u0B9F\u0BCD\u0B9F\u0BA3\u0B95\u0BCD \u0B95\u0BCB\u0BB0\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BC8\u0B95\u0BCD \u0B95\u0BBE\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
-  autoOpenPaymentRequestDesc: "\u0B95\u0B9F\u0BA9\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BB5\u0BC1\u0B9F\u0BA9\u0BCD UPI QR \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0B87\u0BA3\u0BC8\u0BAA\u0BCD\u0BAA\u0BC8\u0B95\u0BCD \u0B95\u0BBE\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
-  showMyQr: "\u0B95\u0B9F\u0BC8 QR",
-  showMyQrDesc: "\u0B95\u0BB5\u0BC1\u0BA3\u0BCD\u0B9F\u0BB0\u0BBF\u0BB2\u0BCD \u0B89\u0BB3\u0BCD\u0BB3 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BBE\u0BA9 \u0B95\u0B9F\u0BCD\u0B9F\u0BA3 QR",
-  showMyQrTitle: "\u0B95\u0B9F\u0BC8 \u0B95\u0BB5\u0BC1\u0BA3\u0BCD\u0B9F\u0BB0\u0BCD QR",
-  paymentRequestTitle: "\u0B95\u0B9F\u0BCD\u0B9F\u0BA3 \u0B95\u0BCB\u0BB0\u0BBF\u0B95\u0BCD\u0B95\u0BC8",
-  paymentRequestSubtitle: "\u0BAA\u0BA3\u0BAE\u0BCD \u0BAA\u0BC6\u0BB1 QR \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 WhatsApp \u0B87\u0BA3\u0BC8\u0BAA\u0BCD\u0BAA\u0BC8\u0BAA\u0BCD \u0BAA\u0B95\u0BBF\u0BB0\u0BB5\u0BC1\u0BAE\u0BCD",
-  sendWhatsAppPayment: "WhatsApp \u0B85\u0BA9\u0BC1\u0BAA\u0BCD\u0BAA\u0BB5\u0BC1\u0BAE\u0BCD",
-  sendWhatsAppHint: "WhatsApp \u0BA4\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD, \u0BAA\u0BBF\u0BA9\u0BCD Send \u0B85\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD",
-  shareQr: "QR \u0BAA\u0B95\u0BBF\u0BB0\u0BB5\u0BC1\u0BAE\u0BCD",
-  downloadQr: "QR \u0BAA\u0BA4\u0BBF\u0BB5\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
-  laterDismiss: "\u0BAA\u0BBF\u0BB1\u0B95\u0BC1",
-  noPhoneAddNumber: "\u0B8E\u0BA3\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
-  noPhoneWarning: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BBF\u0BA9\u0BCD \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
-  noUpiIdWarning: "\u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BA4\u0BCD\u0BA4\u0BBF\u0BB2\u0BCD UPI ID \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.",
-  setupUpiNow: "UPI ID \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
-  whatsappOfflineHint: "WhatsApp\u0B95\u0BCD\u0B95\u0BC1 \u0B87\u0BA3\u0BC8\u0BAF\u0BAE\u0BCD \u0BA4\u0BC7\u0BB5\u0BC8",
-  qrSavedToast: "QR \u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BC0\u0B9F\u0BC1 \u0BA4\u0BAF\u0BBE\u0BB0\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1",
-  receiptQrTitle: "UPI \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BB8\u0BCD\u0B95\u0BC7\u0BA9\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC6\u0BB2\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD"
-};
-
-// src/i18n/locales/te.json
-var te_default = {
-  appName: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C16\u0C3E\u0C24\u0C3E",
-  tagline: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C3F \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  online: "\u0C06\u0C28\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D",
-  offlineSafe: "\u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D \u0C38\u0C41\u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C24\u0C02 (\u0C32\u0C4B\u0C15\u0C32\u0C4D)",
-  navHome: "\u0C39\u0C4B\u0C2E\u0C4D (\u0C2E\u0C48\u0C15\u0C4D)",
-  navCustomers: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41",
-  navSummary: "\u0C30\u0C4B\u0C1C\u0C41\u0C35\u0C3E\u0C30\u0C40 \u0C32\u0C46\u0C15\u0C4D\u0C15",
-  navSettings: "\u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u200C\u0C32\u0C41",
-  navStyleguide: "\u0C36\u0C48\u0C32\u0C3F \u0C2E\u0C3E\u0C30\u0C4D\u0C17\u0C26\u0C30\u0C4D\u0C36\u0C3F",
-  save: "\u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  cancel: "\u0C30\u0C26\u0C4D\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  delete: "\u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C41",
-  edit: "\u0C38\u0C35\u0C30\u0C3F\u0C02\u0C1A\u0C41",
-  close: "\u0C2E\u0C42\u0C38\u0C3F\u0C35\u0C47\u0C2F\u0C3F",
-  search: "\u0C35\u0C46\u0C24\u0C15\u0C02\u0C21\u0C3F",
-  back: "\u0C35\u0C46\u0C28\u0C41\u0C15\u0C15\u0C41",
-  done: "\u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C2F\u0C3F\u0C02\u0C26\u0C3F",
-  creditGiven: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C07\u0C1A\u0C4D\u0C1A\u0C3F\u0C28\u0C26\u0C3F",
-  paymentReceived: "\u0C21\u0C2C\u0C4D\u0C2C\u0C41 \u0C35\u0C1A\u0C4D\u0C1A\u0C3F\u0C02\u0C26\u0C3F",
-  balanceOwed: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40",
-  netBalance: "\u0C28\u0C3F\u0C15\u0C30 \u0C2C\u0C3E\u0C15\u0C40",
-  todaySummary: "\u0C08\u0C30\u0C4B\u0C1C\u0C41 \u0C32\u0C46\u0C15\u0C4D\u0C15",
-  recentEntries: "\u0C07\u0C1F\u0C40\u0C35\u0C32\u0C3F \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41",
-  noEntries: "\u0C07\u0C02\u0C15\u0C3E \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41",
-  micIdle: "\u0C2E\u0C48\u0C15\u0C4D \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C3F \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
-  micListening: "\u0C35\u0C3F\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C28\u0C41... \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
-  micProcessing: "\u0C32\u0C46\u0C15\u0C4D\u0C15\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
-  micError: "\u0C38\u0C4D\u0C2A\u0C37\u0C4D\u0C1F\u0C02\u0C17\u0C3E \u0C35\u0C3F\u0C28\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C2A\u0C4D\u0C30\u0C2F\u0C24\u0C4D\u0C28\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
-  typeInstead: "\u0C1F\u0C48\u0C2A\u0C4D \u0C1A\u0C47\u0C38\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  trySpeaking: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C3F \u0C1A\u0C42\u0C21\u0C02\u0C21\u0C3F",
-  customersTitle: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32 \u0C1C\u0C3E\u0C2C\u0C3F\u0C24\u0C3E",
-  searchCustomerPlaceholder: "\u0C2A\u0C47\u0C30\u0C41 \u0C32\u0C47\u0C26\u0C3E \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C35\u0C46\u0C24\u0C15\u0C02\u0C21\u0C3F...",
-  filterAll: "\u0C05\u0C28\u0C4D\u0C28\u0C40",
-  filterOwes: "\u0C2C\u0C3E\u0C15\u0C40 \u0C09\u0C28\u0C4D\u0C28\u0C35\u0C3E\u0C30\u0C41",
-  filterSettled: "\u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C2F\u0C3F\u0C02\u0C26\u0C3F",
-  addJama: "+ \u0C1C\u0C2E \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  printSlip: "\u0C30\u0C38\u0C40\u0C26\u0C41 \u0C2A\u0C4D\u0C30\u0C3F\u0C02\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  sendWhatsApp: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D",
-  summaryTitle: "\u0C30\u0C4B\u0C1C\u0C41\u0C35\u0C3E\u0C30\u0C40 \u0C38\u0C3E\u0C30\u0C3E\u0C02\u0C36\u0C02",
-  todayUdhaar: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C07\u0C1A\u0C4D\u0C1A\u0C3F\u0C28\u0C26\u0C3F",
-  todayJama: "\u0C21\u0C2C\u0C4D\u0C2C\u0C41 \u0C1C\u0C2E",
-  todayNet: "\u0C28\u0C3F\u0C15\u0C30 \u0C2E\u0C3E\u0C30\u0C4D\u0C2A\u0C41",
-  weeklyTrend: "\u0C17\u0C24 7 \u0C30\u0C4B\u0C1C\u0C41\u0C32 \u0C24\u0C40\u0C30\u0C41",
-  topPending: "\u0C05\u0C24\u0C4D\u0C2F\u0C27\u0C3F\u0C15 \u0C2C\u0C3E\u0C15\u0C40 \u0C09\u0C28\u0C4D\u0C28\u0C35\u0C3E\u0C30\u0C41",
-  settingsTitle: "\u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u200C\u0C32\u0C41",
-  settingsSubtitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C41, \u0C2D\u0C3E\u0C37, \u0C38\u0C4C\u0C02\u0C21\u0C4D\u200C\u0C2C\u0C3E\u0C15\u0C4D\u0C38\u0C4D \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C2C\u0C4D\u0C2F\u0C3E\u0C15\u0C2A\u0C4D",
-  shopNameLabel: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41",
-  shopNamePlaceholder: "\u0C09\u0C26\u0C3E. \u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C15\u0C3F\u0C30\u0C3E\u0C23\u0C3E \u0C38\u0C4D\u0C1F\u0C4B\u0C30\u0C4D",
-  uiLanguageLabel: "\u0C38\u0C4D\u0C15\u0C4D\u0C30\u0C40\u0C28\u0C4D \u0C2D\u0C3E\u0C37",
-  uiLanguageDesc: "\u0C2C\u0C1F\u0C28\u0C4D\u0C32\u0C41 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C38\u0C4D\u0C15\u0C4D\u0C30\u0C40\u0C28\u0C4D \u0C2A\u0C48 \u0C15\u0C28\u0C3F\u0C2A\u0C3F\u0C02\u0C1A\u0C47 \u0C2D\u0C3E\u0C37",
-  speechLanguageLabel: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C47 \u0C2D\u0C3E\u0C37",
-  speechLanguageDesc: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C17\u0C41\u0C30\u0C4D\u0C24\u0C3F\u0C02\u0C2A\u0C41 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C38\u0C4C\u0C02\u0C21\u0C4D\u200C\u0C2C\u0C3E\u0C15\u0C4D\u0C38\u0C4D \u0C15\u0C4B\u0C38\u0C02",
-  speechSpeedLabel: "\u0C2E\u0C3E\u0C1F\u0C32 \u0C35\u0C47\u0C17\u0C02 (Soundbox)",
-  speedSlow: "\u0C28\u0C46\u0C2E\u0C4D\u0C2E\u0C26\u0C3F\u0C17\u0C3E",
-  speedNormal: "\u0C38\u0C3E\u0C27\u0C3E\u0C30\u0C23\u0C02",
-  speedFast: "\u0C35\u0C47\u0C17\u0C02\u0C17\u0C3E",
-  muteRepliesLabel: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C38\u0C2E\u0C3E\u0C27\u0C3E\u0C28\u0C3E\u0C32\u0C41 \u0C2E\u0C4D\u0C2F\u0C42\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  muteRepliesDesc: "\u0C17\u0C02\u0C1F \u0C2E\u0C3E\u0C24\u0C4D\u0C30\u0C2E\u0C47 \u0C2E\u0C4B\u0C17\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F, \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C26\u0C41",
-  themeLabel: "\u0C25\u0C40\u0C2E\u0C4D",
-  themeLight: "\u0C32\u0C48\u0C1F\u0C4D \u0C25\u0C40\u0C2E\u0C4D",
-  themeHighContrast: "\u0C39\u0C48 \u0C15\u0C3E\u0C02\u0C1F\u0C4D\u0C30\u0C3E\u0C38\u0C4D\u0C1F\u0C4D (\u0C21\u0C3E\u0C30\u0C4D\u0C15\u0C4D)",
-  themeDesc: "\u0C0E\u0C02\u0C21\u0C32\u0C4B \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C30\u0C3E\u0C24\u0C4D\u0C30\u0C3F \u0C38\u0C2E\u0C2F\u0C02\u0C32\u0C4B \u0C38\u0C4D\u0C2A\u0C37\u0C4D\u0C1F\u0C02\u0C17\u0C3E \u0C15\u0C28\u0C3F\u0C2A\u0C3F\u0C02\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F",
-  asrEngineLabel: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C07\u0C02\u0C1C\u0C3F\u0C28\u0C4D (ASR)",
-  asrEngineDesc: "\u0C2E\u0C3E\u0C1F\u0C32\u0C28\u0C41 \u0C1F\u0C46\u0C15\u0C4D\u0C38\u0C4D\u0C1F\u0C4D\u200C\u0C17\u0C3E \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C47 \u0C07\u0C02\u0C1C\u0C3F\u0C28\u0C4D",
-  asrBrowser: "\u0C2C\u0C4D\u0C30\u0C4C\u0C1C\u0C30\u0C4D \u0C06\u0C28\u0C4D-\u0C21\u0C3F\u0C35\u0C48\u0C38\u0C4D (\u0C09\u0C1A\u0C3F\u0C24\u0C02, \u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D)",
-  asrBhashini: "\u0C2D\u0C3E\u0C37\u0C3F\u0C23\u0C3F AI (\u0C21\u0C3F\u0C1C\u0C3F\u0C1F\u0C32\u0C4D \u0C07\u0C02\u0C21\u0C3F\u0C2F\u0C3E) [Stubbed]",
-  asrSarvam: "\u0C38\u0C30\u0C4D\u0C35\u0C02 AI (\u0C07\u0C02\u0C21\u0C3F\u0C15\u0C4D \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D) [Stubbed]",
-  exportLedgerLabel: "\u0C16\u0C3E\u0C24\u0C3E \u0C21\u0C47\u0C1F\u0C3E \u0C0E\u0C17\u0C41\u0C2E\u0C24\u0C3F",
-  exportJson: "JSON \u0C32\u0C4B \u0C21\u0C4C\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C21\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  exportCsv: "CSV \u0C32\u0C4B \u0C21\u0C4C\u0C28\u0C4D\u200C\u0C32\u0C4B\u0CA1\u0CCD \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  dangerZoneLabel: "\u0C21\u0C47\u0C02\u0C1C\u0C30\u0C4D \u0C1C\u0C4B\u0C28\u0C4D",
-  clearAllData: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C16\u0C3E\u0C24\u0C3E \u0C21\u0C47\u0C1F\u0C3E\u0C28\u0C41 \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  clearConfirm: "\u0C2E\u0C40\u0C30\u0C41 \u0C16\u0C1A\u0C4D\u0C1A\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C28\u0C41, \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C28\u0C41 \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C3E\u0C32\u0C28\u0C41\u0C15\u0C41\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C3E? \u0C26\u0C40\u0C28\u0C4D\u0C28\u0C3F \u0C24\u0C3F\u0C30\u0C3F\u0C17\u0C3F \u0C2A\u0C4A\u0C02\u0C26\u0C32\u0C47\u0C30\u0C41.",
-  clearSuccess: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C21\u0C47\u0C1F\u0C3E \u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C02\u0C24\u0C02\u0C17\u0C3E \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F!",
-  resetDemo: "\u0C21\u0C46\u0C2E\u0C4B \u0C21\u0C47\u0C1F\u0C3E\u0C28\u0C41 \u0C2A\u0C41\u0C28\u0C30\u0C41\u0C26\u0C4D\u0C27\u0C30\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  resetSuccess: "\u0C21\u0C46\u0C2E\u0C4B \u0C21\u0C47\u0C1F\u0C3E \u0C32\u0C4B\u0C21\u0C4D \u0C05\u0C2F\u0C3F\u0C02\u0C26\u0C3F!",
-  localFirstInfo: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C16\u0C3E\u0C24\u0C3E 100% \u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D. \u0C2E\u0C40 \u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C21\u0C47\u0C1F\u0C3E \u0C2E\u0C40 \u0C2B\u0C4B\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C28\u0C47 \u0C38\u0C41\u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C09\u0C02\u0C1F\u0C41\u0C02\u0C26\u0C3F (IndexedDB).",
-  signupWelcomeTitle: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C16\u0C3E\u0C24\u0C3E\u0C15\u0C41 \u0C38\u0C4D\u0C35\u0C3E\u0C17\u0C24\u0C02",
-  signupWelcomeSubtitle: "\u0C2D\u0C3E\u0C30\u0C24\u0C40\u0C2F \u0C15\u0C3F\u0C30\u0C3E\u0C23\u0C3E \u0C26\u0C41\u0C15\u0C3E\u0C23\u0C3E\u0C32 \u0C15\u0C4B\u0C38\u0C02 \u0C39\u0C4D\u0C2F\u0C3E\u0C02\u0C21\u0C4D\u0C38\u0C4D-\u0C2B\u0C4D\u0C30\u0C40 \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C32\u0C46\u0C21\u0C4D\u0C1C\u0C30\u0C4D",
-  dataStaysOnPhone: "\u0C2E\u0C40 \u0C21\u0C47\u0C1F\u0C3E \u0C08 \u0C2B\u0C4B\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C28\u0C47 \u0C2D\u0C26\u0C4D\u0C30\u0C02\u0C17\u0C3E \u0C09\u0C02\u0C1F\u0C41\u0C02\u0C26\u0C3F",
-  getStarted: "\u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  stepOf: "\u0C26\u0C36 {current} / {total}",
-  shopNamePrompt: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C0F\u0C2E\u0C3F\u0C1F\u0C3F?",
-  shopNameSpoken: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F",
-  shopNameHelper: "\u0C2E\u0C40 \u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C30\u0C3E\u0C2F\u0C02\u0C21\u0C3F",
-  shopNameError: "\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C38\u0C30\u0C48\u0C28 \u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C15\u0C28\u0C40\u0C38\u0C02 2 \u0C05\u0C15\u0C4D\u0C37\u0C30\u0C3E\u0C32\u0C41)",
-  ownerNamePrompt: "\u0C2E\u0C40 \u0C2A\u0C47\u0C30\u0C41 \u0C0F\u0C2E\u0C3F\u0C1F\u0C3F?",
-  ownerNameSpoken: "\u0C2E\u0C40 \u0C2A\u0C47\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F",
-  ownerNamePlaceholder: "\u0C09\u0C26\u0C3E. \u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C15\u0C41\u0C2E\u0C3E\u0C30\u0C4D",
-  ownerNameHelper: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2F\u0C1C\u0C2E\u0C3E\u0C28\u0C3F \u0C2A\u0C47\u0C30\u0C41",
-  ownerNameError: "\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C40 \u0C2A\u0C47\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C15\u0C28\u0C40\u0C38\u0C02 2 \u0C05\u0C15\u0C4D\u0C37\u0C30\u0C3E\u0C32\u0C41)",
-  phonePrompt: "\u0C2E\u0C40 \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41",
-  phoneSpoken: "\u0C2E\u0C40 10 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  phonePlaceholder: "\u0C09\u0C26\u0C3E. 9876543210",
-  phoneHelper: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C2C\u0C3E\u0C15\u0C40 \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D\u0C32 \u0C15\u0C4B\u0C38\u0C02 10 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41",
-  phoneError: "6-9 \u0C24\u0C4B \u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C2E\u0C2F\u0C4D\u0C2F\u0C47 10 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2D\u0C3E\u0C30\u0C24\u0C40\u0C2F \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  upiPrompt: "\u0C2E\u0C40 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40",
-  upiSpoken: "\u0C2E\u0C40 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C30\u0C3E\u0C2F\u0C02\u0C21\u0C3F",
-  upiPlaceholder: "\u0C09\u0C26\u0C3E. ramesh@oksbi",
-  upiHelperText: "\u0C2E\u0C40 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40 \u0C2E\u0C3E\u0C24\u0C4D\u0C30\u0C2E\u0C47 \u0C05\u0C35\u0C38\u0C30\u0C02. \u0C2E\u0C47\u0C2E\u0C41 \u0C0E\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C42 \u0C2C\u0C4D\u0C2F\u0C3E\u0C02\u0C15\u0C4D \u0C16\u0C3E\u0C24\u0C3E \u0C38\u0C02\u0C16\u0C4D\u0C2F\u0C28\u0C41 \u0C05\u0C21\u0C17\u0C2E\u0C41.",
-  upiPaste: "\u0C2A\u0C47\u0C38\u0C4D\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  upiReadBack: "\u0C05\u0C15\u0C4D\u0C37\u0C30\u0C3E\u0C32 \u0C35\u0C3E\u0C30\u0C40\u0C17\u0C3E \u0C35\u0C3F\u0C28\u0C02\u0C21\u0C3F",
-  upiReadingBack: "\u0C1A\u0C26\u0C41\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
-  upiError: "\u0C38\u0C30\u0C48\u0C28 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40\u0C28\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C09\u0C26\u0C3E. name@bank)",
-  pinPrompt: "\u0C38\u0C46\u0C15\u0C4D\u0C2F\u0C42\u0C30\u0C3F\u0C1F\u0C40 \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C10\u0C1A\u0C4D\u0C1B\u0C3F\u0C15\u0C02)",
-  pinSpoken: "4 \u0C28\u0C41\u0C02\u0C21\u0C3F 6 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C38\u0C46\u0C15\u0C4D\u0C2F\u0C42\u0C30\u0C3F\u0C1F\u0C40 \u0C2A\u0C3F\u0C28\u0C4D \u0C0E\u0C02\u0C1A\u0C41\u0C15\u0C4B\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  pinPlaceholder: "4-6 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2A\u0C3F\u0C28\u0C4D",
-  pinHelperText: "\u0C21\u0C3F\u0C35\u0C48\u0C38\u0C4D \u0C0E\u0C28\u0C4D\u200C\u0C15\u0C4D\u0C30\u0C3F\u0C2A\u0C4D\u0C37\u0C28\u0C4D\u200C\u0C24\u0C4B \u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E\u0C28\u0C41 \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C41\u0C38\u0C4D\u0C24\u0C41\u0C02\u0C26\u0C3F. \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 \u0C15\u0C42\u0C21\u0C3E \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C38\u0C41\u0C15\u0C4B\u0C35\u0C1A\u0C4D\u0C1A\u0C41.",
-  pinSkip: "\u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C41 \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C3F",
-  pinSkipWarning: "\u0C2A\u0C3F\u0C28\u0C4D \u0C32\u0C47\u0C15\u0C41\u0C02\u0C21\u0C3E \u0C0E\u0C35\u0C30\u0C48\u0C28\u0C3E \u0C08 \u0C2F\u0C3E\u0C2A\u0C4D \u0C24\u0C46\u0C30\u0C3F\u0C1A\u0C3F \u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E\u0C28\u0C41 \u0C1A\u0C42\u0C21\u0C35\u0C1A\u0C4D\u0C1A\u0C41. \u0C2E\u0C40\u0C30\u0C41 \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C0E\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C48\u0C28\u0C3E \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C38\u0C41\u0C15\u0C4B\u0C35\u0C1A\u0C4D\u0C1A\u0C41.",
-  pinSkipConfirm: "\u0C2A\u0C3F\u0C28\u0C4D \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C3F",
-  pinError: "\u0C2A\u0C3F\u0C28\u0C4D 4-6 \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C09\u0C02\u0C21\u0C3E\u0C32\u0C3F \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C38\u0C30\u0C33 \u0C36\u0C4D\u0C30\u0C47\u0C23\u0C3F \u0C15\u0C3E\u0C15\u0C42\u0C21\u0C26\u0C41 (\u0C09\u0C26\u0C3E. 1234, 0000)",
-  reviewTitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D \u0C38\u0C2E\u0C40\u0C15\u0C4D\u0C37\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  reviewSubtitle: "\u0C2E\u0C40 \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C28\u0C41 \u0C28\u0C3F\u0C30\u0C4D\u0C27\u0C3E\u0C30\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F. \u0C35\u0C40\u0C1F\u0C3F\u0C28\u0C3F \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C0E\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C48\u0C28\u0C3E \u0C28\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C35\u0C1A\u0C4D\u0C1A\u0C41.",
-  startAppButton: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C16\u0C3E\u0C24\u0C3E \u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  editField: "\u0C38\u0C35\u0C30\u0C3F\u0C02\u0C1A\u0C41",
-  nextStep: "\u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24",
-  prevStep: "\u0C35\u0C46\u0C28\u0C41\u0C15\u0C15\u0C41",
-  settingsProfileTitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D",
-  settingsProfileSubtitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C41, \u0C2F\u0C1C\u0C2E\u0C3E\u0C28\u0C3F \u0C38\u0C2E\u0C3E\u0C1A\u0C3E\u0C30\u0C02 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40",
-  confirmUpiChangeTitle: "\u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40\u0C28\u0C3F \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C3E\u0C32\u0C3E?",
-  confirmUpiChangeWarning: "\u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40\u0C28\u0C3F \u0C2E\u0C3E\u0C30\u0C3F\u0C38\u0C4D\u0C24\u0C47 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D\u0C32\u0C15\u0C41 \u0C2A\u0C02\u0C2A\u0C47 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C15\u0C4D\u0C2F\u0C42\u0C06\u0C30\u0C4D \u0C15\u0C4B\u0C21\u0C4D \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C32\u0C3F\u0C02\u0C15\u0C41\u0C32\u0C41 \u0C2E\u0C3E\u0C30\u0C41\u0C24\u0C3E\u0C2F\u0C3F. \u0C2E\u0C40\u0C30\u0C41 \u0C16\u0C1A\u0C4D\u0C1A\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C09\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C3E?",
-  confirmUpiChangeButton: "\u0C05\u0C35\u0C41\u0C28\u0C41, \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40 \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C02\u0C21\u0C3F",
-  noPinWarningBanner: "\u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E \u0C2A\u0C3F\u0C28\u0C4D\u200C\u0C24\u0C4B \u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41. \u0C21\u0C47\u0C1F\u0C3E\u0C28\u0C41 \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C47 \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F.",
-  setPinNow: "\u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C47 \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  profileUpdatedToast: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D \u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C02\u0C24\u0C02\u0C17\u0C3E \u0C28\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F!",
-  registerCustomerTitle: "\u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C28\u0C2E\u0C4B\u0C26\u0C41",
-  registerCustomerSubtitle: "\u0C0E\u0C28\u0C4D\u200C\u0C15\u0C4D\u0C30\u0C3F\u0C2A\u0C4D\u0C1F\u0C46\u0C21\u0C4D \u0C32\u0C46\u0C21\u0C4D\u0C1C\u0C30\u0C4D\u200C\u0C32\u0C4B \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C28\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  enterCustomerPhone: "\u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41",
-  phoneReadBackQuestion: "{phone}. \u0C38\u0C30\u0C3F\u0C17\u0C4D\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3E?",
-  readBackConfirm: "\u0C05\u0C35\u0C41\u0C28\u0C41, \u0C38\u0C30\u0C3F\u0C17\u0C4D\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3F",
-  readBackWrong: "\u0C15\u0C3E\u0C26\u0C41, \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C02\u0C21\u0C3F",
-  skipPhoneForNow: "\u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C41 \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C3F",
-  noNumberWarning: "\u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C32\u0C47\u0C15\u0C41\u0C02\u0C21\u0C3E \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F. \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D\u0C32\u0C32\u0C4B \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C05\u0C21\u0C17\u0C2C\u0C21\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F.",
-  duplicatePhoneWarning: "\u0C08 \u0C28\u0C02\u0C2C\u0C30\u0C41 {name} \u0C26\u0C3F. \u0C06 \u0C35\u0C4D\u0C2F\u0C15\u0C4D\u0C24\u0C47\u0C28\u0C3E?",
-  openExistingCustomer: "\u0C05\u0C35\u0C41\u0C28\u0C41, {name} \u0C24\u0C46\u0C30\u0C35\u0C02\u0C21\u0C3F",
-  useAnotherNumber: "\u0C2E\u0C30\u0C4A\u0C15 \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  requireCustomerPhoneLabel: "\u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C24\u0C2A\u0C4D\u0C2A\u0C28\u0C3F\u0C38\u0C30\u0C3F",
-  requireCustomerPhoneDesc: "\u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C38\u0C47\u0C1F\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C41 \u0C2B\u0C4B\u0C28\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C24\u0C2A\u0C4D\u0C2A\u0C28\u0C3F\u0C38\u0C30\u0C3F\u0C17\u0C3E \u0C09\u0C02\u0C21\u0C3E\u0C32\u0C3F",
-  customerRegisteredSpoken: "{name} \u0C1A\u0C47\u0C30\u0C4D\u0C1A\u0C2C\u0C21\u0C4D\u0C21\u0C3E\u0C30\u0C41",
-  customerNewAskPhoneSpoken: "{name} \u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D. \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F",
-  whichCustomerTitle: "\u0C0F {name}?",
-  tellLast4DigitsSubtitle: "\u0C2B\u0C4B\u0C28\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C1A\u0C3F\u0C35\u0C30\u0C3F 4 \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C41\u0C28\u0C41 \u0C24\u0C3E\u0C15\u0C02\u0C21\u0C3F",
-  noNumberSavedChip: "\u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C32\u0C47\u0C26\u0C41",
-  disambiguateRetryToast: "\u0C08 \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C38\u0C30\u0C3F\u0C2A\u0C4B\u0C32\u0C32\u0C47\u0C26\u0C41. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C33\u0C4D\u0C32\u0C40 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C41\u0C28\u0C41 \u0C24\u0C3E\u0C15\u0C02\u0C21\u0C3F.",
-  disambiguateConfirmSpoken: "{name}, \u0C38\u0C30\u0C3F\u0C17\u0C4D\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3F.",
-  autoOpenPaymentRequestLabel: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C05\u0C2D\u0C4D\u0C2F\u0C30\u0C4D\u0C25\u0C28 \u0C1A\u0C42\u0C2A\u0C3F\u0C02\u0C1A\u0C41",
-  autoOpenPaymentRequestDesc: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C38\u0C3F\u0C28 \u0C35\u0C46\u0C02\u0C1F\u0C28\u0C47 UPI QR \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C32\u0C3F\u0C02\u0C15\u0C4D \u0C1A\u0C42\u0C2A\u0C3F\u0C02\u0C1A\u0C41",
-  showMyQr: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 QR",
-  showMyQrDesc: "\u0C15\u0C4C\u0C02\u0C1F\u0C30\u0C4D \u0C35\u0C26\u0C4D\u0C26 \u0C09\u0C28\u0C4D\u0C28 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D\u0C32 \u0C15\u0C4B\u0C38\u0C02 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 QR",
-  showMyQrTitle: "\u0C37\u0C3E\u0C2A\u0C4D \u0C15\u0C4C\u0C02\u0C1F\u0C30\u0C4D QR",
-  paymentRequestTitle: "\u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C05\u0C2D\u0C4D\u0C2F\u0C30\u0C4D\u0C25\u0C28",
-  paymentRequestSubtitle: "\u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C38\u0C4D\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F QR \u0C32\u0C47\u0C26\u0C3E \u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C32\u0C3F\u0C02\u0C15\u0C4D \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F",
-  sendWhatsAppPayment: "WhatsApp \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F",
-  sendWhatsAppHint: "WhatsApp \u0C24\u0C46\u0C30\u0C41\u0C1A\u0C41\u0C15\u0C41\u0C02\u0C1F\u0C41\u0C02\u0C26\u0C3F, \u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 Send \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F",
-  shareQr: "QR \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F",
-  downloadQr: "QR \u0C21\u0C4C\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C21\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
-  laterDismiss: "\u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24",
-  noPhoneAddNumber: "\u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  noPhoneWarning: "\u0C08 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C2B\u0C4B\u0C28\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C32\u0C47\u0C26\u0C41",
-  noUpiIdWarning: "\u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D\u200C\u0C32\u0C4B UPI ID \u0C32\u0C47\u0C26\u0C41. \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
-  setupUpiNow: "UPI ID \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
-  whatsappOfflineHint: "WhatsApp \u0C15\u0C4B\u0C38\u0C02 \u0C07\u0C02\u0C1F\u0C30\u0C4D\u0C28\u0C46\u0C1F\u0C4D \u0C05\u0C35\u0C38\u0C30\u0C02",
-  qrSavedToast: "QR \u0C15\u0C4B\u0C21\u0C4D \u0C38\u0C3F\u0C26\u0C4D\u0C27\u0C02\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3F",
-  receiptQrTitle: "UPI \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C38\u0C4D\u0C15\u0C3E\u0C28\u0C4D \u0C1A\u0C47\u0C38\u0C3F \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F"
-};
-
-// src/i18n/locales/hinglish.json
-var hinglish_default = {
-  appName: "Voice Khata",
-  tagline: "Bol kar udhaar darj karein",
-  online: "Online",
-  offlineSafe: "Offline Safe (Lokal)",
-  navHome: "Home (Mic)",
-  navCustomers: "Grahak Khata",
-  navSummary: "Dainik Hisaab",
-  navSettings: "Settings",
-  navStyleguide: "Styleguide",
-  save: "Save Karein",
-  cancel: "Radd Karein",
-  delete: "Delete Karein",
-  edit: "Badlein",
-  close: "Band Karein",
-  search: "Khojein",
-  back: "Wapas",
-  done: "Ho Gaya",
-  creditGiven: "Udhaar Diya",
-  paymentReceived: "Jama Mila",
-  balanceOwed: "Kul Baaki",
-  netBalance: "Net Hisaab",
-  todaySummary: "Aaj Ka Hisaab",
-  recentEntries: "Haal Ke Len-Den",
-  noEntries: "Abhi koi entry darj nahi hai",
-  micIdle: "Mic daba kar bolein",
-  micListening: "Sun raha hoon... Boliye",
-  micProcessing: "Hisaab samajh raha hoon...",
-  micError: "Aawaz saaf nahi aayi. Kripya phir se bolein.",
-  typeInstead: "Type instead (Bina mic)",
-  trySpeaking: "Bol kar dekhein",
-  customersTitle: "Grahak Khata",
-  searchCustomerPlaceholder: "Naam ya phone number khojein...",
-  filterAll: "Sabhi",
-  filterOwes: "Baaki Wale",
-  filterSettled: "Chukta",
-  addJama: "+ Jama Jodein",
-  printSlip: "Slip Print Karein",
-  sendWhatsApp: "WhatsApp Reminder",
-  summaryTitle: "Dainik Hisaab",
-  todayUdhaar: "Udhaar Diya",
-  todayJama: "Jama Mila",
-  todayNet: "Net Badlav",
-  weeklyTrend: "Pichhle 7 Dino Ka Trend",
-  topPending: "Sabse Zyada Baaki Wale",
-  settingsTitle: "Settings",
-  settingsSubtitle: "Dukan ka naam, bhasha, soundbox aur backup",
-  shopNameLabel: "Dukan Ka Naam",
-  shopNamePlaceholder: "e.g. Ramesh Kirana Store",
-  uiLanguageLabel: "Screen ki Bhasha (UI)",
-  uiLanguageDesc: "Button aur screens par dikhne wali bhasha",
-  speechLanguageLabel: "Bolne ki Bhasha",
-  speechLanguageDesc: "Mic sunne aur soundbox awaz ke liye",
-  speechSpeedLabel: "Soundbox Bolne ki Raftaar",
-  speedSlow: "Dheere",
-  speedNormal: "Normal",
-  speedFast: "Tez",
-  muteRepliesLabel: "Soundbox Awaz Mute Karein",
-  muteRepliesDesc: "Sirf ghanti bajegi, hisaab bolkar nahi batayega",
-  themeLabel: "App Theme",
-  themeLight: "Light Theme",
-  themeHighContrast: "High Contrast (Dark)",
-  themeDesc: "Dhoop me ya raat me saaf dikhne ke liye",
-  asrEngineLabel: "Speech Engine (ASR)",
-  asrEngineDesc: "Awaz ko samajhne wala engine",
-  asrBrowser: "Browser On-Device (Free, Offline, Instant)",
-  asrBhashini: "Bhashini AI (Digital India Speech) [Stubbed]",
-  asrSarvam: "Sarvam AI (Saaras Indic Speech) [Stubbed]",
-  exportLedgerLabel: "Khata Export Karein",
-  exportJson: "Export Ledger (JSON)",
-  exportCsv: "Export Ledger (CSV / Excel)",
-  dangerZoneLabel: "Khatarnak: Data Clear",
-  clearAllData: "Saara Khata Data Clear Karein",
-  clearConfirm: "Kya aap sach me saara khata data delete karna chahte hain? Yeh wapas nahi aayega.",
-  clearSuccess: "Saara data safaltapoorvak mita diya gaya!",
-  resetDemo: "Sample Demo Khata Load Karein",
-  resetSuccess: "Demo data restore ho gaya!",
-  localFirstInfo: "Voice Khata 100% offline-first hai. Aapka saara hisaab aapke phone me surakshit (IndexedDB) rehta hai.",
-  signupWelcomeTitle: "Voice Khata me Swagat Hai",
-  signupWelcomeSubtitle: "Indian Kirana stores ke liye hands-free voice ledger",
-  dataStaysOnPhone: "Aapka data isi phone par safe rehta hai",
-  getStarted: "Shuru Karein",
-  stepOf: "Step {current} of {total}",
-  shopNamePrompt: "Dukaan ka naam bataiye",
-  shopNameSpoken: "Dukaan ka naam bataiye",
-  shopNameHelper: "Apni dukaan ka naam bole ya type karein",
-  shopNameError: "Kripya sahi dukaan ka naam daalein (kam se kam 2 akshar)",
-  ownerNamePrompt: "Apna naam bataiye",
-  ownerNameSpoken: "Apna naam bataiye",
-  ownerNamePlaceholder: "e.g. Ramesh Kumar",
-  ownerNameHelper: "Dukaandar ka naam",
-  ownerNameError: "Kripya apna naam daalein (kam se kam 2 akshar)",
-  phonePrompt: "Apna mobile number daalein",
-  phoneSpoken: "Apna 10 digit mobile number daliye",
-  phonePlaceholder: "e.g. 9876543210",
-  phoneHelper: "WhatsApp aur reminder ke liye 10-digit mobile number",
-  phoneError: "6-9 se shuru hone wala 10-digit Indian mobile number daalein",
-  upiPrompt: "Apna UPI ID daalein",
-  upiSpoken: "Apna UPI ID boliye ya likhiye",
-  upiPlaceholder: "e.g. ramesh@oksbi",
-  upiHelperText: "Only your UPI ID is needed. Hum kabhi bank account number nahi maangte.",
-  upiPaste: "Paste Karein",
-  upiReadBack: "Letter-by-letter sunein",
-  upiReadingBack: "Bol rahe hain...",
-  upiError: "Valid UPI ID daalein (e.g. name@bank)",
-  pinPrompt: "Security PIN banayein (Optional)",
-  pinSpoken: "Chaar se che digit ka PIN chuniye ya skip karein",
-  pinPlaceholder: "4-6 digit PIN",
-  pinHelperText: "Phone me data ko encrypt karke surakshit karta hai. Settings me baad me bhi laga sakte hain.",
-  pinSkip: "Abhi Skip Karein",
-  pinSkipWarning: "PIN ke bina koi bhi aapka khata dekh sakta hai. Aap Settings me kabhi bhi PIN laga sakte hain.",
-  pinSkipConfirm: "Skip PIN",
-  pinError: "PIN 4-6 digit ka hona chahiye aur simple nahi hona chahiye (e.g. 1234, 0000)",
-  reviewTitle: "Shop Profile Check Karein",
-  reviewSubtitle: "Apni details confirm karein. Inhe Settings me kabhi bhi badal sakte hain.",
-  startAppButton: "Voice Khata Shuru Karein",
-  editField: "Badlein",
-  nextStep: "Aage",
-  prevStep: "Peeche",
-  settingsProfileTitle: "Shop Profile",
-  settingsProfileSubtitle: "Dukaan details, owner name aur payment UPI ID",
-  confirmUpiChangeTitle: "UPI ID Badalna Chahte Hain?",
-  confirmUpiChangeWarning: "UPI ID badalne par customer ko bheje jaane wale payment QR code aur links badal jayenge. Kya aap sure hain?",
-  confirmUpiChangeButton: "Haan, UPI ID Badlein",
-  noPinWarningBanner: "Aapka ledger PIN se locked nahi hai. Data safe rakhne ke liye abhi PIN lagayein.",
-  setPinNow: "Abhi PIN Lagayein",
-  profileUpdatedToast: "Shop profile safalta se update ho gaya!",
-  registerCustomerTitle: "Naya Customer Jodein",
-  registerCustomerSubtitle: "Khate me save karne ke liye details bharein",
-  enterCustomerPhone: "Customer Mobile Number",
-  phoneReadBackQuestion: "{phone}. Sahi hai?",
-  readBackConfirm: "Haan, Sahi Hai",
-  readBackWrong: "Nahi, Badlo",
-  skipPhoneForNow: "Abhi Skip Karein",
-  noNumberWarning: "Bina number ke save kiya gaya. Reminder me number maanga jayega.",
-  duplicatePhoneWarning: "Yeh number {name} ka hai. Wahi customer hai?",
-  openExistingCustomer: "Haan, {name} ko kholein",
-  useAnotherNumber: "Dusra number daalein",
-  requireCustomerPhoneLabel: "Mobile Number Zaroori Karein",
-  requireCustomerPhoneDesc: "Naye grahak ke liye phone number mandatory rakhein",
-  customerRegisteredSpoken: "{name} ko add kar diya",
-  customerNewAskPhoneSpoken: "{name} naya hai. Number bataiye",
-  whichCustomerTitle: "Kaun sa {name}?",
-  tellLast4DigitsSubtitle: "Number ke aakhri 4 ank bataiye ya card tap karein",
-  noNumberSavedChip: "No number saved",
-  disambiguateRetryToast: "Ye number nahi mila. Kripya phir se bolein ya card tap karein.",
-  disambiguateConfirmSpoken: "{name}, theek hai.",
-  autoOpenPaymentRequestLabel: "Auto-open payment request after udhaar",
-  autoOpenPaymentRequestDesc: "Udhaar likhte hi UPI QR aur WhatsApp link saamne layein",
-  showMyQr: "Dukaan QR",
-  showMyQrDesc: "Counter par khade grahak ke liye payment QR",
-  showMyQrTitle: "Shop Counter QR",
-  paymentRequestTitle: "Payment Request",
-  paymentRequestSubtitle: "Payment lene ke liye QR share karein ya WhatsApp link bhejein",
-  sendWhatsAppPayment: "WhatsApp bhejein",
-  sendWhatsAppHint: "WhatsApp khulega, fir Send dabayein",
-  shareQr: "QR share karein",
-  downloadQr: "QR download karein",
-  laterDismiss: "Baad mein",
-  noPhoneAddNumber: "Number jodein",
-  noPhoneWarning: "Is customer ka phone number saved nahi hai",
-  noUpiIdWarning: "Profile mein UPI ID set nahi hai. QR payments ke liye Settings mein dalein.",
-  setupUpiNow: "UPI ID dalein",
-  whatsappOfflineHint: "WhatsApp ke liye internet zaroori hai",
-  qrSavedToast: "QR code taiyaar hai",
-  receiptQrTitle: "Scan & Pay via UPI"
-};
-
-// src/i18n/translations.ts
-var dictionaries = {
-  en: en_default,
-  hi: hi_default,
-  kn: kn_default,
-  ta: ta_default,
-  te: te_default,
-  hinglish: hinglish_default
-};
-var translations = {
-  // Common UI labels
-  appName: {
-    hinglish: hinglish_default.appName,
-    hi: hi_default.appName,
-    en: en_default.appName,
-    kn: kn_default.appName,
-    ta: ta_default.appName,
-    te: te_default.appName
-  },
-  tagline: {
-    hinglish: hinglish_default.tagline,
-    hi: hi_default.tagline,
-    en: en_default.tagline,
-    kn: kn_default.tagline,
-    ta: ta_default.tagline,
-    te: te_default.tagline
-  },
-  online: {
-    hinglish: hinglish_default.online,
-    hi: hi_default.online,
-    en: en_default.online,
-    kn: kn_default.online,
-    ta: ta_default.online,
-    te: te_default.online
-  },
-  offlineSafe: {
-    hinglish: hinglish_default.offlineSafe,
-    hi: hi_default.offlineSafe,
-    en: en_default.offlineSafe,
-    kn: kn_default.offlineSafe,
-    ta: ta_default.offlineSafe,
-    te: te_default.offlineSafe
-  },
-  // Ledger semantics
-  creditGiven: {
-    hinglish: hinglish_default.creditGiven,
-    hi: hi_default.creditGiven,
-    en: en_default.creditGiven,
-    kn: kn_default.creditGiven,
-    ta: ta_default.creditGiven,
-    te: te_default.creditGiven
-  },
-  paymentReceived: {
-    hinglish: hinglish_default.paymentReceived,
-    hi: hi_default.paymentReceived,
-    en: en_default.paymentReceived,
-    kn: kn_default.paymentReceived,
-    ta: ta_default.paymentReceived,
-    te: te_default.paymentReceived
-  },
-  balanceOwed: {
-    hinglish: hinglish_default.balanceOwed,
-    hi: hi_default.balanceOwed,
-    en: en_default.balanceOwed,
-    kn: kn_default.balanceOwed,
-    ta: ta_default.balanceOwed,
-    te: te_default.balanceOwed
-  },
-  todaySummary: {
-    hinglish: hinglish_default.todaySummary,
-    hi: hi_default.todaySummary,
-    en: en_default.todaySummary,
-    kn: kn_default.todaySummary,
-    ta: ta_default.todaySummary,
-    te: te_default.todaySummary
-  },
-  // Mic Hero prompts
-  micIdlePrompt: {
-    hinglish: hinglish_default.micIdle,
-    hi: hi_default.micIdle,
-    en: en_default.micIdle,
-    kn: kn_default.micIdle,
-    ta: ta_default.micIdle,
-    te: te_default.micIdle
-  },
-  micListeningPrompt: {
-    hinglish: hinglish_default.micListening,
-    hi: hi_default.micListening,
-    en: en_default.micListening,
-    kn: kn_default.micListening,
-    ta: ta_default.micListening,
-    te: te_default.micListening
-  },
-  micProcessingPrompt: {
-    hinglish: hinglish_default.micProcessing,
-    hi: hi_default.micProcessing,
-    en: en_default.micProcessing,
-    kn: kn_default.micProcessing,
-    ta: ta_default.micProcessing,
-    te: te_default.micProcessing
-  },
-  micHelpExample: {
-    hinglish: '"Ramesh ko 500 udhaar diya" ya "Ramesh ka total?"',
-    hi: '"\u0930\u092E\u0947\u0936 \u0915\u094B 500 \u0909\u0927\u093E\u0930 \u0926\u093F\u092F\u093E" \u092F\u093E "\u0930\u092E\u0947\u0936 \u0915\u093E \u091F\u094B\u091F\u0932?"',
-    en: '"Ramesh gave 500 credit" or "Ramesh total balance?"',
-    kn: '"\u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C97\u0CC6 500 \u0CB8\u0CBE\u0CB2 \u0CA8\u0CC0\u0CA1\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6" \u0C85\u0CA5\u0CB5\u0CBE "\u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF?"',
-    ta: '"\u0BB0\u0BAE\u0BC7\u0BB7\u0BBF\u0BB1\u0BCD\u0B95\u0BC1 500 \u0B95\u0B9F\u0BA9\u0BCD" \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 "\u0BB0\u0BAE\u0BC7\u0BB7\u0BCD \u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF?"',
-    te: '"\u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C15\u0C3F 500 \u0C05\u0C2A\u0C4D\u0C2A\u0C41" \u0C32\u0C47\u0C26\u0C3E "\u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40?"'
-  },
-  // Action Buttons
-  confirmAndSave: {
-    hinglish: "Haan, Khata Me Likhein",
-    hi: "\u0939\u093E\u0901, \u0916\u093E\u0924\u0947 \u092E\u0947\u0902 \u0932\u093F\u0916\u0947\u0902",
-    en: "Confirm & Save",
-    kn: "\u0CB9\u0CCC\u0CA6\u0CC1, \u0C96\u0CBE\u0CA4\u0CC6\u0C97\u0CC6 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
-    ta: "\u0B86\u0BAE\u0BCD, \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95",
-    te: "\u0C05\u0C35\u0C41\u0C28\u0C41, \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F"
-  },
-  cancel: {
-    hinglish: hinglish_default.cancel,
-    hi: hi_default.cancel,
-    en: en_default.cancel,
-    kn: kn_default.cancel,
-    ta: ta_default.cancel,
-    te: te_default.cancel
-  },
-  manualEntry: {
-    hinglish: "Likh Kar Darj Karein",
-    hi: "\u0932\u093F\u0916\u0915\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
-    en: "Manual Keyboard Entry",
-    kn: "\u0C9F\u0CC8\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0CAC\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
-    ta: "\u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BB5\u0BC1\u0BAE\u0BCD",
-    te: "\u0C1F\u0C48\u0C2A\u0C4D \u0C1A\u0C47\u0C38\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F"
-  },
-  sendWhatsApp: {
-    hinglish: "WhatsApp Reminder Bhejein",
-    hi: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930 \u092D\u0947\u091C\u0947\u0902",
-    en: "Send WhatsApp Reminder",
-    kn: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6 \u0C95\u0CB3\u0CC1\u0CB9\u0CBF\u0CB8\u0CBF",
-    ta: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD",
-    te: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F"
-  },
-  shareReceipt: {
-    hinglish: "Parchi Share Karein",
-    hi: "\u092A\u0930\u094D\u091A\u0940 \u0936\u0947\u092F\u0930 \u0915\u0930\u0947\u0902",
-    en: "Share Receipt Slip",
-    kn: "\u0CB0\u0CB6\u0CC0\u0CA6\u0CBF \u0CB9\u0C82\u0C9A\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CBF",
-    ta: "\u0BB0\u0B9A\u0BC0\u0BA4\u0BC8 \u0BAA\u0B95\u0BBF\u0BB0\u0BCD\u0B95",
-    te: "\u0C30\u0C38\u0C40\u0C26\u0C41 \u0C37\u0CC7\u0BB0\u0BCD \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F"
-  },
-  // Spoken feedback phrases (Soundbox voice announcements)
-  spokenCreditSaved: (name, amount, lang) => {
-    switch (lang) {
-      case "hi":
-      case "hinglish":
-        return `${name} ko ${amount} rupaye udhaar darj kiya`;
-      case "kn":
-        return `${name} avarige ${amount} roopayi saala daakhalisu laagide`;
-      case "ta":
-        return `${name} ku ${amount} roobai kadan padhivu seiyappattadhu`;
-      case "te":
-        return `${name} ku ${amount} roopayalu appu namodu cheyabadindi`;
-      case "en":
-      default:
-        return `Recorded ${amount} rupees credit for ${name}`;
-    }
-  },
-  spokenPaymentSaved: (name, amount, lang) => {
-    switch (lang) {
-      case "hi":
-      case "hinglish":
-        return `${name} se ${amount} rupaye jama prapt hue`;
-      case "kn":
-        return `${name} avarinda ${amount} roopayi hana bandide`;
-      case "ta":
-        return `${name} idamirundhu ${amount} roobai panam vandhadhu`;
-      case "te":
-        return `${name} nundi ${amount} roopayalu jama ayyindi`;
-      case "en":
-      default:
-        return `Received ${amount} rupees payment from ${name}`;
-    }
-  },
-  spokenBalanceOwed: (name, amount, lang) => {
-    switch (lang) {
-      case "hi":
-      case "hinglish":
-        return `${name} ka kul baaki ${amount} rupaye hai`;
-      case "kn":
-        return `${name} avara ottu baaki ${amount} roopayi ide`;
-      case "ta":
-        return `${name} in mottha baakki ${amount} roobai`;
-      case "te":
-        return `${name} yokka mottham baakee ${amount} roopayalu`;
-      case "en":
-      default:
-        return `${name} has a pending balance of ${amount} rupees`;
-    }
-  },
-  // WhatsApp reminder templates
-  reminderMessage: (name, amount, shopName = "Kirana Store", lang, entries) => {
-    let entriesBlock = "";
-    if (entries && entries.length > 0) {
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      entriesBlock = sorted.map((e) => {
-        const d = new Date(e.date);
-        const day = d.getDate();
-        const month = monthNames[d.getMonth()] || "Nov";
-        const typeStr = e.type === "credit" ? "udhaar" : "paid";
-        return `${day} ${month}: \u20B9${e.amount.toLocaleString("en-IN")} ${typeStr}`;
-      }).join("\n");
-    }
-    if (entriesBlock) {
-      switch (lang) {
-        case "hi":
-          return `\u0928\u092E\u0938\u094D\u0924\u0947 ${name} \u091C\u0940,
-${shopName} \u0938\u0947 \u0906\u092A\u0915\u093E \u0939\u093F\u0938\u093E\u092C:
-${entriesBlock}
---------------------
-\u0915\u0941\u0932 \u092C\u093E\u0915\u0940 \u0939\u093F\u0938\u093E\u092C: \u20B9${amount}
-\u0915\u0943\u092A\u092F\u093E \u0938\u0941\u0935\u093F\u0927\u093E\u0928\u0941\u0938\u093E\u0930 \u092D\u0941\u0917\u0924\u093E\u0928 \u0915\u0930 \u0926\u0947\u0902\u0964
-\u0927\u0928\u094D\u092F\u0935\u093E\u0926! \u{1F64F}`;
-        case "kn":
-          return `\u0CA8\u0CAE\u0CB8\u0CCD\u0C95\u0CBE\u0CB0 ${name} \u0C85\u0CB5\u0CB0\u0CC7,
-${shopName} \u0CA8\u0CBF\u0C82\u0CA6 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB2\u0CC6\u0C95\u0CCD\u0C95:
-${entriesBlock}
---------------------
-\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF: \u20B9${amount}
-\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0C85\u0CA8\u0CC1\u0C95\u0CC2\u0CB2\u0CB5\u0CBE\u0CA6\u0CBE\u0C97 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF\u0CB8\u0CBF.
-\u0CA7\u0CA8\u0CCD\u0CAF\u0CB5\u0CBE\u0CA6\u0C97\u0CB3\u0CC1! \u{1F64F}`;
-        case "ta":
-          return `\u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD ${name},
-${shopName} \u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BB2\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1:
-${entriesBlock}
---------------------
-\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF: \u20B9${amount}
-\u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0BB5\u0BBF\u0BB0\u0BC8\u0BB5\u0BBF\u0BB2\u0BCD \u0B9A\u0BC6\u0BB2\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD.
-\u0BA8\u0BA9\u0BCD\u0BB1\u0BBF! \u{1F64F}`;
-        case "te":
-          return `\u0C28\u0C2E\u0C38\u0C4D\u0C15\u0C3E\u0C30\u0C02 ${name} \u0C17\u0C3E\u0C30\u0C41,
-${shopName} \u0C32\u0C4B \u0C2E\u0C40 \u0C32\u0C46\u0C15\u0C4D\u0C15:
-${entriesBlock}
---------------------
-\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40: \u20B9${amount}
-\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C35\u0C40\u0C32\u0C48\u0C28\u0C02\u0C24 \u0C24\u0C4D\u0C35\u0C30\u0C17\u0C3E \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.
-\u0C27\u0C28\u0C4D\u0C2F\u0C35\u0C3E\u0C26\u0C3E\u0C32\u0C41! \u{1F64F}`;
-        case "en":
-          return `Hello ${name},
-Account statement from ${shopName}:
-${entriesBlock}
---------------------
-Total pending balance: \u20B9${amount}
-Please settle at your convenience.
-Thank you! \u{1F64F}`;
-        case "hinglish":
-        default:
-          return `Namaste ${name} ji,
-${shopName} se aapka hisaab:
-${entriesBlock}
---------------------
-Kul baaki hisaab: \u20B9${amount}
-Kripya suvidhanusar bhej dein.
-Dhanyawad! \u{1F64F}`;
-      }
-    }
-    switch (lang) {
-      case "hi":
-        return `\u0928\u092E\u0938\u094D\u0924\u0947 ${name} \u091C\u0940, \u0906\u092A\u0915\u0947 \u0915\u093F\u0930\u093E\u0928\u093E \u0916\u093E\u0924\u0947 \u0915\u093E \u092C\u093E\u0915\u0940 \u20B9${amount} \u0939\u0948\u0964 \u0915\u0943\u092A\u092F\u093E \u0938\u0941\u0935\u093F\u0927\u093E\u0928\u0941\u0938\u093E\u0930 \u091A\u0941\u0915\u093E \u0926\u0947\u0902\u0964 \u0927\u0928\u094D\u092F\u0935\u093E\u0926 - ${shopName}`;
-      case "kn":
-        return `\u0CA8\u0CAE\u0CB8\u0CCD\u0C95\u0CBE\u0CB0 ${name} \u0C85\u0CB5\u0CB0\u0CC7, \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C95\u0CBF\u0CB0\u0CBE\u0CA3\u0CBF \u0C96\u0CBE\u0CA4\u0CC6\u0CAF \u0CAC\u0CBE\u0C95\u0CBF \u0CAE\u0CCA\u0CA4\u0CCD\u0CA4 \u20B9${amount}. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF\u0CB8\u0CBF. \u0CA7\u0CA8\u0CCD\u0CAF\u0CB5\u0CBE\u0CA6\u0C97\u0CB3\u0CC1 - ${shopName}`;
-      case "ta":
-        return `\u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD ${name}, \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAE\u0BB3\u0BBF\u0B95\u0BC8\u0B95\u0BCD \u0B95\u0B9F\u0BC8 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF\u0BA4\u0BCD \u0BA4\u0BCA\u0B95\u0BC8 \u20B9${amount}. \u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC6\u0BB2\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD. \u0BA8\u0BA9\u0BCD\u0BB1\u0BBF - ${shopName}`;
-      case "te":
-        return `\u0C28\u0C2E\u0C38\u0C4D\u0C15\u0C3E\u0C30\u0C02 ${name} \u0C17\u0C3E\u0C30\u0C41, \u0C2E\u0C40 \u0C15\u0C3F\u0C30\u0C3E\u0C23\u0C3E \u0C16\u0C3E\u0C24\u0C3E \u0C2C\u0C15\u0C3E\u0C2F\u0C3F \u20B9${amount}. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F. \u0C27\u0C28\u0C4D\u0C2F\u0C35\u0C3E\u0C26\u0C3E\u0C32\u0C41 - ${shopName}`;
-      case "en":
-        return `Hello ${name}, this is a gentle reminder that your pending balance at ${shopName} is \u20B9${amount}. Thank you!`;
-      case "hinglish":
-      default:
-        return `Namaste ${name} ji, aapke kirana khata ka baaki balance \u20B9${amount} hai. Kripya samay par chuka dein. Dhanyawad - ${shopName}`;
-    }
-  }
-};
-
-// src/services/phoneParser.ts
-var NATIVE_DIGIT_MAP = {
-  // Devanagari (० - ९)
-  "\u0966": "0",
-  "\u0967": "1",
-  "\u0968": "2",
-  "\u0969": "3",
-  "\u096A": "4",
-  "\u096B": "5",
-  "\u096C": "6",
-  "\u096D": "7",
-  "\u096E": "8",
-  "\u096F": "9",
-  // Kannada (೦ - ೯)
-  "\u0CE6": "0",
-  "\u0CE7": "1",
-  "\u0CE8": "2",
-  "\u0CE9": "3",
-  "\u0CEA": "4",
-  "\u0CEB": "5",
-  "\u0CEC": "6",
-  "\u0CED": "7",
-  "\u0CEE": "8",
-  "\u0CEF": "9",
-  // Tamil (௦ - ௯)
-  "\u0BE6": "0",
-  "\u0BE7": "1",
-  "\u0BE8": "2",
-  "\u0BE9": "3",
-  "\u0BEA": "4",
-  "\u0BEB": "5",
-  "\u0BEC": "6",
-  "\u0BED": "7",
-  "\u0BEE": "8",
-  "\u0BEF": "9",
-  // Telugu (౦ - ౯)
-  "\u0C66": "0",
-  "\u0C67": "1",
-  "\u0C68": "2",
-  "\u0C69": "3",
-  "\u0C6A": "4",
-  "\u0C6B": "5",
-  "\u0C6C": "6",
-  "\u0C6D": "7",
-  "\u0C6E": "8",
-  "\u0C6F": "9"
-};
-var SPOKEN_DIGIT_MAP = {
-  // 0 - Zero
-  "zero": "0",
-  "oh": "0",
-  "o": "0",
-  "zeros": "0",
-  "zeroes": "0",
-  "shunya": "0",
-  "soonya": "0",
-  "shunyaa": "0",
-  "\u0936\u0942\u0928\u094D\u092F": "0",
-  "sonne": "0",
-  "soone": "0",
-  "\u0CB8\u0CCA\u0CA8\u0CCD\u0CA8\u0CC6": "0",
-  // TODO_REVIEW: Check colloquial Kannada "soone" variant
-  "poojyam": "0",
-  "pujyam": "0",
-  "poojiyam": "0",
-  "\u0BAA\u0BC2\u0B9C\u0BCD\u0BAF\u0BAE\u0BCD": "0",
-  "\u0BAA\u0BC2\u0B9C\u0BCD\u0B9C\u0BBF\u0BAF\u0BAE\u0BCD": "0",
-  // TODO_REVIEW: Check colloquial Tamil "poojiyam"
-  "sunna": "0",
-  "soonna": "0",
-  "\u0C38\u0C41\u0C28\u0C4D\u0C28\u0C3E": "0",
-  // 1 - One
-  "one": "1",
-  "won": "1",
-  "ek": "1",
-  "aek": "1",
-  "ik": "1",
-  "\u090F\u0915": "1",
-  "ondu": "1",
-  "wondu": "1",
-  "\u0C92\u0C82\u0CA6\u0CC1": "1",
-  "ondru": "1",
-  "onnu": "1",
-  "\u0B92\u0BA9\u0BCD\u0BB1\u0BC1": "1",
-  "\u0B92\u0BA9\u0BCD\u0BA9\u0BC1": "1",
-  // TODO_REVIEW: Spoken Tamil "onnu" vs formal "ondru"
-  "okati": "1",
-  "vokati": "1",
-  "\u0C12\u0C15\u0C1F\u0C3F": "1",
-  // 2 - Two
-  "two": "2",
-  "to": "2",
-  "too": "2",
-  "do": "2",
-  "doo": "2",
-  "dow": "2",
-  "\u0926\u094B": "2",
-  "eradu": "2",
-  "yeradu": "2",
-  "\u0C8E\u0CB0\u0CA1\u0CC1": "2",
-  "irandu": "2",
-  "rendu": "2",
-  "\u0B87\u0BB0\u0BA3\u0BCD\u0B9F\u0BC1": "2",
-  "\u0BB0\u0BC6\u0BA3\u0BCD\u0B9F\u0BC1": "2",
-  "moodu_dummy": "3",
-  // placeholder
-  // Telugu rendu
-  "\u0C30\u0C46\u0C02\u0C21\u0C41": "2",
-  // 3 - Three
-  "three": "3",
-  "tree": "3",
-  "teen": "3",
-  "tin": "3",
-  "\u0924\u0940\u0928": "3",
-  "mooru": "3",
-  "muru": "3",
-  "\u0CAE\u0CC2\u0CB0\u0CC1": "3",
-  "moondru": "3",
-  "moonu": "3",
-  "\u0BAE\u0BC2\u0BA9\u0BCD\u0BB1\u0BC1": "3",
-  "\u0BAE\u0BC2\u0BA3\u0BC1": "3",
-  "moodu": "3",
-  "mudu": "3",
-  "\u0C2E\u0C42\u0C21\u0C41": "3",
-  // 4 - Four
-  "four": "4",
-  "for": "4",
-  "fore": "4",
-  "char": "4",
-  "chaar": "4",
-  "\u091A\u093E\u0930": "4",
-  "naalku": "4",
-  "nalku": "4",
-  "\u0CA8\u0CBE\u0CB2\u0CCD\u0C95\u0CC1": "4",
-  "naangu": "4",
-  "naalu": "4",
-  "\u0BA8\u0BBE\u0BA9\u0BCD\u0B95\u0BC1": "4",
-  "\u0BA8\u0BBE\u0BB2\u0BC1": "4",
-  "naalugu": "4",
-  "nalugu": "4",
-  "\u0C28\u0C3E\u0C32\u0C41\u0C17\u0C41": "4",
-  // 5 - Five
-  "five": "5",
-  "paanch": "5",
-  "panch": "5",
-  "\u092A\u093E\u0902\u091A": "5",
-  "\u092A\u093E\u0901\u091A": "5",
-  "aidu": "5",
-  "aydu": "5",
-  "\u0C90\u0CA6\u0CC1": "5",
-  "\u0C10\u0C26\u0C41": "5",
-  "aindhu": "5",
-  "anju": "5",
-  "anchu": "5",
-  "\u0B90\u0BA8\u0BCD\u0BA4\u0BC1": "5",
-  "\u0B85\u0B9E\u0BCD\u0B9A\u0BC1": "5",
-  // Telugu aidu covered by 'aidu' / 'aydu'
-  // 6 - Six
-  "six": "6",
-  "chhe": "6",
-  "chhah": "6",
-  "che": "6",
-  "cheh": "6",
-  "\u091B\u0939": "6",
-  "\u091B\u0903": "6",
-  "\u091B\u0947": "6",
-  "aaru": "6",
-  "aru": "6",
-  "\u0C86\u0CB0\u0CC1": "6",
-  "\u0B86\u0BB1\u0BC1": "6",
-  "\u0C06\u0C30\u0C41": "6",
-  // 7 - Seven
-  "seven": "7",
-  "saat": "7",
-  "sat": "7",
-  "\u0938\u093E\u0924": "7",
-  "eelu": "7",
-  "yelu": "7",
-  "\u0C8F\u0CB3\u0CC1": "7",
-  "eezhu": "7",
-  "yezhu": "7",
-  "\u0B8F\u0BB4\u0BC1": "7",
-  "eedu": "7",
-  "yedu": "7",
-  "\u0C0F\u0C21\u0C41": "7",
-  // 8 - Eight
-  "eight": "8",
-  "ate": "8",
-  "aath": "8",
-  "ath": "8",
-  "\u0906\u0920": "8",
-  "entu": "8",
-  "yentu": "8",
-  "\u0C8E\u0C82\u0C9F\u0CC1": "8",
-  "ettu": "8",
-  "\u0B8E\u0B9F\u0BCD\u0B9F\u0BC1": "8",
-  "enimidi": "8",
-  "yenimidi": "8",
-  "\u0C0E\u0C28\u0C3F\u0C2E\u0C3F\u0C26\u0C3F": "8",
-  // 9 - Nine
-  "nine": "9",
-  "nau": "9",
-  "no": "9",
-  "nav": "9",
-  "\u0928\u094C": "9",
-  "ombattu": "9",
-  "ombatu": "9",
-  "\u0C92\u0C82\u0CAC\u0CA4\u0CCD\u0CA4\u0CC1": "9",
-  "onbadhu": "9",
-  "onbathu": "9",
-  "ombadhu": "9",
-  "\u0B92\u0BA9\u0BCD\u0BAA\u0BA4\u0BC1": "9",
-  "tommidi": "9",
-  "\u0C24\u0C4A\u0C2E\u0C4D\u0C2E\u0C3F\u0C26\u0C3F": "9"
-};
-var REPEAT_DOUBLE_WORDS = /* @__PURE__ */ new Set([
-  "double",
-  "dabal",
-  "dubble",
-  "dabbel",
-  "\u0921\u092C\u0932",
-  "\u0CA1\u0CAC\u0CB2\u0CCD",
-  "\u0B9F\u0BAA\u0BC1\u0BB3\u0BCD",
-  "\u0C21\u0C2C\u0C41\u0C32\u0C4D"
-]);
-var REPEAT_TRIPLE_WORDS = /* @__PURE__ */ new Set([
-  "triple",
-  "treepal",
-  "tripple",
-  "tripal",
-  "\u091F\u094D\u0930\u093F\u092A\u0932",
-  "\u0C9F\u0CCD\u0CB0\u0CBF\u0CAA\u0CB2\u0CCD",
-  "\u0B9F\u0BBF\u0BB0\u0BBF\u0BAA\u0BBF\u0BB3\u0BCD",
-  "\u0C1F\u0C4D\u0C30\u0C3F\u0C2A\u0C41\u0C32\u0C4D"
-]);
-var FILLER_WORDS = /* @__PURE__ */ new Set([
-  "number",
-  "no",
-  "ph",
-  "phone",
-  "mobile",
-  "ka",
-  "ki",
-  "ke",
-  "ko",
-  "hai",
-  "he",
-  "daalo",
-  "likho",
-  "add",
-  "karo",
-  "kariye",
-  "kijiye",
-  "umm",
-  "um",
-  "wo",
-  "arre",
-  "are",
-  "ha",
-  "haa",
-  "na",
-  "hisaab",
-  "grahak",
-  "customer",
-  "nambar",
-  "namber",
-  "\u0C28\u0C02\u0C2C\u0C30\u0C4D",
-  "\u0BA8\u0BAE\u0BCD\u0BAA\u0BB0\u0BCD",
-  "\u0CA8\u0C82\u0CAC\u0CB0\u0CCD",
-  "\u0928\u0902\u092C\u0930",
-  "\u092B\u094B\u0928",
-  "matlab",
-  "bolo",
-  "batao",
-  "bataiye"
-]);
-function extractDigitSequence(text) {
-  if (!text) return "";
-  let raw = text.trim();
-  for (const [nativeChar, latinDigit] of Object.entries(NATIVE_DIGIT_MAP)) {
-    raw = raw.split(nativeChar).join(latinDigit);
-  }
-  raw = raw.replace(/[-.,/()]/g, " ");
-  raw = raw.replace(/\bplus\s+(?:nine\s+one|91)\b/gi, "+91 ");
-  raw = raw.replace(/प्लस\s+नौ\s+एक/gi, "+91 ");
-  raw = raw.replace(/ಪ್ಲಸ್\s+ಒಂಬತ್ತು\s+ಒಂದು/gi, "+91 ");
-  const tokens = raw.split(/\s+/).filter(Boolean);
-  let result = "";
-  let pendingMultiplier = 1;
-  for (let i = 0; i < tokens.length; i++) {
-    const rawToken = tokens[i];
-    const token = rawToken.toLowerCase();
-    if (REPEAT_DOUBLE_WORDS.has(token)) {
-      pendingMultiplier = 2;
-      continue;
-    }
-    if (REPEAT_TRIPLE_WORDS.has(token)) {
-      pendingMultiplier = 3;
-      continue;
-    }
-    if (FILLER_WORDS.has(token)) {
-      continue;
-    }
-    if (/^\+?\d+$/.test(token)) {
-      const pureDigits = token.replace(/\D/g, "");
-      if (pureDigits) {
-        if (pendingMultiplier > 1 && pureDigits.length === 1) {
-          result += pureDigits.repeat(pendingMultiplier);
-        } else {
-          result += pureDigits;
-        }
-        pendingMultiplier = 1;
-      }
-      continue;
-    }
-    const digitValue = SPOKEN_DIGIT_MAP[token];
-    if (digitValue !== void 0) {
-      result += digitValue.repeat(pendingMultiplier);
-      pendingMultiplier = 1;
-      continue;
-    }
-    pendingMultiplier = 1;
-  }
-  return result;
+// src/services/reminderMessage.ts
+function formatReminderDateTime(dateInput) {
+  if (!dateInput) return "";
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const day = d.getDate();
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[d.getMonth()] || "Jan";
+  const year = d.getFullYear();
+  let hours = d.getHours();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const minutes = d.getMinutes().toString().padStart(2, "0");
+  return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`;
 }
-function normalizePrefixes(digits) {
-  let cleaned = digits;
-  if (cleaned.length === 12 && cleaned.startsWith("91")) {
-    const without91 = cleaned.substring(2);
-    if (/^[6-9]/.test(without91)) {
-      cleaned = without91;
-    }
+function formatWhatsAppPhone(phone) {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) {
+    return `+91${digits}`;
   }
-  if (cleaned.length === 11 && cleaned.startsWith("0")) {
-    const withoutZero = cleaned.substring(1);
-    if (/^[6-9]/.test(withoutZero)) {
-      cleaned = withoutZero;
-    }
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return `+${digits}`;
   }
-  return cleaned;
+  if (digits.length > 10) {
+    return `+91${digits.slice(-10)}`;
+  }
+  return `+91${digits}`;
 }
-function formatPhone(phone) {
-  const clean = (phone || "").replace(/\D/g, "");
-  if (clean.length === 10) {
-    return `${clean.slice(0, 5)} ${clean.slice(5)}`;
+function buildWhatsAppReminderUrl(phone, text) {
+  const formattedPhone = formatWhatsAppPhone(phone);
+  const encodedText = encodeURIComponent(text);
+  if (!formattedPhone) {
+    return `https://wa.me/?text=${encodedText}`;
   }
-  return clean;
+  return `https://wa.me/${formattedPhone}?text=${encodedText}`;
 }
-function parsePhoneNumber(text) {
-  if (!text || !text.trim()) return null;
-  const rawDigits = extractDigitSequence(text);
-  if (!rawDigits) {
-    return {
-      digits: "",
-      formatted: "",
-      confidence: 0,
-      issues: ["No digits found in input"]
-    };
-  }
-  const normalized = normalizePrefixes(rawDigits);
-  const issues = [];
-  if (normalized.length !== 10) {
-    if (normalized.length === 9) {
-      issues.push("Phone number has 9 digits (1 digit missing). Please speak or enter 10 digits.");
-    } else if (normalized.length === 11) {
-      issues.push("Phone number has 11 digits (1 extra digit). Indian mobile numbers must be 10 digits.");
-    } else {
-      issues.push(`Expected 10 digits, found ${normalized.length} digits.`);
-    }
-  }
-  if (normalized.length > 0 && !/^[6-9]/.test(normalized)) {
-    issues.push(`Indian mobile numbers must start with 6, 7, 8, or 9 (starts with ${normalized[0]}).`);
-  }
-  const isValid = issues.length === 0;
-  const isDirectlyTyped = /^\d{10}$/.test(text.trim().replace(/[- ]/g, ""));
-  return {
-    digits: normalized,
-    formatted: formatPhone(normalized),
-    confidence: isValid ? isDirectlyTyped ? 1 : 0.95 : 0.3,
-    issues
-  };
-}
-
-// src/services/customerMatcher.ts
-var HONORIFICS = /* @__PURE__ */ new Set([
-  "bhai",
-  "ji",
-  "anna",
-  "akka",
-  "sir",
-  "madam",
-  "aunty",
-  "auntie",
-  "uncle",
-  "shri",
-  "sri",
-  "shree",
-  "garu",
-  "avargal",
-  "sahab",
-  "saheb",
-  "seth",
-  "sethji",
-  "didi",
-  "bhabhi",
-  "chettan",
-  "chechi"
-]);
-var DEVANAGARI_MAP = {
-  halant: 2381,
-  anusvara: 2306,
-  visarga: 2307,
-  vowels: {
-    2309: "a",
-    2310: "a",
-    2311: "i",
-    2312: "i",
-    2313: "u",
-    2314: "u",
-    2315: "ri",
-    2319: "e",
-    2320: "ai",
-    2323: "o",
-    2324: "au"
-  },
-  matras: {
-    2366: "a",
-    2367: "i",
-    2368: "i",
-    2369: "u",
-    2370: "u",
-    2371: "ri",
-    2375: "e",
-    2376: "ai",
-    2379: "o",
-    2380: "au"
-  },
-  consonants: {
-    2325: "k",
-    2326: "kh",
-    2327: "g",
-    2328: "gh",
-    2329: "ng",
-    2330: "ch",
-    2331: "chh",
-    2332: "j",
-    2333: "jh",
-    2334: "ny",
-    2335: "t",
-    2336: "th",
-    2337: "d",
-    2338: "dh",
-    2339: "n",
-    2340: "t",
-    2341: "th",
-    2342: "d",
-    2343: "dh",
-    2344: "n",
-    2346: "p",
-    2347: "ph",
-    2348: "b",
-    2349: "bh",
-    2350: "m",
-    2351: "y",
-    2352: "r",
-    2354: "l",
-    2357: "v",
-    2358: "sh",
-    2359: "sh",
-    2360: "s",
-    2361: "h",
-    2392: "q",
-    2393: "kh",
-    2394: "gh",
-    2395: "z",
-    2396: "r",
-    2397: "rh",
-    2398: "f"
-  }
-};
-var KANNADA_MAP = {
-  halant: 3277,
-  anusvara: 3202,
-  visarga: 3203,
-  vowels: {
-    3205: "a",
-    3206: "a",
-    3207: "i",
-    3208: "i",
-    3209: "u",
-    3210: "u",
-    3211: "ri",
-    3214: "e",
-    3215: "e",
-    3216: "ai",
-    3218: "o",
-    3219: "o",
-    3220: "au"
-  },
-  matras: {
-    3262: "a",
-    3263: "i",
-    3264: "i",
-    3265: "u",
-    3266: "u",
-    3267: "ri",
-    3270: "e",
-    3271: "e",
-    3272: "ai",
-    3274: "o",
-    3275: "o",
-    3276: "au"
-  },
-  consonants: {
-    3221: "k",
-    3222: "kh",
-    3223: "g",
-    3224: "gh",
-    3225: "ng",
-    3226: "ch",
-    3227: "chh",
-    3228: "j",
-    3229: "jh",
-    3230: "ny",
-    3231: "t",
-    3232: "th",
-    3233: "d",
-    3234: "dh",
-    3235: "n",
-    3236: "t",
-    3237: "th",
-    3238: "d",
-    3239: "dh",
-    3240: "n",
-    3242: "p",
-    3243: "ph",
-    3244: "b",
-    3245: "bh",
-    3246: "m",
-    3247: "y",
-    3248: "r",
-    3249: "r",
-    3250: "l",
-    3251: "l",
-    3253: "v",
-    3254: "sh",
-    3255: "sh",
-    3256: "s",
-    3257: "h"
-  }
-};
-var TAMIL_MAP = {
-  halant: 3021,
-  anusvara: 2946,
-  visarga: 2947,
-  vowels: {
-    2949: "a",
-    2950: "a",
-    2951: "i",
-    2952: "i",
-    2953: "u",
-    2954: "u",
-    2958: "e",
-    2959: "e",
-    2960: "ai",
-    2962: "o",
-    2963: "o",
-    2964: "au"
-  },
-  matras: {
-    3006: "a",
-    3007: "i",
-    3008: "i",
-    3009: "u",
-    3010: "u",
-    3014: "e",
-    3015: "e",
-    3016: "ai",
-    3018: "o",
-    3019: "o",
-    3020: "au"
-  },
-  consonants: {
-    2965: "k",
-    2969: "ng",
-    2970: "s",
-    2974: "ny",
-    2975: "t",
-    2979: "n",
-    2980: "t",
-    2984: "n",
-    2986: "p",
-    2990: "m",
-    2991: "y",
-    2992: "r",
-    2993: "r",
-    2994: "l",
-    2995: "l",
-    2996: "zh",
-    2997: "v",
-    2998: "sh",
-    2999: "sh",
-    3e3: "s",
-    3001: "h",
-    2985: "n",
-    2972: "j"
-  }
-};
-var TELUGU_MAP = {
-  halant: 3149,
-  anusvara: 3074,
-  visarga: 3075,
-  vowels: {
-    3077: "a",
-    3078: "a",
-    3079: "i",
-    3080: "i",
-    3081: "u",
-    3082: "u",
-    3083: "ri",
-    3086: "e",
-    3087: "e",
-    3088: "ai",
-    3090: "o",
-    3091: "o",
-    3092: "au"
-  },
-  matras: {
-    3134: "a",
-    3135: "i",
-    3136: "i",
-    3137: "u",
-    3138: "u",
-    3142: "e",
-    3143: "e",
-    3144: "ai",
-    3146: "o",
-    3147: "o",
-    3148: "au"
-  },
-  consonants: {
-    3093: "k",
-    3094: "kh",
-    3095: "g",
-    3096: "gh",
-    3097: "ng",
-    3098: "ch",
-    3099: "chh",
-    3100: "j",
-    3101: "jh",
-    3102: "ny",
-    3103: "t",
-    3104: "th",
-    3105: "d",
-    3106: "dh",
-    3107: "n",
-    3108: "t",
-    3109: "th",
-    3110: "d",
-    3111: "dh",
-    3112: "n",
-    3114: "p",
-    3115: "ph",
-    3116: "b",
-    3117: "bh",
-    3118: "m",
-    3119: "y",
-    3120: "r",
-    3121: "r",
-    3122: "l",
-    3123: "l",
-    3125: "v",
-    3126: "sh",
-    3127: "sh",
-    3128: "s",
-    3129: "h"
-  }
-};
-function getIndicScriptMap(code) {
-  if (code >= 2304 && code <= 2431) return DEVANAGARI_MAP;
-  if (code >= 3200 && code <= 3327) return KANNADA_MAP;
-  if (code >= 2944 && code <= 3071) return TAMIL_MAP;
-  if (code >= 3072 && code <= 3199) return TELUGU_MAP;
-  return null;
-}
-function transliterateIndicToLatin(text) {
-  if (!text) return "";
-  let working = text.replace(/[శशಶஶ]్రీ/g, "sri").replace(/[शశಶஶ]्रि/g, "sri");
-  let result = "";
-  for (let i = 0; i < working.length; i++) {
-    const code = working.charCodeAt(i);
-    const scriptMap = getIndicScriptMap(code);
-    if (!scriptMap) {
-      result += working.charAt(i);
-      continue;
-    }
-    if (scriptMap.vowels[code]) {
-      result += scriptMap.vowels[code];
-      continue;
-    }
-    if (code === scriptMap.anusvara || code === 2305) {
-      result += "n";
-      continue;
-    }
-    if (code === scriptMap.visarga) {
-      result += "h";
-      continue;
-    }
-    let cons = scriptMap.consonants[code];
-    if (cons) {
-      if (code === 2965 && result.length > 0) {
-        const lastChar = result.charAt(result.length - 1);
-        if (/[aeiour]/.test(lastChar)) {
-          cons = "g";
-        }
-      }
-      const nextCode = i + 1 < working.length ? working.charCodeAt(i + 1) : 0;
-      const isNextHalant = nextCode === scriptMap.halant;
-      const nextMatra = scriptMap.matras[nextCode];
-      if (isNextHalant) {
-        result += cons;
-        i++;
-      } else if (nextMatra) {
-        result += cons + nextMatra;
-        i++;
-      } else {
-        const isEndOfWord = i + 1 >= working.length || /\s|[.,!?]/.test(working.charAt(i + 1));
-        if (isEndOfWord) {
-          result += cons;
-        } else {
-          result += cons + "a";
-        }
-      }
-      continue;
-    }
-    if (scriptMap.matras[code]) {
-      result += scriptMap.matras[code];
-      continue;
-    }
-  }
-  return result;
-}
-function normalizeName(name) {
-  if (!name) return "";
-  let s = name.replace(/\([^)]*\)/g, " ");
-  s = transliterateIndicToLatin(s);
-  s = s.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
-  const tokens = s.split(/\s+/).filter(Boolean);
-  const filteredTokens = tokens.filter((tok) => !HONORIFICS.has(tok));
-  const base = filteredTokens.length > 0 ? filteredTokens.join(" ") : tokens.join(" ");
-  let collapsed = base.replace(/aa+/g, "a").replace(/ee+/g, "e").replace(/ii+/g, "i").replace(/oo+/g, "u").replace(/uu+/g, "u");
-  collapsed = collapsed.replace(/([b-df-hj-np-tv-z])\1+/g, "$1");
-  return collapsed.trim();
-}
-function getIndianPhoneticKey(name) {
-  const norm = normalizeName(name);
-  if (!norm) return "";
-  let word = norm.split(/\s+/)[0] || "";
-  if (!word) return "";
-  word = word.replace(/ph/g, "f").replace(/bh/g, "b").replace(/dh/g, "d").replace(/th/g, "t").replace(/kh/g, "k").replace(/gh/g, "g").replace(/ch/g, "s").replace(/sh/g, "s").replace(/w/g, "v").replace(/z/g, "s").replace(/c([eiy])/g, "s$1").replace(/c/g, "k").replace(/q/g, "k").replace(/x/g, "ks");
-  word = word.replace(/(?:a|h|an|ar)$/g, "");
-  if (word.length === 0) return "";
-  const firstChar = word.charAt(0).toUpperCase();
-  const charCode = (c) => {
-    switch (c) {
-      case "b":
-      case "f":
-      case "p":
-      case "v":
-        return "1";
-      case "c":
-      case "g":
-      case "j":
-      case "k":
-      case "q":
-      case "s":
-      case "x":
-      case "z":
-        return "2";
-      case "d":
-      case "t":
-        return "3";
-      case "l":
-        return "4";
-      case "m":
-      case "n":
-        return "5";
-      case "r":
-        return "6";
-      default:
-        return "0";
-    }
-  };
-  let code = firstChar;
-  let prevCode = charCode(word.charAt(0));
-  for (let i = 1; i < word.length; i++) {
-    const curCode = charCode(word.charAt(i));
-    if (curCode !== "0" && curCode !== prevCode) {
-      code += curCode;
-      prevCode = curCode;
-    }
-  }
-  return (code + "000").slice(0, 4);
-}
-function levenshteinDistance(a, b) {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-  const row = Array.from({ length: a.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= b.length; i++) {
-    let prev = i;
-    for (let j = 1; j <= a.length; j++) {
-      const val = b.charAt(i - 1) === a.charAt(j - 1) ? row[j - 1] : Math.min(row[j - 1] + 1, prev + 1, row[j] + 1);
-      row[j - 1] = prev;
-      prev = val;
-    }
-    row[a.length] = prev;
-  }
-  return row[a.length];
-}
-function levenshteinSimilarity(a, b) {
-  const maxLen = Math.max(a.length, b.length);
-  if (maxLen === 0) return 1;
-  const dist = levenshteinDistance(a, b);
-  return Math.max(0, 1 - dist / maxLen);
-}
-function jaroSimilarity(s1, s2) {
-  if (s1 === s2) return 1;
-  const len1 = s1.length;
-  const len2 = s2.length;
-  if (len1 === 0 || len2 === 0) return 0;
-  const matchDistance = Math.floor(Math.max(len1, len2) / 2) - 1;
-  const s1Matches = new Array(len1).fill(false);
-  const s2Matches = new Array(len2).fill(false);
-  let matches = 0;
-  for (let i = 0; i < len1; i++) {
-    const start = Math.max(0, i - matchDistance);
-    const end = Math.min(i + matchDistance + 1, len2);
-    for (let j = start; j < end; j++) {
-      if (s2Matches[j]) continue;
-      if (s1.charAt(i) !== s2.charAt(j)) continue;
-      s1Matches[i] = true;
-      s2Matches[j] = true;
-      matches++;
-      break;
-    }
-  }
-  if (matches === 0) return 0;
-  let transpositions = 0;
-  let k = 0;
-  for (let i = 0; i < len1; i++) {
-    if (!s1Matches[i]) continue;
-    while (!s2Matches[k]) k++;
-    if (s1.charAt(i) !== s2.charAt(k)) {
-      transpositions++;
-    }
-    k++;
-  }
-  const m = matches;
-  return (m / len1 + m / len2 + (m - transpositions / 2) / m) / 3;
-}
-function jaroWinklerSimilarity(s1, s2, prefixScale = 0.1) {
-  const jaro = jaroSimilarity(s1, s2);
-  if (jaro < 0.7) return jaro;
-  let prefix = 0;
-  const maxPrefix = Math.min(4, Math.min(s1.length, s2.length));
-  for (let i = 0; i < maxPrefix; i++) {
-    if (s1.charAt(i) === s2.charAt(i)) {
-      prefix++;
-    } else {
-      break;
-    }
-  }
-  return jaro + prefix * prefixScale * (1 - jaro);
-}
-function computeCustomerMatchScore(query, customer) {
-  const rawQuery = query.trim();
-  if (!rawQuery) return { score: 0, matchType: "fuzzy" };
-  const cleanPhoneQuery = rawQuery.replace(/[^0-9]/g, "");
-  if (cleanPhoneQuery.length >= 4 && customer.phone) {
-    const cleanCustomerPhone = customer.phone.replace(/[^0-9]/g, "");
-    if (cleanCustomerPhone.includes(cleanPhoneQuery) || cleanPhoneQuery === cleanCustomerPhone) {
-      return { score: 1, matchType: "phone" };
-    }
-  }
-  const normQuery = normalizeName(rawQuery);
-  const normCustomer = normalizeName(customer.name);
-  if (normQuery === normCustomer) {
-    return { score: 1, matchType: "exact" };
-  }
-  const queryTokens = normQuery.split(/\s+/).filter(Boolean);
-  const customerTokens = normCustomer.split(/\s+/).filter(Boolean);
-  if (queryTokens.length === 1 && customerTokens.length > 1) {
-    const singleQuery = queryTokens[0];
-    const tokenMatch = customerTokens.some((tok) => tok === singleQuery);
-    if (tokenMatch) {
-      return { score: 0.9, matchType: "partial" };
-    }
-  }
-  if (queryTokens.length > 1 && customerTokens.length >= queryTokens.length) {
-    const allTokensMatch = queryTokens.every(
-      (qTok) => customerTokens.some((cTok) => cTok === qTok || jaroWinklerSimilarity(qTok, cTok) >= 0.9)
+function buildReminderMessage(options) {
+  const {
+    customerName,
+    amount,
+    shopName = "Kirana Store",
+    lang = "en",
+    entries,
+    now = /* @__PURE__ */ new Date()
+  } = options;
+  const formattedAmount = typeof amount === "number" ? amount.toLocaleString("en-IN") : String(amount).trim();
+  const currentDateTime = formatReminderDateTime(now);
+  let entriesBlock = "";
+  if (entries && entries.length > 0) {
+    const sorted = [...entries].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
-    if (allTokensMatch) {
-      return { score: 0.94, matchType: "partial" };
-    }
+    const last10 = sorted.length > 10 ? sorted.slice(-10) : sorted;
+    entriesBlock = last10.map((e) => {
+      const dt = formatReminderDateTime(e.date);
+      const typeLabel = e.type === "credit" ? "Udhaar" : "Payment";
+      const formattedEntryAmt = Number(e.amount).toLocaleString("en-IN");
+      return `${dt} - ${typeLabel} \u20B9${formattedEntryAmt}`;
+    }).join("\n");
   }
-  let hasPhoneticMatch = false;
-  if (queryTokens.length === customerTokens.length) {
-    const queryPhonetic = queryTokens.map(getIndianPhoneticKey).join("-");
-    const customerPhonetic = customerTokens.map(getIndianPhoneticKey).join("-");
-    hasPhoneticMatch = Boolean(queryPhonetic && queryPhonetic === customerPhonetic);
-  } else if (queryTokens.length === 1) {
-    const qPhonetic = getIndianPhoneticKey(queryTokens[0]);
-    hasPhoneticMatch = customerTokens.some((cTok) => getIndianPhoneticKey(cTok) === qPhonetic);
+  const entriesSection = entriesBlock ? `
+
+${entriesBlock}` : "";
+  switch (lang) {
+    case "hi":
+      return `\u0928\u092E\u0938\u094D\u0924\u0947 *${customerName}*,
+\u092F\u0939 ${shopName} \u0938\u0947 \u090F\u0915 \u0905\u0928\u0941\u0938\u094D\u092E\u093E\u0930\u0915 \u0939\u0948\u0964${entriesSection}
+
+*\u0915\u0941\u0932 \u092C\u093E\u0915\u0940: \u20B9${formattedAmount}*
+\u0926\u093F\u0928\u093E\u0902\u0915: ${currentDateTime}
+
+\u0927\u0928\u094D\u092F\u0935\u093E\u0926!`;
+    case "kn":
+      return `\u0CA8\u0CAE\u0CB8\u0CCD\u0C95\u0CBE\u0CB0 *${customerName}*,
+\u0C87\u0CA6\u0CC1 ${shopName} \u0CA8\u0CBF\u0C82\u0CA6 \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6.${entriesSection}
+
+*\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF: \u20B9${formattedAmount}*
+\u0CA6\u0CBF\u0CA8\u0CBE\u0C82\u0C95: ${currentDateTime}
+
+\u0CA7\u0CA8\u0CCD\u0CAF\u0CB5\u0CBE\u0CA6\u0C97\u0CB3\u0CC1!`;
+    case "ta":
+      return `\u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD *${customerName}*,
+\u0B87\u0BA4\u0BC1 ${shopName} \u0B87\u0BB2\u0BBF\u0BB0\u0BC1\u0BA8\u0BCD\u0BA4\u0BC1 \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD.${entriesSection}
+
+*\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF: \u20B9${formattedAmount}*
+\u0BA4\u0BC7\u0BA4\u0BBF: ${currentDateTime}
+
+\u0BA8\u0BA9\u0BCD\u0BB1\u0BBF!`;
+    case "te":
+      return `\u0C28\u0C2E\u0C38\u0C4D\u0C15\u0C3E\u0C30\u0C02 *${customerName}*,
+\u0C07\u0C26\u0C3F ${shopName} \u0C28\u0C41\u0C02\u0C21\u0C3F \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D.${entriesSection}
+
+*\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40: \u20B9${formattedAmount}*
+\u0C24\u0C47\u0C26\u0C40: ${currentDateTime}
+
+\u0C27\u0C28\u0C4D\u0C2F\u0C35\u0C3E\u0C26\u0C3E\u0C32\u0C41!`;
+    case "hinglish":
+      return `Hello *${customerName}*,
+Yeh ${shopName} se reminder hai.${entriesSection}
+
+*Kul baaki: \u20B9${formattedAmount}*
+Date: ${currentDateTime}
+
+Dhanyawad!`;
+    case "en":
+    default:
+      return `Hello *${customerName}*,
+This is a reminder from ${shopName}.${entriesSection}
+
+*Total pending: \u20B9${formattedAmount}*
+Date: ${currentDateTime}
+
+Thank you!`;
   }
-  const jwSim = jaroWinklerSimilarity(normQuery, normCustomer);
-  const levSim = levenshteinSimilarity(normQuery, normCustomer);
-  let combinedScore = 0.65 * jwSim + 0.35 * levSim;
-  if (hasPhoneticMatch) {
-    combinedScore = Math.max(combinedScore, 0.93);
-    return { score: Math.min(0.99, Number(combinedScore.toFixed(2))), matchType: "phonetic" };
-  }
-  return {
-    score: Number(combinedScore.toFixed(2)),
-    matchType: "fuzzy"
-  };
-}
-function findCustomers(query, customers) {
-  const trimmed = query.trim();
-  if (!trimmed) {
-    return {
-      action: "create_new",
-      candidates: [],
-      selectedCustomer: null,
-      topScore: 0
-    };
-  }
-  const ranked = [];
-  for (const c of customers) {
-    const { score, matchType } = computeCustomerMatchScore(trimmed, c);
-    if (score >= 0.55) {
-      ranked.push({ customer: c, score, matchType });
-    }
-  }
-  ranked.sort((a, b) => {
-    if (b.score !== a.score) {
-      return b.score - a.score;
-    }
-    return b.customer.balance - a.customer.balance;
-  });
-  if (ranked.length === 0 || ranked[0].score < 0.6) {
-    return {
-      action: "create_new",
-      candidates: ranked,
-      selectedCustomer: null,
-      topScore: ranked[0]?.score || 0
-    };
-  }
-  const topCandidate = ranked[0];
-  const runnerUp = ranked[1];
-  const queryTokens = normalizeName(trimmed).split(/\s+/).filter(Boolean);
-  const isSharedFirstName = queryTokens.length === 1 && ranked.filter(
-    (r) => normalizeName(r.customer.name).split(/\s+/).includes(queryTokens[0])
-  ).length >= 2;
-  if (topCandidate.score >= 0.92 && !isSharedFirstName) {
-    if (!runnerUp || topCandidate.score - runnerUp.score > 0.1) {
-      return {
-        action: "auto_select",
-        candidates: ranked,
-        selectedCustomer: topCandidate.customer,
-        topScore: topCandidate.score
-      };
-    }
-  }
-  return {
-    action: "disambiguate",
-    candidates: ranked,
-    selectedCustomer: topCandidate.customer,
-    topScore: topCandidate.score
-  };
-}
-function isDuplicateEntry(entry, existingEntries, withinMs = 6e5) {
-  if (!entry || !entry.amount) return false;
-  const targetName = entry.customerName ? normalizeName(entry.customerName) : "";
-  const targetId = entry.customerId || "";
-  const entryTime = entry.date ? new Date(entry.date).getTime() : Date.now();
-  return existingEntries.some((existing) => {
-    if (Math.abs(existing.amount - entry.amount) >= 0.01) {
-      return false;
-    }
-    if (existing.type !== entry.type) {
-      return false;
-    }
-    const existingTime = new Date(existing.date || existing.createdAt).getTime();
-    if (Math.abs(entryTime - existingTime) > withinMs) {
-      return false;
-    }
-    if (targetId && existing.customerId === targetId) {
-      return true;
-    }
-    const existingNormName = normalizeName(existing.customerName || "");
-    if (targetName && existingNormName) {
-      if (targetName === existingNormName) return true;
-      if (jaroWinklerSimilarity(targetName, existingNormName) >= 0.9) return true;
-    }
-    return false;
-  });
 }
 
 // node_modules/idb/build/index.js
@@ -4053,7 +3174,8 @@ replaceTraps((oldTraps) => ({
 }));
 
 // src/services/db.ts
-var DB_NAME = "VoiceKhataDB";
+var DB_NAME = "UdhaarSathiDB";
+var LEGACY_DB_NAME = "VoiceKhataDB";
 var DB_VERSION = 2;
 var InMemoryDBMock = class {
   customers = /* @__PURE__ */ new Map();
@@ -4130,10 +3252,84 @@ var InMemoryDBMock = class {
   }
 };
 var dbInstance = null;
+function migrateLocalStorage() {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const migrations = [
+      ["voice_khata_settings", "udhaar_sathi_settings"],
+      ["voice_khata_lang", "udhaar_sathi_lang"],
+      ["voice_khata_speech_lang", "udhaar_sathi_speech_lang"],
+      ["voice_khata_speech_speed", "udhaar_sathi_speech_speed"],
+      ["voice_khata_speech_muted", "udhaar_sathi_speech_muted"],
+      ["voice_khata_theme", "udhaar_sathi_theme"],
+      ["vk_shop_name", "us_shop_name"],
+      ["vk_demo_mode", "us_demo_mode"],
+      ["vk_signup_completed", "us_signup_completed"],
+      ["vk_onboarding_completed", "us_onboarding_completed"],
+      ["vk_skipped_pin_banner", "us_skipped_pin_banner"],
+      ["vk_sound_enabled", "us_sound_enabled"],
+      ["vk_speech_rate", "us_speech_rate"],
+      ["vk_sound_muted", "us_sound_muted"],
+      ["vk_has_custom_speech_lang", "us_has_custom_speech_lang"],
+      ["vk_pwa_install_dismissed", "us_pwa_install_dismissed"]
+    ];
+    for (const [oldKey, newKey] of migrations) {
+      const val = localStorage.getItem(oldKey);
+      if (val !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, val);
+      }
+    }
+  } catch {
+  }
+}
+async function migrateFromLegacyDB(newDB) {
+  if (typeof indexedDB === "undefined") return;
+  try {
+    const newCustomersCount = await newDB.count("customers").catch(() => 0);
+    const newEntriesCount = await newDB.count("entries").catch(() => 0);
+    if (newCustomersCount > 0 || newEntriesCount > 0) {
+      return;
+    }
+    const oldDB = await openDB(LEGACY_DB_NAME, DB_VERSION).catch(() => null);
+    if (!oldDB) return;
+    const oldCustomerCount = await oldDB.count("customers").catch(() => 0);
+    const oldEntriesCount = await oldDB.count("entries").catch(() => 0);
+    if (oldCustomerCount === 0 && oldEntriesCount === 0) {
+      oldDB.close();
+      return;
+    }
+    const customers = await oldDB.getAll("customers");
+    const tx = newDB.transaction(["customers", "entries", "meta", "settings", "profile"], "readwrite");
+    for (const c of customers) {
+      await tx.objectStore("customers").put(c);
+    }
+    const entries = await oldDB.getAll("entries");
+    for (const e of entries) {
+      await tx.objectStore("entries").put(e);
+    }
+    const metaList = await oldDB.getAll("meta").catch(() => []);
+    for (const m of metaList) {
+      await tx.objectStore("meta").put(m);
+    }
+    const settingsList = await oldDB.getAll("settings").catch(() => []);
+    for (const s of settingsList) {
+      await tx.objectStore("settings").put(s);
+    }
+    const profileList = await oldDB.getAll("profile").catch(() => []);
+    for (const p of profileList) {
+      await tx.objectStore("profile").put(p);
+    }
+    await tx.done;
+    oldDB.close();
+  } catch (e) {
+    console.warn("[Udhaar Sathi] Legacy DB migration notice:", e);
+  }
+}
 async function getDB() {
   if (dbInstance) {
     return dbInstance;
   }
+  migrateLocalStorage();
   const isIndexedDBAvailable = typeof indexedDB !== "undefined" && typeof window !== "undefined";
   if (!isIndexedDBAvailable) {
     dbInstance = new InMemoryDBMock();
@@ -4168,7 +3364,7 @@ async function getDB() {
         }
       },
       blocked() {
-        console.warn("VoiceKhataDB database upgrade blocked: please close other tabs.");
+        console.warn("UdhaarSathiDB database upgrade blocked: please close other tabs.");
       },
       blocking() {
         if (dbInstance && "close" in dbInstance) {
@@ -4177,6 +3373,7 @@ async function getDB() {
         }
       }
     });
+    await migrateFromLegacyDB(dbInstance);
     return dbInstance;
   } catch (err) {
     console.warn("Failed to open browser IndexedDB, falling back to in-memory store:", err);
@@ -4382,1640 +3579,7 @@ var CryptoService = class {
 };
 var cryptoService = new CryptoService();
 
-// node_modules/qrcode-generator/dist/qrcode.mjs
-var qrcode = function(typeNumber, errorCorrectionLevel) {
-  const PAD0 = 236;
-  const PAD1 = 17;
-  let _typeNumber = typeNumber;
-  const _errorCorrectionLevel = QRErrorCorrectionLevel[errorCorrectionLevel];
-  let _modules = null;
-  let _moduleCount = 0;
-  let _dataCache = null;
-  const _dataList = [];
-  const _this = {};
-  const makeImpl = function(test, maskPattern) {
-    _moduleCount = _typeNumber * 4 + 17;
-    _modules = function(moduleCount) {
-      const modules = new Array(moduleCount);
-      for (let row = 0; row < moduleCount; row += 1) {
-        modules[row] = new Array(moduleCount);
-        for (let col = 0; col < moduleCount; col += 1) {
-          modules[row][col] = null;
-        }
-      }
-      return modules;
-    }(_moduleCount);
-    setupPositionProbePattern(0, 0);
-    setupPositionProbePattern(_moduleCount - 7, 0);
-    setupPositionProbePattern(0, _moduleCount - 7);
-    setupPositionAdjustPattern();
-    setupTimingPattern();
-    setupTypeInfo(test, maskPattern);
-    if (_typeNumber >= 7) {
-      setupTypeNumber(test);
-    }
-    if (_dataCache == null) {
-      _dataCache = createData(_typeNumber, _errorCorrectionLevel, _dataList);
-    }
-    mapData(_dataCache, maskPattern);
-  };
-  const setupPositionProbePattern = function(row, col) {
-    for (let r = -1; r <= 7; r += 1) {
-      if (row + r <= -1 || _moduleCount <= row + r) continue;
-      for (let c = -1; c <= 7; c += 1) {
-        if (col + c <= -1 || _moduleCount <= col + c) continue;
-        if (0 <= r && r <= 6 && (c == 0 || c == 6) || 0 <= c && c <= 6 && (r == 0 || r == 6) || 2 <= r && r <= 4 && 2 <= c && c <= 4) {
-          _modules[row + r][col + c] = true;
-        } else {
-          _modules[row + r][col + c] = false;
-        }
-      }
-    }
-  };
-  const getBestMaskPattern = function() {
-    let minLostPoint = 0;
-    let pattern = 0;
-    for (let i = 0; i < 8; i += 1) {
-      makeImpl(true, i);
-      const lostPoint = QRUtil.getLostPoint(_this);
-      if (i == 0 || minLostPoint > lostPoint) {
-        minLostPoint = lostPoint;
-        pattern = i;
-      }
-    }
-    return pattern;
-  };
-  const setupTimingPattern = function() {
-    for (let r = 8; r < _moduleCount - 8; r += 1) {
-      if (_modules[r][6] != null) {
-        continue;
-      }
-      _modules[r][6] = r % 2 == 0;
-    }
-    for (let c = 8; c < _moduleCount - 8; c += 1) {
-      if (_modules[6][c] != null) {
-        continue;
-      }
-      _modules[6][c] = c % 2 == 0;
-    }
-  };
-  const setupPositionAdjustPattern = function() {
-    const pos = QRUtil.getPatternPosition(_typeNumber);
-    for (let i = 0; i < pos.length; i += 1) {
-      for (let j = 0; j < pos.length; j += 1) {
-        const row = pos[i];
-        const col = pos[j];
-        if (_modules[row][col] != null) {
-          continue;
-        }
-        for (let r = -2; r <= 2; r += 1) {
-          for (let c = -2; c <= 2; c += 1) {
-            if (r == -2 || r == 2 || c == -2 || c == 2 || r == 0 && c == 0) {
-              _modules[row + r][col + c] = true;
-            } else {
-              _modules[row + r][col + c] = false;
-            }
-          }
-        }
-      }
-    }
-  };
-  const setupTypeNumber = function(test) {
-    const bits = QRUtil.getBCHTypeNumber(_typeNumber);
-    for (let i = 0; i < 18; i += 1) {
-      const mod = !test && (bits >> i & 1) == 1;
-      _modules[Math.floor(i / 3)][i % 3 + _moduleCount - 8 - 3] = mod;
-    }
-    for (let i = 0; i < 18; i += 1) {
-      const mod = !test && (bits >> i & 1) == 1;
-      _modules[i % 3 + _moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
-    }
-  };
-  const setupTypeInfo = function(test, maskPattern) {
-    const data = _errorCorrectionLevel << 3 | maskPattern;
-    const bits = QRUtil.getBCHTypeInfo(data);
-    for (let i = 0; i < 15; i += 1) {
-      const mod = !test && (bits >> i & 1) == 1;
-      if (i < 6) {
-        _modules[i][8] = mod;
-      } else if (i < 8) {
-        _modules[i + 1][8] = mod;
-      } else {
-        _modules[_moduleCount - 15 + i][8] = mod;
-      }
-    }
-    for (let i = 0; i < 15; i += 1) {
-      const mod = !test && (bits >> i & 1) == 1;
-      if (i < 8) {
-        _modules[8][_moduleCount - i - 1] = mod;
-      } else if (i < 9) {
-        _modules[8][15 - i - 1 + 1] = mod;
-      } else {
-        _modules[8][15 - i - 1] = mod;
-      }
-    }
-    _modules[_moduleCount - 8][8] = !test;
-  };
-  const mapData = function(data, maskPattern) {
-    let inc = -1;
-    let row = _moduleCount - 1;
-    let bitIndex = 7;
-    let byteIndex = 0;
-    const maskFunc = QRUtil.getMaskFunction(maskPattern);
-    for (let col = _moduleCount - 1; col > 0; col -= 2) {
-      if (col == 6) col -= 1;
-      while (true) {
-        for (let c = 0; c < 2; c += 1) {
-          if (_modules[row][col - c] == null) {
-            let dark = false;
-            if (byteIndex < data.length) {
-              dark = (data[byteIndex] >>> bitIndex & 1) == 1;
-            }
-            const mask = maskFunc(row, col - c);
-            if (mask) {
-              dark = !dark;
-            }
-            _modules[row][col - c] = dark;
-            bitIndex -= 1;
-            if (bitIndex == -1) {
-              byteIndex += 1;
-              bitIndex = 7;
-            }
-          }
-        }
-        row += inc;
-        if (row < 0 || _moduleCount <= row) {
-          row -= inc;
-          inc = -inc;
-          break;
-        }
-      }
-    }
-  };
-  const createBytes = function(buffer, rsBlocks) {
-    let offset = 0;
-    let maxDcCount = 0;
-    let maxEcCount = 0;
-    const dcdata = new Array(rsBlocks.length);
-    const ecdata = new Array(rsBlocks.length);
-    for (let r = 0; r < rsBlocks.length; r += 1) {
-      const dcCount = rsBlocks[r].dataCount;
-      const ecCount = rsBlocks[r].totalCount - dcCount;
-      maxDcCount = Math.max(maxDcCount, dcCount);
-      maxEcCount = Math.max(maxEcCount, ecCount);
-      dcdata[r] = new Array(dcCount);
-      for (let i = 0; i < dcdata[r].length; i += 1) {
-        dcdata[r][i] = 255 & buffer.getBuffer()[i + offset];
-      }
-      offset += dcCount;
-      const rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
-      const rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
-      const modPoly = rawPoly.mod(rsPoly);
-      ecdata[r] = new Array(rsPoly.getLength() - 1);
-      for (let i = 0; i < ecdata[r].length; i += 1) {
-        const modIndex = i + modPoly.getLength() - ecdata[r].length;
-        ecdata[r][i] = modIndex >= 0 ? modPoly.getAt(modIndex) : 0;
-      }
-    }
-    let totalCodeCount = 0;
-    for (let i = 0; i < rsBlocks.length; i += 1) {
-      totalCodeCount += rsBlocks[i].totalCount;
-    }
-    const data = new Array(totalCodeCount);
-    let index = 0;
-    for (let i = 0; i < maxDcCount; i += 1) {
-      for (let r = 0; r < rsBlocks.length; r += 1) {
-        if (i < dcdata[r].length) {
-          data[index] = dcdata[r][i];
-          index += 1;
-        }
-      }
-    }
-    for (let i = 0; i < maxEcCount; i += 1) {
-      for (let r = 0; r < rsBlocks.length; r += 1) {
-        if (i < ecdata[r].length) {
-          data[index] = ecdata[r][i];
-          index += 1;
-        }
-      }
-    }
-    return data;
-  };
-  const createData = function(typeNumber2, errorCorrectionLevel2, dataList) {
-    const rsBlocks = QRRSBlock.getRSBlocks(typeNumber2, errorCorrectionLevel2);
-    const buffer = qrBitBuffer();
-    for (let i = 0; i < dataList.length; i += 1) {
-      const data = dataList[i];
-      buffer.put(data.getMode(), 4);
-      buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber2));
-      data.write(buffer);
-    }
-    let totalDataCount = 0;
-    for (let i = 0; i < rsBlocks.length; i += 1) {
-      totalDataCount += rsBlocks[i].dataCount;
-    }
-    if (buffer.getLengthInBits() > totalDataCount * 8) {
-      throw "code length overflow. (" + buffer.getLengthInBits() + ">" + totalDataCount * 8 + ")";
-    }
-    if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
-      buffer.put(0, 4);
-    }
-    while (buffer.getLengthInBits() % 8 != 0) {
-      buffer.putBit(false);
-    }
-    while (true) {
-      if (buffer.getLengthInBits() >= totalDataCount * 8) {
-        break;
-      }
-      buffer.put(PAD0, 8);
-      if (buffer.getLengthInBits() >= totalDataCount * 8) {
-        break;
-      }
-      buffer.put(PAD1, 8);
-    }
-    return createBytes(buffer, rsBlocks);
-  };
-  _this.addData = function(data, mode) {
-    mode = mode || "Byte";
-    let newData = null;
-    switch (mode) {
-      case "Numeric":
-        newData = qrNumber(data);
-        break;
-      case "Alphanumeric":
-        newData = qrAlphaNum(data);
-        break;
-      case "Byte":
-        newData = qr8BitByte(data);
-        break;
-      case "Kanji":
-        newData = qrKanji(data);
-        break;
-      default:
-        throw "mode:" + mode;
-    }
-    _dataList.push(newData);
-    _dataCache = null;
-  };
-  _this.isDark = function(row, col) {
-    if (row < 0 || _moduleCount <= row || col < 0 || _moduleCount <= col) {
-      throw row + "," + col;
-    }
-    return _modules[row][col];
-  };
-  _this.getModuleCount = function() {
-    return _moduleCount;
-  };
-  _this.make = function() {
-    if (_typeNumber < 1) {
-      let typeNumber2 = 1;
-      for (; typeNumber2 < 40; typeNumber2++) {
-        const rsBlocks = QRRSBlock.getRSBlocks(typeNumber2, _errorCorrectionLevel);
-        const buffer = qrBitBuffer();
-        for (let i = 0; i < _dataList.length; i++) {
-          const data = _dataList[i];
-          buffer.put(data.getMode(), 4);
-          buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber2));
-          data.write(buffer);
-        }
-        let totalDataCount = 0;
-        for (let i = 0; i < rsBlocks.length; i++) {
-          totalDataCount += rsBlocks[i].dataCount;
-        }
-        if (buffer.getLengthInBits() <= totalDataCount * 8) {
-          break;
-        }
-      }
-      _typeNumber = typeNumber2;
-    }
-    makeImpl(false, getBestMaskPattern());
-  };
-  _this.createTableTag = function(cellSize, margin) {
-    cellSize = cellSize || 2;
-    margin = typeof margin == "undefined" ? cellSize * 4 : margin;
-    let qrHtml = "";
-    qrHtml += '<table style="';
-    qrHtml += " border-width: 0px; border-style: none;";
-    qrHtml += " border-collapse: collapse;";
-    qrHtml += " padding: 0px; margin: " + margin + "px;";
-    qrHtml += '">';
-    qrHtml += "<tbody>";
-    for (let r = 0; r < _this.getModuleCount(); r += 1) {
-      qrHtml += "<tr>";
-      for (let c = 0; c < _this.getModuleCount(); c += 1) {
-        qrHtml += '<td style="';
-        qrHtml += " border-width: 0px; border-style: none;";
-        qrHtml += " border-collapse: collapse;";
-        qrHtml += " padding: 0px; margin: 0px;";
-        qrHtml += " width: " + cellSize + "px;";
-        qrHtml += " height: " + cellSize + "px;";
-        qrHtml += " background-color: ";
-        qrHtml += _this.isDark(r, c) ? "#000000" : "#ffffff";
-        qrHtml += ";";
-        qrHtml += '"/>';
-      }
-      qrHtml += "</tr>";
-    }
-    qrHtml += "</tbody>";
-    qrHtml += "</table>";
-    return qrHtml;
-  };
-  _this.createSvgTag = function(cellSize, margin, alt, title) {
-    let opts = {};
-    if (typeof arguments[0] == "object") {
-      opts = arguments[0];
-      cellSize = opts.cellSize;
-      margin = opts.margin;
-      alt = opts.alt;
-      title = opts.title;
-    }
-    cellSize = cellSize || 2;
-    margin = typeof margin == "undefined" ? cellSize * 4 : margin;
-    alt = typeof alt === "string" ? { text: alt } : alt || {};
-    alt.text = alt.text || null;
-    alt.id = alt.text ? alt.id || "qrcode-description" : null;
-    title = typeof title === "string" ? { text: title } : title || {};
-    title.text = title.text || null;
-    title.id = title.text ? title.id || "qrcode-title" : null;
-    const size = _this.getModuleCount() * cellSize + margin * 2;
-    let c, mc, r, mr, qrSvg = "", rect;
-    rect = "l" + cellSize + ",0 0," + cellSize + " -" + cellSize + ",0 0,-" + cellSize + "z ";
-    qrSvg += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"';
-    qrSvg += !opts.scalable ? ' width="' + size + 'px" height="' + size + 'px"' : "";
-    qrSvg += ' viewBox="0 0 ' + size + " " + size + '" ';
-    qrSvg += ' preserveAspectRatio="xMinYMin meet"';
-    qrSvg += title.text || alt.text ? ' role="img" aria-labelledby="' + escapeXml([title.id, alt.id].join(" ").trim()) + '"' : "";
-    qrSvg += ">";
-    qrSvg += title.text ? '<title id="' + escapeXml(title.id) + '">' + escapeXml(title.text) + "</title>" : "";
-    qrSvg += alt.text ? '<description id="' + escapeXml(alt.id) + '">' + escapeXml(alt.text) + "</description>" : "";
-    qrSvg += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>';
-    qrSvg += '<path d="';
-    for (r = 0; r < _this.getModuleCount(); r += 1) {
-      mr = r * cellSize + margin;
-      for (c = 0; c < _this.getModuleCount(); c += 1) {
-        if (_this.isDark(r, c)) {
-          mc = c * cellSize + margin;
-          qrSvg += "M" + mc + "," + mr + rect;
-        }
-      }
-    }
-    qrSvg += '" stroke="transparent" fill="black"/>';
-    qrSvg += "</svg>";
-    return qrSvg;
-  };
-  _this.createDataURL = function(cellSize, margin) {
-    cellSize = cellSize || 2;
-    margin = typeof margin == "undefined" ? cellSize * 4 : margin;
-    const size = _this.getModuleCount() * cellSize + margin * 2;
-    const min = margin;
-    const max = size - margin;
-    return createDataURL(size, size, function(x, y) {
-      if (min <= x && x < max && min <= y && y < max) {
-        const c = Math.floor((x - min) / cellSize);
-        const r = Math.floor((y - min) / cellSize);
-        return _this.isDark(r, c) ? 0 : 1;
-      } else {
-        return 1;
-      }
-    });
-  };
-  _this.createImgTag = function(cellSize, margin, alt) {
-    cellSize = cellSize || 2;
-    margin = typeof margin == "undefined" ? cellSize * 4 : margin;
-    const size = _this.getModuleCount() * cellSize + margin * 2;
-    let img = "";
-    img += "<img";
-    img += ' src="';
-    img += _this.createDataURL(cellSize, margin);
-    img += '"';
-    img += ' width="';
-    img += size;
-    img += '"';
-    img += ' height="';
-    img += size;
-    img += '"';
-    if (alt) {
-      img += ' alt="';
-      img += escapeXml(alt);
-      img += '"';
-    }
-    img += "/>";
-    return img;
-  };
-  const escapeXml = function(s) {
-    let escaped = "";
-    for (let i = 0; i < s.length; i += 1) {
-      const c = s.charAt(i);
-      switch (c) {
-        case "<":
-          escaped += "&lt;";
-          break;
-        case ">":
-          escaped += "&gt;";
-          break;
-        case "&":
-          escaped += "&amp;";
-          break;
-        case '"':
-          escaped += "&quot;";
-          break;
-        default:
-          escaped += c;
-          break;
-      }
-    }
-    return escaped;
-  };
-  const _createHalfASCII = function(margin) {
-    const cellSize = 1;
-    margin = typeof margin == "undefined" ? cellSize * 2 : margin;
-    const size = _this.getModuleCount() * cellSize + margin * 2;
-    const min = margin;
-    const max = size - margin;
-    let y, x, r1, r2, p;
-    const blocks = {
-      "\u2588\u2588": "\u2588",
-      "\u2588 ": "\u2580",
-      " \u2588": "\u2584",
-      "  ": " "
-    };
-    const blocksLastLineNoMargin = {
-      "\u2588\u2588": "\u2580",
-      "\u2588 ": "\u2580",
-      " \u2588": " ",
-      "  ": " "
-    };
-    let ascii = "";
-    for (y = 0; y < size; y += 2) {
-      r1 = Math.floor((y - min) / cellSize);
-      r2 = Math.floor((y + 1 - min) / cellSize);
-      for (x = 0; x < size; x += 1) {
-        p = "\u2588";
-        if (min <= x && x < max && min <= y && y < max && _this.isDark(r1, Math.floor((x - min) / cellSize))) {
-          p = " ";
-        }
-        if (min <= x && x < max && min <= y + 1 && y + 1 < max && _this.isDark(r2, Math.floor((x - min) / cellSize))) {
-          p += " ";
-        } else {
-          p += "\u2588";
-        }
-        ascii += margin < 1 && y + 1 >= max ? blocksLastLineNoMargin[p] : blocks[p];
-      }
-      ascii += "\n";
-    }
-    if (size % 2 && margin > 0) {
-      return ascii.substring(0, ascii.length - size - 1) + Array(size + 1).join("\u2580");
-    }
-    return ascii.substring(0, ascii.length - 1);
-  };
-  _this.createASCII = function(cellSize, margin) {
-    cellSize = cellSize || 1;
-    if (cellSize < 2) {
-      return _createHalfASCII(margin);
-    }
-    cellSize -= 1;
-    margin = typeof margin == "undefined" ? cellSize * 2 : margin;
-    const size = _this.getModuleCount() * cellSize + margin * 2;
-    const min = margin;
-    const max = size - margin;
-    let y, x, r, p;
-    const white = Array(cellSize + 1).join("\u2588\u2588");
-    const black = Array(cellSize + 1).join("  ");
-    let ascii = "";
-    let line = "";
-    for (y = 0; y < size; y += 1) {
-      r = Math.floor((y - min) / cellSize);
-      line = "";
-      for (x = 0; x < size; x += 1) {
-        p = 1;
-        if (min <= x && x < max && min <= y && y < max && _this.isDark(r, Math.floor((x - min) / cellSize))) {
-          p = 0;
-        }
-        line += p ? white : black;
-      }
-      for (r = 0; r < cellSize; r += 1) {
-        ascii += line + "\n";
-      }
-    }
-    return ascii.substring(0, ascii.length - 1);
-  };
-  _this.renderTo2dContext = function(context, cellSize) {
-    cellSize = cellSize || 2;
-    const length = _this.getModuleCount();
-    for (let row = 0; row < length; row++) {
-      for (let col = 0; col < length; col++) {
-        context.fillStyle = _this.isDark(row, col) ? "black" : "white";
-        context.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-      }
-    }
-  };
-  return _this;
-};
-qrcode.stringToBytes = function(s) {
-  const bytes = [];
-  for (let i = 0; i < s.length; i += 1) {
-    const c = s.charCodeAt(i);
-    bytes.push(c & 255);
-  }
-  return bytes;
-};
-qrcode.createStringToBytes = function(unicodeData, numChars) {
-  const unicodeMap = function() {
-    const bin = base64DecodeInputStream(unicodeData);
-    const read = function() {
-      const b = bin.read();
-      if (b == -1) throw "eof";
-      return b;
-    };
-    let count = 0;
-    const unicodeMap2 = {};
-    while (true) {
-      const b0 = bin.read();
-      if (b0 == -1) break;
-      const b1 = read();
-      const b2 = read();
-      const b3 = read();
-      const k = String.fromCharCode(b0 << 8 | b1);
-      const v = b2 << 8 | b3;
-      unicodeMap2[k] = v;
-      count += 1;
-    }
-    if (count != numChars) {
-      throw count + " != " + numChars;
-    }
-    return unicodeMap2;
-  }();
-  const unknownChar = "?".charCodeAt(0);
-  return function(s) {
-    const bytes = [];
-    for (let i = 0; i < s.length; i += 1) {
-      const c = s.charCodeAt(i);
-      if (c < 128) {
-        bytes.push(c);
-      } else {
-        const b = unicodeMap[s.charAt(i)];
-        if (typeof b == "number") {
-          if ((b & 255) == b) {
-            bytes.push(b);
-          } else {
-            bytes.push(b >>> 8);
-            bytes.push(b & 255);
-          }
-        } else {
-          bytes.push(unknownChar);
-        }
-      }
-    }
-    return bytes;
-  };
-};
-var QRMode = {
-  MODE_NUMBER: 1 << 0,
-  MODE_ALPHA_NUM: 1 << 1,
-  MODE_8BIT_BYTE: 1 << 2,
-  MODE_KANJI: 1 << 3
-};
-var QRErrorCorrectionLevel = {
-  L: 1,
-  M: 0,
-  Q: 3,
-  H: 2
-};
-var QRMaskPattern = {
-  PATTERN000: 0,
-  PATTERN001: 1,
-  PATTERN010: 2,
-  PATTERN011: 3,
-  PATTERN100: 4,
-  PATTERN101: 5,
-  PATTERN110: 6,
-  PATTERN111: 7
-};
-var QRUtil = function() {
-  const PATTERN_POSITION_TABLE = [
-    [],
-    [6, 18],
-    [6, 22],
-    [6, 26],
-    [6, 30],
-    [6, 34],
-    [6, 22, 38],
-    [6, 24, 42],
-    [6, 26, 46],
-    [6, 28, 50],
-    [6, 30, 54],
-    [6, 32, 58],
-    [6, 34, 62],
-    [6, 26, 46, 66],
-    [6, 26, 48, 70],
-    [6, 26, 50, 74],
-    [6, 30, 54, 78],
-    [6, 30, 56, 82],
-    [6, 30, 58, 86],
-    [6, 34, 62, 90],
-    [6, 28, 50, 72, 94],
-    [6, 26, 50, 74, 98],
-    [6, 30, 54, 78, 102],
-    [6, 28, 54, 80, 106],
-    [6, 32, 58, 84, 110],
-    [6, 30, 58, 86, 114],
-    [6, 34, 62, 90, 118],
-    [6, 26, 50, 74, 98, 122],
-    [6, 30, 54, 78, 102, 126],
-    [6, 26, 52, 78, 104, 130],
-    [6, 30, 56, 82, 108, 134],
-    [6, 34, 60, 86, 112, 138],
-    [6, 30, 58, 86, 114, 142],
-    [6, 34, 62, 90, 118, 146],
-    [6, 30, 54, 78, 102, 126, 150],
-    [6, 24, 50, 76, 102, 128, 154],
-    [6, 28, 54, 80, 106, 132, 158],
-    [6, 32, 58, 84, 110, 136, 162],
-    [6, 26, 54, 82, 110, 138, 166],
-    [6, 30, 58, 86, 114, 142, 170]
-  ];
-  const G15 = 1 << 10 | 1 << 8 | 1 << 5 | 1 << 4 | 1 << 2 | 1 << 1 | 1 << 0;
-  const G18 = 1 << 12 | 1 << 11 | 1 << 10 | 1 << 9 | 1 << 8 | 1 << 5 | 1 << 2 | 1 << 0;
-  const G15_MASK = 1 << 14 | 1 << 12 | 1 << 10 | 1 << 4 | 1 << 1;
-  const _this = {};
-  const getBCHDigit = function(data) {
-    let digit = 0;
-    while (data != 0) {
-      digit += 1;
-      data >>>= 1;
-    }
-    return digit;
-  };
-  _this.getBCHTypeInfo = function(data) {
-    let d = data << 10;
-    while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
-      d ^= G15 << getBCHDigit(d) - getBCHDigit(G15);
-    }
-    return (data << 10 | d) ^ G15_MASK;
-  };
-  _this.getBCHTypeNumber = function(data) {
-    let d = data << 12;
-    while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
-      d ^= G18 << getBCHDigit(d) - getBCHDigit(G18);
-    }
-    return data << 12 | d;
-  };
-  _this.getPatternPosition = function(typeNumber) {
-    return PATTERN_POSITION_TABLE[typeNumber - 1];
-  };
-  _this.getMaskFunction = function(maskPattern) {
-    switch (maskPattern) {
-      case QRMaskPattern.PATTERN000:
-        return function(i, j) {
-          return (i + j) % 2 == 0;
-        };
-      case QRMaskPattern.PATTERN001:
-        return function(i, j) {
-          return i % 2 == 0;
-        };
-      case QRMaskPattern.PATTERN010:
-        return function(i, j) {
-          return j % 3 == 0;
-        };
-      case QRMaskPattern.PATTERN011:
-        return function(i, j) {
-          return (i + j) % 3 == 0;
-        };
-      case QRMaskPattern.PATTERN100:
-        return function(i, j) {
-          return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 == 0;
-        };
-      case QRMaskPattern.PATTERN101:
-        return function(i, j) {
-          return i * j % 2 + i * j % 3 == 0;
-        };
-      case QRMaskPattern.PATTERN110:
-        return function(i, j) {
-          return (i * j % 2 + i * j % 3) % 2 == 0;
-        };
-      case QRMaskPattern.PATTERN111:
-        return function(i, j) {
-          return (i * j % 3 + (i + j) % 2) % 2 == 0;
-        };
-      default:
-        throw "bad maskPattern:" + maskPattern;
-    }
-  };
-  _this.getErrorCorrectPolynomial = function(errorCorrectLength) {
-    let a = qrPolynomial([1], 0);
-    for (let i = 0; i < errorCorrectLength; i += 1) {
-      a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0));
-    }
-    return a;
-  };
-  _this.getLengthInBits = function(mode, type) {
-    if (1 <= type && type < 10) {
-      switch (mode) {
-        case QRMode.MODE_NUMBER:
-          return 10;
-        case QRMode.MODE_ALPHA_NUM:
-          return 9;
-        case QRMode.MODE_8BIT_BYTE:
-          return 8;
-        case QRMode.MODE_KANJI:
-          return 8;
-        default:
-          throw "mode:" + mode;
-      }
-    } else if (type < 27) {
-      switch (mode) {
-        case QRMode.MODE_NUMBER:
-          return 12;
-        case QRMode.MODE_ALPHA_NUM:
-          return 11;
-        case QRMode.MODE_8BIT_BYTE:
-          return 16;
-        case QRMode.MODE_KANJI:
-          return 10;
-        default:
-          throw "mode:" + mode;
-      }
-    } else if (type < 41) {
-      switch (mode) {
-        case QRMode.MODE_NUMBER:
-          return 14;
-        case QRMode.MODE_ALPHA_NUM:
-          return 13;
-        case QRMode.MODE_8BIT_BYTE:
-          return 16;
-        case QRMode.MODE_KANJI:
-          return 12;
-        default:
-          throw "mode:" + mode;
-      }
-    } else {
-      throw "type:" + type;
-    }
-  };
-  _this.getLostPoint = function(qrcode2) {
-    const moduleCount = qrcode2.getModuleCount();
-    let lostPoint = 0;
-    for (let row = 0; row < moduleCount; row += 1) {
-      for (let col = 0; col < moduleCount; col += 1) {
-        let sameCount = 0;
-        const dark = qrcode2.isDark(row, col);
-        for (let r = -1; r <= 1; r += 1) {
-          if (row + r < 0 || moduleCount <= row + r) {
-            continue;
-          }
-          for (let c = -1; c <= 1; c += 1) {
-            if (col + c < 0 || moduleCount <= col + c) {
-              continue;
-            }
-            if (r == 0 && c == 0) {
-              continue;
-            }
-            if (dark == qrcode2.isDark(row + r, col + c)) {
-              sameCount += 1;
-            }
-          }
-        }
-        if (sameCount > 5) {
-          lostPoint += 3 + sameCount - 5;
-        }
-      }
-    }
-    ;
-    for (let row = 0; row < moduleCount - 1; row += 1) {
-      for (let col = 0; col < moduleCount - 1; col += 1) {
-        let count = 0;
-        if (qrcode2.isDark(row, col)) count += 1;
-        if (qrcode2.isDark(row + 1, col)) count += 1;
-        if (qrcode2.isDark(row, col + 1)) count += 1;
-        if (qrcode2.isDark(row + 1, col + 1)) count += 1;
-        if (count == 0 || count == 4) {
-          lostPoint += 3;
-        }
-      }
-    }
-    for (let row = 0; row < moduleCount; row += 1) {
-      for (let col = 0; col < moduleCount - 6; col += 1) {
-        if (qrcode2.isDark(row, col) && !qrcode2.isDark(row, col + 1) && qrcode2.isDark(row, col + 2) && qrcode2.isDark(row, col + 3) && qrcode2.isDark(row, col + 4) && !qrcode2.isDark(row, col + 5) && qrcode2.isDark(row, col + 6)) {
-          lostPoint += 40;
-        }
-      }
-    }
-    for (let col = 0; col < moduleCount; col += 1) {
-      for (let row = 0; row < moduleCount - 6; row += 1) {
-        if (qrcode2.isDark(row, col) && !qrcode2.isDark(row + 1, col) && qrcode2.isDark(row + 2, col) && qrcode2.isDark(row + 3, col) && qrcode2.isDark(row + 4, col) && !qrcode2.isDark(row + 5, col) && qrcode2.isDark(row + 6, col)) {
-          lostPoint += 40;
-        }
-      }
-    }
-    let darkCount = 0;
-    for (let col = 0; col < moduleCount; col += 1) {
-      for (let row = 0; row < moduleCount; row += 1) {
-        if (qrcode2.isDark(row, col)) {
-          darkCount += 1;
-        }
-      }
-    }
-    const ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
-    lostPoint += ratio * 10;
-    return lostPoint;
-  };
-  return _this;
-}();
-var QRMath = function() {
-  const EXP_TABLE = new Array(256);
-  const LOG_TABLE = new Array(256);
-  for (let i = 0; i < 8; i += 1) {
-    EXP_TABLE[i] = 1 << i;
-  }
-  for (let i = 8; i < 256; i += 1) {
-    EXP_TABLE[i] = EXP_TABLE[i - 4] ^ EXP_TABLE[i - 5] ^ EXP_TABLE[i - 6] ^ EXP_TABLE[i - 8];
-  }
-  for (let i = 0; i < 255; i += 1) {
-    LOG_TABLE[EXP_TABLE[i]] = i;
-  }
-  const _this = {};
-  _this.glog = function(n) {
-    if (n < 1) {
-      throw "glog(" + n + ")";
-    }
-    return LOG_TABLE[n];
-  };
-  _this.gexp = function(n) {
-    while (n < 0) {
-      n += 255;
-    }
-    while (n >= 256) {
-      n -= 255;
-    }
-    return EXP_TABLE[n];
-  };
-  return _this;
-}();
-var qrPolynomial = function(num, shift) {
-  if (typeof num.length == "undefined") {
-    throw num.length + "/" + shift;
-  }
-  const _num = function() {
-    let offset = 0;
-    while (offset < num.length && num[offset] == 0) {
-      offset += 1;
-    }
-    const _num2 = new Array(num.length - offset + shift);
-    for (let i = 0; i < num.length - offset; i += 1) {
-      _num2[i] = num[i + offset];
-    }
-    return _num2;
-  }();
-  const _this = {};
-  _this.getAt = function(index) {
-    return _num[index];
-  };
-  _this.getLength = function() {
-    return _num.length;
-  };
-  _this.multiply = function(e) {
-    const num2 = new Array(_this.getLength() + e.getLength() - 1);
-    for (let i = 0; i < _this.getLength(); i += 1) {
-      for (let j = 0; j < e.getLength(); j += 1) {
-        num2[i + j] ^= QRMath.gexp(QRMath.glog(_this.getAt(i)) + QRMath.glog(e.getAt(j)));
-      }
-    }
-    return qrPolynomial(num2, 0);
-  };
-  _this.mod = function(e) {
-    if (_this.getLength() - e.getLength() < 0) {
-      return _this;
-    }
-    const ratio = QRMath.glog(_this.getAt(0)) - QRMath.glog(e.getAt(0));
-    const num2 = new Array(_this.getLength());
-    for (let i = 0; i < _this.getLength(); i += 1) {
-      num2[i] = _this.getAt(i);
-    }
-    for (let i = 0; i < e.getLength(); i += 1) {
-      num2[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i)) + ratio);
-    }
-    return qrPolynomial(num2, 0).mod(e);
-  };
-  return _this;
-};
-var QRRSBlock = function() {
-  const RS_BLOCK_TABLE = [
-    // L
-    // M
-    // Q
-    // H
-    // 1
-    [1, 26, 19],
-    [1, 26, 16],
-    [1, 26, 13],
-    [1, 26, 9],
-    // 2
-    [1, 44, 34],
-    [1, 44, 28],
-    [1, 44, 22],
-    [1, 44, 16],
-    // 3
-    [1, 70, 55],
-    [1, 70, 44],
-    [2, 35, 17],
-    [2, 35, 13],
-    // 4
-    [1, 100, 80],
-    [2, 50, 32],
-    [2, 50, 24],
-    [4, 25, 9],
-    // 5
-    [1, 134, 108],
-    [2, 67, 43],
-    [2, 33, 15, 2, 34, 16],
-    [2, 33, 11, 2, 34, 12],
-    // 6
-    [2, 86, 68],
-    [4, 43, 27],
-    [4, 43, 19],
-    [4, 43, 15],
-    // 7
-    [2, 98, 78],
-    [4, 49, 31],
-    [2, 32, 14, 4, 33, 15],
-    [4, 39, 13, 1, 40, 14],
-    // 8
-    [2, 121, 97],
-    [2, 60, 38, 2, 61, 39],
-    [4, 40, 18, 2, 41, 19],
-    [4, 40, 14, 2, 41, 15],
-    // 9
-    [2, 146, 116],
-    [3, 58, 36, 2, 59, 37],
-    [4, 36, 16, 4, 37, 17],
-    [4, 36, 12, 4, 37, 13],
-    // 10
-    [2, 86, 68, 2, 87, 69],
-    [4, 69, 43, 1, 70, 44],
-    [6, 43, 19, 2, 44, 20],
-    [6, 43, 15, 2, 44, 16],
-    // 11
-    [4, 101, 81],
-    [1, 80, 50, 4, 81, 51],
-    [4, 50, 22, 4, 51, 23],
-    [3, 36, 12, 8, 37, 13],
-    // 12
-    [2, 116, 92, 2, 117, 93],
-    [6, 58, 36, 2, 59, 37],
-    [4, 46, 20, 6, 47, 21],
-    [7, 42, 14, 4, 43, 15],
-    // 13
-    [4, 133, 107],
-    [8, 59, 37, 1, 60, 38],
-    [8, 44, 20, 4, 45, 21],
-    [12, 33, 11, 4, 34, 12],
-    // 14
-    [3, 145, 115, 1, 146, 116],
-    [4, 64, 40, 5, 65, 41],
-    [11, 36, 16, 5, 37, 17],
-    [11, 36, 12, 5, 37, 13],
-    // 15
-    [5, 109, 87, 1, 110, 88],
-    [5, 65, 41, 5, 66, 42],
-    [5, 54, 24, 7, 55, 25],
-    [11, 36, 12, 7, 37, 13],
-    // 16
-    [5, 122, 98, 1, 123, 99],
-    [7, 73, 45, 3, 74, 46],
-    [15, 43, 19, 2, 44, 20],
-    [3, 45, 15, 13, 46, 16],
-    // 17
-    [1, 135, 107, 5, 136, 108],
-    [10, 74, 46, 1, 75, 47],
-    [1, 50, 22, 15, 51, 23],
-    [2, 42, 14, 17, 43, 15],
-    // 18
-    [5, 150, 120, 1, 151, 121],
-    [9, 69, 43, 4, 70, 44],
-    [17, 50, 22, 1, 51, 23],
-    [2, 42, 14, 19, 43, 15],
-    // 19
-    [3, 141, 113, 4, 142, 114],
-    [3, 70, 44, 11, 71, 45],
-    [17, 47, 21, 4, 48, 22],
-    [9, 39, 13, 16, 40, 14],
-    // 20
-    [3, 135, 107, 5, 136, 108],
-    [3, 67, 41, 13, 68, 42],
-    [15, 54, 24, 5, 55, 25],
-    [15, 43, 15, 10, 44, 16],
-    // 21
-    [4, 144, 116, 4, 145, 117],
-    [17, 68, 42],
-    [17, 50, 22, 6, 51, 23],
-    [19, 46, 16, 6, 47, 17],
-    // 22
-    [2, 139, 111, 7, 140, 112],
-    [17, 74, 46],
-    [7, 54, 24, 16, 55, 25],
-    [34, 37, 13],
-    // 23
-    [4, 151, 121, 5, 152, 122],
-    [4, 75, 47, 14, 76, 48],
-    [11, 54, 24, 14, 55, 25],
-    [16, 45, 15, 14, 46, 16],
-    // 24
-    [6, 147, 117, 4, 148, 118],
-    [6, 73, 45, 14, 74, 46],
-    [11, 54, 24, 16, 55, 25],
-    [30, 46, 16, 2, 47, 17],
-    // 25
-    [8, 132, 106, 4, 133, 107],
-    [8, 75, 47, 13, 76, 48],
-    [7, 54, 24, 22, 55, 25],
-    [22, 45, 15, 13, 46, 16],
-    // 26
-    [10, 142, 114, 2, 143, 115],
-    [19, 74, 46, 4, 75, 47],
-    [28, 50, 22, 6, 51, 23],
-    [33, 46, 16, 4, 47, 17],
-    // 27
-    [8, 152, 122, 4, 153, 123],
-    [22, 73, 45, 3, 74, 46],
-    [8, 53, 23, 26, 54, 24],
-    [12, 45, 15, 28, 46, 16],
-    // 28
-    [3, 147, 117, 10, 148, 118],
-    [3, 73, 45, 23, 74, 46],
-    [4, 54, 24, 31, 55, 25],
-    [11, 45, 15, 31, 46, 16],
-    // 29
-    [7, 146, 116, 7, 147, 117],
-    [21, 73, 45, 7, 74, 46],
-    [1, 53, 23, 37, 54, 24],
-    [19, 45, 15, 26, 46, 16],
-    // 30
-    [5, 145, 115, 10, 146, 116],
-    [19, 75, 47, 10, 76, 48],
-    [15, 54, 24, 25, 55, 25],
-    [23, 45, 15, 25, 46, 16],
-    // 31
-    [13, 145, 115, 3, 146, 116],
-    [2, 74, 46, 29, 75, 47],
-    [42, 54, 24, 1, 55, 25],
-    [23, 45, 15, 28, 46, 16],
-    // 32
-    [17, 145, 115],
-    [10, 74, 46, 23, 75, 47],
-    [10, 54, 24, 35, 55, 25],
-    [19, 45, 15, 35, 46, 16],
-    // 33
-    [17, 145, 115, 1, 146, 116],
-    [14, 74, 46, 21, 75, 47],
-    [29, 54, 24, 19, 55, 25],
-    [11, 45, 15, 46, 46, 16],
-    // 34
-    [13, 145, 115, 6, 146, 116],
-    [14, 74, 46, 23, 75, 47],
-    [44, 54, 24, 7, 55, 25],
-    [59, 46, 16, 1, 47, 17],
-    // 35
-    [12, 151, 121, 7, 152, 122],
-    [12, 75, 47, 26, 76, 48],
-    [39, 54, 24, 14, 55, 25],
-    [22, 45, 15, 41, 46, 16],
-    // 36
-    [6, 151, 121, 14, 152, 122],
-    [6, 75, 47, 34, 76, 48],
-    [46, 54, 24, 10, 55, 25],
-    [2, 45, 15, 64, 46, 16],
-    // 37
-    [17, 152, 122, 4, 153, 123],
-    [29, 74, 46, 14, 75, 47],
-    [49, 54, 24, 10, 55, 25],
-    [24, 45, 15, 46, 46, 16],
-    // 38
-    [4, 152, 122, 18, 153, 123],
-    [13, 74, 46, 32, 75, 47],
-    [48, 54, 24, 14, 55, 25],
-    [42, 45, 15, 32, 46, 16],
-    // 39
-    [20, 147, 117, 4, 148, 118],
-    [40, 75, 47, 7, 76, 48],
-    [43, 54, 24, 22, 55, 25],
-    [10, 45, 15, 67, 46, 16],
-    // 40
-    [19, 148, 118, 6, 149, 119],
-    [18, 75, 47, 31, 76, 48],
-    [34, 54, 24, 34, 55, 25],
-    [20, 45, 15, 61, 46, 16]
-  ];
-  const qrRSBlock = function(totalCount2, dataCount) {
-    const _this2 = {};
-    _this2.totalCount = totalCount2;
-    _this2.dataCount = dataCount;
-    return _this2;
-  };
-  const _this = {};
-  const getRsBlockTable = function(typeNumber, errorCorrectionLevel) {
-    switch (errorCorrectionLevel) {
-      case QRErrorCorrectionLevel.L:
-        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
-      case QRErrorCorrectionLevel.M:
-        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
-      case QRErrorCorrectionLevel.Q:
-        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
-      case QRErrorCorrectionLevel.H:
-        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
-      default:
-        return void 0;
-    }
-  };
-  _this.getRSBlocks = function(typeNumber, errorCorrectionLevel) {
-    const rsBlock = getRsBlockTable(typeNumber, errorCorrectionLevel);
-    if (typeof rsBlock == "undefined") {
-      throw "bad rs block @ typeNumber:" + typeNumber + "/errorCorrectionLevel:" + errorCorrectionLevel;
-    }
-    const length = rsBlock.length / 3;
-    const list = [];
-    for (let i = 0; i < length; i += 1) {
-      const count = rsBlock[i * 3 + 0];
-      const totalCount2 = rsBlock[i * 3 + 1];
-      const dataCount = rsBlock[i * 3 + 2];
-      for (let j = 0; j < count; j += 1) {
-        list.push(qrRSBlock(totalCount2, dataCount));
-      }
-    }
-    return list;
-  };
-  return _this;
-}();
-var qrBitBuffer = function() {
-  const _buffer = [];
-  let _length = 0;
-  const _this = {};
-  _this.getBuffer = function() {
-    return _buffer;
-  };
-  _this.getAt = function(index) {
-    const bufIndex = Math.floor(index / 8);
-    return (_buffer[bufIndex] >>> 7 - index % 8 & 1) == 1;
-  };
-  _this.put = function(num, length) {
-    for (let i = 0; i < length; i += 1) {
-      _this.putBit((num >>> length - i - 1 & 1) == 1);
-    }
-  };
-  _this.getLengthInBits = function() {
-    return _length;
-  };
-  _this.putBit = function(bit) {
-    const bufIndex = Math.floor(_length / 8);
-    if (_buffer.length <= bufIndex) {
-      _buffer.push(0);
-    }
-    if (bit) {
-      _buffer[bufIndex] |= 128 >>> _length % 8;
-    }
-    _length += 1;
-  };
-  return _this;
-};
-var qrNumber = function(data) {
-  const _mode = QRMode.MODE_NUMBER;
-  const _data = data;
-  const _this = {};
-  _this.getMode = function() {
-    return _mode;
-  };
-  _this.getLength = function(buffer) {
-    return _data.length;
-  };
-  _this.write = function(buffer) {
-    const data2 = _data;
-    let i = 0;
-    while (i + 2 < data2.length) {
-      buffer.put(strToNum(data2.substring(i, i + 3)), 10);
-      i += 3;
-    }
-    if (i < data2.length) {
-      if (data2.length - i == 1) {
-        buffer.put(strToNum(data2.substring(i, i + 1)), 4);
-      } else if (data2.length - i == 2) {
-        buffer.put(strToNum(data2.substring(i, i + 2)), 7);
-      }
-    }
-  };
-  const strToNum = function(s) {
-    let num = 0;
-    for (let i = 0; i < s.length; i += 1) {
-      num = num * 10 + chatToNum(s.charAt(i));
-    }
-    return num;
-  };
-  const chatToNum = function(c) {
-    if ("0" <= c && c <= "9") {
-      return c.charCodeAt(0) - "0".charCodeAt(0);
-    }
-    throw "illegal char :" + c;
-  };
-  return _this;
-};
-var qrAlphaNum = function(data) {
-  const _mode = QRMode.MODE_ALPHA_NUM;
-  const _data = data;
-  const _this = {};
-  _this.getMode = function() {
-    return _mode;
-  };
-  _this.getLength = function(buffer) {
-    return _data.length;
-  };
-  _this.write = function(buffer) {
-    const s = _data;
-    let i = 0;
-    while (i + 1 < s.length) {
-      buffer.put(
-        getCode(s.charAt(i)) * 45 + getCode(s.charAt(i + 1)),
-        11
-      );
-      i += 2;
-    }
-    if (i < s.length) {
-      buffer.put(getCode(s.charAt(i)), 6);
-    }
-  };
-  const getCode = function(c) {
-    if ("0" <= c && c <= "9") {
-      return c.charCodeAt(0) - "0".charCodeAt(0);
-    } else if ("A" <= c && c <= "Z") {
-      return c.charCodeAt(0) - "A".charCodeAt(0) + 10;
-    } else {
-      switch (c) {
-        case " ":
-          return 36;
-        case "$":
-          return 37;
-        case "%":
-          return 38;
-        case "*":
-          return 39;
-        case "+":
-          return 40;
-        case "-":
-          return 41;
-        case ".":
-          return 42;
-        case "/":
-          return 43;
-        case ":":
-          return 44;
-        default:
-          throw "illegal char :" + c;
-      }
-    }
-  };
-  return _this;
-};
-var qr8BitByte = function(data) {
-  const _mode = QRMode.MODE_8BIT_BYTE;
-  const _data = data;
-  const _bytes = qrcode.stringToBytes(data);
-  const _this = {};
-  _this.getMode = function() {
-    return _mode;
-  };
-  _this.getLength = function(buffer) {
-    return _bytes.length;
-  };
-  _this.write = function(buffer) {
-    for (let i = 0; i < _bytes.length; i += 1) {
-      buffer.put(_bytes[i], 8);
-    }
-  };
-  return _this;
-};
-var qrKanji = function(data) {
-  const _mode = QRMode.MODE_KANJI;
-  const _data = data;
-  const stringToBytes2 = qrcode.stringToBytes;
-  !function(c, code) {
-    const test = stringToBytes2(c);
-    if (test.length != 2 || (test[0] << 8 | test[1]) != code) {
-      throw "sjis not supported.";
-    }
-  }("\u53CB", 38726);
-  const _bytes = stringToBytes2(data);
-  const _this = {};
-  _this.getMode = function() {
-    return _mode;
-  };
-  _this.getLength = function(buffer) {
-    return ~~(_bytes.length / 2);
-  };
-  _this.write = function(buffer) {
-    const data2 = _bytes;
-    let i = 0;
-    while (i + 1 < data2.length) {
-      let c = (255 & data2[i]) << 8 | 255 & data2[i + 1];
-      if (33088 <= c && c <= 40956) {
-        c -= 33088;
-      } else if (57408 <= c && c <= 60351) {
-        c -= 49472;
-      } else {
-        throw "illegal char at " + (i + 1) + "/" + c;
-      }
-      c = (c >>> 8 & 255) * 192 + (c & 255);
-      buffer.put(c, 13);
-      i += 2;
-    }
-    if (i < data2.length) {
-      throw "illegal char at " + (i + 1);
-    }
-  };
-  return _this;
-};
-var byteArrayOutputStream = function() {
-  const _bytes = [];
-  const _this = {};
-  _this.writeByte = function(b) {
-    _bytes.push(b & 255);
-  };
-  _this.writeShort = function(i) {
-    _this.writeByte(i);
-    _this.writeByte(i >>> 8);
-  };
-  _this.writeBytes = function(b, off, len) {
-    off = off || 0;
-    len = len || b.length;
-    for (let i = 0; i < len; i += 1) {
-      _this.writeByte(b[i + off]);
-    }
-  };
-  _this.writeString = function(s) {
-    for (let i = 0; i < s.length; i += 1) {
-      _this.writeByte(s.charCodeAt(i));
-    }
-  };
-  _this.toByteArray = function() {
-    return _bytes;
-  };
-  _this.toString = function() {
-    let s = "";
-    s += "[";
-    for (let i = 0; i < _bytes.length; i += 1) {
-      if (i > 0) {
-        s += ",";
-      }
-      s += _bytes[i];
-    }
-    s += "]";
-    return s;
-  };
-  return _this;
-};
-var base64EncodeOutputStream = function() {
-  let _buffer = 0;
-  let _buflen = 0;
-  let _length = 0;
-  let _base64 = "";
-  const _this = {};
-  const writeEncoded = function(b) {
-    _base64 += String.fromCharCode(encode(b & 63));
-  };
-  const encode = function(n) {
-    if (n < 0) {
-      throw "n:" + n;
-    } else if (n < 26) {
-      return 65 + n;
-    } else if (n < 52) {
-      return 97 + (n - 26);
-    } else if (n < 62) {
-      return 48 + (n - 52);
-    } else if (n == 62) {
-      return 43;
-    } else if (n == 63) {
-      return 47;
-    } else {
-      throw "n:" + n;
-    }
-  };
-  _this.writeByte = function(n) {
-    _buffer = _buffer << 8 | n & 255;
-    _buflen += 8;
-    _length += 1;
-    while (_buflen >= 6) {
-      writeEncoded(_buffer >>> _buflen - 6);
-      _buflen -= 6;
-    }
-  };
-  _this.flush = function() {
-    if (_buflen > 0) {
-      writeEncoded(_buffer << 6 - _buflen);
-      _buffer = 0;
-      _buflen = 0;
-    }
-    if (_length % 3 != 0) {
-      const padlen = 3 - _length % 3;
-      for (let i = 0; i < padlen; i += 1) {
-        _base64 += "=";
-      }
-    }
-  };
-  _this.toString = function() {
-    return _base64;
-  };
-  return _this;
-};
-var base64DecodeInputStream = function(str) {
-  const _str = str;
-  let _pos = 0;
-  let _buffer = 0;
-  let _buflen = 0;
-  const _this = {};
-  _this.read = function() {
-    while (_buflen < 8) {
-      if (_pos >= _str.length) {
-        if (_buflen == 0) {
-          return -1;
-        }
-        throw "unexpected end of file./" + _buflen;
-      }
-      const c = _str.charAt(_pos);
-      _pos += 1;
-      if (c == "=") {
-        _buflen = 0;
-        return -1;
-      } else if (c.match(/^\s$/)) {
-        continue;
-      }
-      _buffer = _buffer << 6 | decode(c.charCodeAt(0));
-      _buflen += 6;
-    }
-    const n = _buffer >>> _buflen - 8 & 255;
-    _buflen -= 8;
-    return n;
-  };
-  const decode = function(c) {
-    if (65 <= c && c <= 90) {
-      return c - 65;
-    } else if (97 <= c && c <= 122) {
-      return c - 97 + 26;
-    } else if (48 <= c && c <= 57) {
-      return c - 48 + 52;
-    } else if (c == 43) {
-      return 62;
-    } else if (c == 47) {
-      return 63;
-    } else {
-      throw "c:" + c;
-    }
-  };
-  return _this;
-};
-var gifImage = function(width, height) {
-  const _width = width;
-  const _height = height;
-  const _data = new Array(width * height);
-  const _this = {};
-  _this.setPixel = function(x, y, pixel) {
-    _data[y * _width + x] = pixel;
-  };
-  _this.write = function(out) {
-    out.writeString("GIF87a");
-    out.writeShort(_width);
-    out.writeShort(_height);
-    out.writeByte(128);
-    out.writeByte(0);
-    out.writeByte(0);
-    out.writeByte(0);
-    out.writeByte(0);
-    out.writeByte(0);
-    out.writeByte(255);
-    out.writeByte(255);
-    out.writeByte(255);
-    out.writeString(",");
-    out.writeShort(0);
-    out.writeShort(0);
-    out.writeShort(_width);
-    out.writeShort(_height);
-    out.writeByte(0);
-    const lzwMinCodeSize = 2;
-    const raster = getLZWRaster(lzwMinCodeSize);
-    out.writeByte(lzwMinCodeSize);
-    let offset = 0;
-    while (raster.length - offset > 255) {
-      out.writeByte(255);
-      out.writeBytes(raster, offset, 255);
-      offset += 255;
-    }
-    out.writeByte(raster.length - offset);
-    out.writeBytes(raster, offset, raster.length - offset);
-    out.writeByte(0);
-    out.writeString(";");
-  };
-  const bitOutputStream = function(out) {
-    const _out = out;
-    let _bitLength = 0;
-    let _bitBuffer = 0;
-    const _this2 = {};
-    _this2.write = function(data, length) {
-      if (data >>> length != 0) {
-        throw "length over";
-      }
-      while (_bitLength + length >= 8) {
-        _out.writeByte(255 & (data << _bitLength | _bitBuffer));
-        length -= 8 - _bitLength;
-        data >>>= 8 - _bitLength;
-        _bitBuffer = 0;
-        _bitLength = 0;
-      }
-      _bitBuffer = data << _bitLength | _bitBuffer;
-      _bitLength = _bitLength + length;
-    };
-    _this2.flush = function() {
-      if (_bitLength > 0) {
-        _out.writeByte(_bitBuffer);
-      }
-    };
-    return _this2;
-  };
-  const getLZWRaster = function(lzwMinCodeSize) {
-    const clearCode = 1 << lzwMinCodeSize;
-    const endCode = (1 << lzwMinCodeSize) + 1;
-    let bitLength = lzwMinCodeSize + 1;
-    const table = lzwTable();
-    for (let i = 0; i < clearCode; i += 1) {
-      table.add(String.fromCharCode(i));
-    }
-    table.add(String.fromCharCode(clearCode));
-    table.add(String.fromCharCode(endCode));
-    const byteOut = byteArrayOutputStream();
-    const bitOut = bitOutputStream(byteOut);
-    bitOut.write(clearCode, bitLength);
-    let dataIndex = 0;
-    let s = String.fromCharCode(_data[dataIndex]);
-    dataIndex += 1;
-    while (dataIndex < _data.length) {
-      const c = String.fromCharCode(_data[dataIndex]);
-      dataIndex += 1;
-      if (table.contains(s + c)) {
-        s = s + c;
-      } else {
-        bitOut.write(table.indexOf(s), bitLength);
-        if (table.size() < 4095) {
-          if (table.size() == 1 << bitLength) {
-            bitLength += 1;
-          }
-          table.add(s + c);
-        }
-        s = c;
-      }
-    }
-    bitOut.write(table.indexOf(s), bitLength);
-    bitOut.write(endCode, bitLength);
-    bitOut.flush();
-    return byteOut.toByteArray();
-  };
-  const lzwTable = function() {
-    const _map = {};
-    let _size = 0;
-    const _this2 = {};
-    _this2.add = function(key) {
-      if (_this2.contains(key)) {
-        throw "dup key:" + key;
-      }
-      _map[key] = _size;
-      _size += 1;
-    };
-    _this2.size = function() {
-      return _size;
-    };
-    _this2.indexOf = function(key) {
-      return _map[key];
-    };
-    _this2.contains = function(key) {
-      return typeof _map[key] != "undefined";
-    };
-    return _this2;
-  };
-  return _this;
-};
-var createDataURL = function(width, height, getPixel) {
-  const gif = gifImage(width, height);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      gif.setPixel(x, y, getPixel(x, y));
-    }
-  }
-  const b = byteArrayOutputStream();
-  gif.write(b);
-  const base64 = base64EncodeOutputStream();
-  const bytes = b.toByteArray();
-  for (let i = 0; i < bytes.length; i += 1) {
-    base64.writeByte(bytes[i]);
-  }
-  base64.flush();
-  return "data:image/gif;base64," + base64;
-};
-var stringToBytes = qrcode.stringToBytes;
-
-// src/services/upiPayment.ts
+// src/services/paymentRef.ts
 function generatePaymentRef() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -6570,7 +4134,8 @@ var RealLedgerService = class {
     const allCustomers = await this.getCustomers();
     const cleanQuery = query.trim();
     if (!cleanQuery) return allCustomers;
-    const matchResult = findCustomers(cleanQuery, allCustomers);
+    const { findCustomers: findMatchingCustomers } = await Promise.resolve().then(() => (init_customerMatcher(), customerMatcher_exports));
+    const matchResult = findMatchingCustomers(cleanQuery, allCustomers);
     if (matchResult.candidates.length > 0) {
       return matchResult.candidates.map((c) => c.customer);
     }
@@ -6594,7 +4159,8 @@ var RealLedgerService = class {
     const all = await this.getCustomers();
     const existing = all.find((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing;
-    const matchResult = findCustomers(trimmed, all);
+    const { findCustomers: findMatchingCustomers } = await Promise.resolve().then(() => (init_customerMatcher(), customerMatcher_exports));
+    const matchResult = findMatchingCustomers(trimmed, all);
     if (matchResult.action === "auto_select" && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
       return matchResult.selectedCustomer;
     }
@@ -6777,7 +4343,8 @@ var RealLedgerService = class {
   }
   async checkDuplicateEntry(customerQuery, amount, type, withinMs = 6e5) {
     const entries = await this.getEntries();
-    return isDuplicateEntry(
+    const { isDuplicateEntry: isDuplicateEntry2 } = await Promise.resolve().then(() => (init_customerMatcher(), customerMatcher_exports));
+    return isDuplicateEntry2(
       {
         customerId: customerQuery,
         customerName: customerQuery,
@@ -6933,7 +4500,7 @@ var RealLedgerService = class {
         if (e.type === "credit") credit += e.amount;
         else payment += e.amount;
       }
-      const dayLabel = i === 0 ? "Aaj" : i === 1 ? "Kal" : dayNames[d.getDay()];
+      const dayLabel = i === 0 ? "Today" : i === 1 ? "Yesterday" : dayNames[d.getDay()];
       result.push({
         date: isoDate,
         dayLabel,
@@ -6960,37 +4527,27 @@ var RealLedgerService = class {
     };
   }
   generateWhatsAppReminder(customer, lang, shopName = "Kirana Store", entries) {
-    const amountStr = customer.balance.toLocaleString("en-IN");
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
-    const phone = cleanPhoneNumber(customer.phone);
-    const url = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const text = buildReminderMessage({
+      customerName: customer.name,
+      amount: customer.balance,
+      shopName,
+      lang,
+      entries
+    });
+    const url = buildWhatsAppReminderUrl(customer.phone || "", text);
     return { text, url };
   }
-  generateReceiptText(entry, customer, shopName = "Kirana Store") {
+  generateReceiptText(entry, customer, shopName = "Kirana Store", entries) {
     const cust = customer || { name: "Customer", phone: "", balance: 0, totalCredit: 0, totalPayment: 0, id: "" };
-    const isCredit = entry?.type === "credit";
-    const typeLabel = isCredit ? "UDHAAR (CREDIT GIVEN)" : "JAMA (PAYMENT RECEIVED)";
-    const dateFormatted = entry?.date ? new Date(entry.date).toLocaleString("en-IN") : (/* @__PURE__ */ new Date()).toLocaleString("en-IN");
-    const amt = entry?.amount !== void 0 ? entry.amount.toLocaleString("en-IN") : "0";
-    return `
-========================================
-       ${shopName.toUpperCase()}
-           KHATA RECEIPT SLIP
-========================================
-Date: ${dateFormatted}
-Customer: ${cust.name}
-Phone: ${cust.phone || "N/A"}
-----------------------------------------
-Transaction Type: ${typeLabel}
-Amount: \u20B9${amt}
-${entry?.note ? `Note: ${entry.note}` : ""}
-----------------------------------------
-Current Total Balance Owed: \u20B9${cust.balance?.toLocaleString("en-IN") || "0"}
-========================================
-   Thank you for shopping with us!
-   Powered by Voice Khata PWA
-========================================
-    `.trim();
+    const allEntries = entries || (entry ? [entry] : void 0);
+    return buildReminderMessage({
+      customerName: cust.name,
+      amount: cust.balance,
+      shopName,
+      lang: "en",
+      entries: allEntries,
+      now: entry?.date ? new Date(entry.date) : /* @__PURE__ */ new Date()
+    });
   }
   async exportData() {
     const customers = await this.getCustomers();
@@ -7005,7 +4562,7 @@ Current Total Balance Owed: \u20B9${cust.balance?.toLocaleString("en-IN") || "0"
     const customers = await this.getCustomers();
     const entries = await this.getEntries();
     const rows = [];
-    rows.push("# VOICE KHATA TRANSACTIONS");
+    rows.push("# UDHAAR SATHI TRANSACTIONS");
     rows.push("Transaction ID,Date,Customer ID,Customer Name,Type,Amount (INR),Note,Created At");
     for (const e of entries) {
       const cust = customers.find((c) => c.id === e.customerId);
@@ -7088,7 +4645,8 @@ var InMemoryLedgerService = class {
     await this.init();
     const cleanQuery = query.trim();
     if (!cleanQuery) return this.getCustomers();
-    const matchResult = findCustomers(cleanQuery, this.customers);
+    const { findCustomers: findMatchingCustomers } = await Promise.resolve().then(() => (init_customerMatcher(), customerMatcher_exports));
+    const matchResult = findMatchingCustomers(cleanQuery, this.customers);
     if (matchResult.candidates.length > 0) {
       return matchResult.candidates.map((c) => c.customer);
     }
@@ -7218,7 +4776,8 @@ var InMemoryLedgerService = class {
   }
   async checkDuplicateEntry(customerQuery, amount, type, withinMs = 6e5) {
     await this.init();
-    return isDuplicateEntry(
+    const { isDuplicateEntry: isDuplicateEntry2 } = await Promise.resolve().then(() => (init_customerMatcher(), customerMatcher_exports));
+    return isDuplicateEntry2(
       { customerId: customerQuery, customerName: customerQuery, amount, type },
       this.entries,
       withinMs
@@ -7233,7 +4792,8 @@ var InMemoryLedgerService = class {
     const all = await this.getCustomers();
     const existing = all.find((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing;
-    const matchResult = findCustomers(trimmed, all);
+    const { findCustomers: findMatchingCustomers } = await Promise.resolve().then(() => (init_customerMatcher(), customerMatcher_exports));
+    const matchResult = findMatchingCustomers(trimmed, all);
     if (matchResult.action === "auto_select" && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
       return matchResult.selectedCustomer;
     }
@@ -7377,7 +4937,7 @@ var InMemoryLedgerService = class {
         if (e.type === "credit") credit += e.amount;
         else payment += e.amount;
       }
-      const dayLabel = i === 0 ? "Aaj" : i === 1 ? "Kal" : dayNames[d.getDay()];
+      const dayLabel = i === 0 ? "Today" : i === 1 ? "Yesterday" : dayNames[d.getDay()];
       result.push({
         date: isoDate,
         dayLabel,
@@ -7393,37 +4953,27 @@ var InMemoryLedgerService = class {
     return this.customers.filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, limit);
   }
   generateWhatsAppReminder(customer, lang, shopName = "Kirana Store", entries) {
-    const amountStr = customer.balance.toLocaleString("en-IN");
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
-    const phone = cleanPhoneNumber(customer.phone);
-    const url = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const text = buildReminderMessage({
+      customerName: customer.name,
+      amount: customer.balance,
+      shopName,
+      lang,
+      entries
+    });
+    const url = buildWhatsAppReminderUrl(customer.phone || "", text);
     return { text, url };
   }
-  generateReceiptText(entry, customer, shopName = "Kirana Store") {
+  generateReceiptText(entry, customer, shopName = "Kirana Store", entries) {
     const cust = customer || { name: "Customer", phone: "", balance: 0, totalCredit: 0, totalPayment: 0, id: "" };
-    const isCredit = entry?.type === "credit";
-    const typeLabel = isCredit ? "UDHAAR (CREDIT GIVEN)" : "JAMA (PAYMENT RECEIVED)";
-    const dateFormatted = entry?.date ? new Date(entry.date).toLocaleString("en-IN") : (/* @__PURE__ */ new Date()).toLocaleString("en-IN");
-    const amt = entry?.amount !== void 0 ? entry.amount.toLocaleString("en-IN") : "0";
-    return `
-========================================
-       ${shopName.toUpperCase()}
-           KHATA RECEIPT SLIP
-========================================
-Date: ${dateFormatted}
-Customer: ${cust.name}
-Phone: ${cust.phone || "N/A"}
-----------------------------------------
-Transaction Type: ${typeLabel}
-Amount: \u20B9${amt}
-${entry?.note ? `Note: ${entry.note}` : ""}
-----------------------------------------
-Current Total Balance Owed: \u20B9${cust.balance?.toLocaleString("en-IN") || "0"}
-========================================
-   Thank you for shopping with us!
-   Powered by Voice Khata PWA
-========================================
-    `.trim();
+    const allEntries = entries || (entry ? [entry] : void 0);
+    return buildReminderMessage({
+      customerName: cust.name,
+      amount: cust.balance,
+      shopName,
+      lang: "en",
+      entries: allEntries,
+      now: entry?.date ? new Date(entry.date) : /* @__PURE__ */ new Date()
+    });
   }
   async exportData() {
     await this.init();
@@ -7436,7 +4986,7 @@ Current Total Balance Owed: \u20B9${cust.balance?.toLocaleString("en-IN") || "0"
   async exportCSV() {
     await this.init();
     const rows = [];
-    rows.push("# VOICE KHATA TRANSACTIONS");
+    rows.push("# UDHAAR SATHI TRANSACTIONS");
     rows.push("Transaction ID,Date,Customer ID,Customer Name,Type,Amount (INR),Note,Created At");
     for (const e of this.entries) {
       const cust = this.customers.find((c) => c.id === e.customerId);
@@ -8613,6 +6163,7 @@ function extractAmounts(text) {
 }
 
 // src/services/parser.ts
+init_phoneParser();
 var CONFIRM_WORDS = /* @__PURE__ */ new Set([
   "haan",
   "ha",
@@ -9465,8 +7016,2409 @@ function getSpeechTemplates(lang = "hinglish") {
   return speechTemplates[lang] || speechTemplates.hinglish;
 }
 
+// src/i18n/locales/en.json
+var en_default = {
+  appName: "Udhaar Sathi",
+  tagline: "Hands-free Kirana Voice Ledger",
+  online: "Online",
+  offlineSafe: "Offline Safe (Local)",
+  navHome: "Home",
+  navCustomers: "Customers",
+  navSummary: "Summary",
+  navSettings: "Settings",
+  navStyleguide: "Styleguide",
+  save: "Save",
+  cancel: "Cancel",
+  delete: "Delete",
+  edit: "Edit",
+  close: "Close",
+  search: "Search",
+  back: "Back",
+  done: "Done",
+  creditGiven: "Credit Given",
+  paymentReceived: "Payment Received",
+  balanceOwed: "Total Balance",
+  netBalance: "Net Balance",
+  todaySummary: "Today's Summary",
+  recentEntries: "Recent Entries",
+  noEntries: "No entries recorded yet",
+  micIdle: "Tap mic & speak",
+  micListening: "Listening... Speak now",
+  micProcessing: "Processing voice entry...",
+  micError: "Could not hear clearly. Please try again.",
+  typeInstead: "Type instead",
+  trySpeaking: "Try speaking:",
+  customersTitle: "Customer Ledger",
+  searchCustomerPlaceholder: "Search by name or mobile...",
+  filterAll: "All",
+  filterOwes: "Owes Money",
+  filterSettled: "Settled",
+  addJama: "+ Add Payment",
+  printSlip: "Print Slip",
+  sendWhatsApp: "WhatsApp Reminder",
+  summaryTitle: "Daily Summary",
+  todayUdhaar: "Udhaar Given",
+  todayJama: "Jama Received",
+  todayNet: "Net Change",
+  weeklyTrend: "Last 7 Days Trend",
+  topPending: "Top Pending Customers",
+  settingsTitle: "Settings",
+  settingsSubtitle: "Shop details, languages, soundbox and data backup",
+  shopNameLabel: "Shop Name",
+  shopNamePlaceholder: "e.g. Ramesh Kirana Store",
+  uiLanguageLabel: "UI Language",
+  uiLanguageDesc: "Language for buttons, text and navigation",
+  speechLanguageLabel: "Speech Language",
+  speechLanguageDesc: "Used for speech recognition & soundbox voice replies",
+  speechSpeedLabel: "Soundbox Speech Speed",
+  speedSlow: "Slow",
+  speedNormal: "Normal",
+  speedFast: "Fast",
+  muteRepliesLabel: "Mute Spoken Replies",
+  muteRepliesDesc: "Only play chime tones without speaking totals aloud",
+  themeLabel: "App Theme",
+  themeLight: "Light Theme",
+  themeHighContrast: "High Contrast (Dark)",
+  themeDesc: "High contrast optimized for outdoor sunlight & dim shops",
+  asrEngineLabel: "Speech Engine (ASR)",
+  asrEngineDesc: "Provider used to transcribe spoken transactions",
+  asrBrowser: "Browser On-Device (Free, Offline, Instant)",
+  asrBhashini: "Bhashini AI (Digital India Speech) [Stubbed]",
+  asrSarvam: "Sarvam AI (Saaras Indic Speech) [Stubbed]",
+  exportLedgerLabel: "Export Ledger Data",
+  exportJson: "Export Ledger (JSON)",
+  exportCsv: "Export Ledger (CSV / Excel)",
+  dangerZoneLabel: "Danger Zone",
+  clearAllData: "Clear All Ledger Data",
+  clearConfirm: "Are you sure you want to delete all customers and transactions? This cannot be undone.",
+  clearSuccess: "All ledger data cleared successfully!",
+  resetDemo: "Restore Sample Demo Khata",
+  resetSuccess: "Sample demo data restored!",
+  localFirstInfo: "Udhaar Sathi is 100% offline-first. Your ledger is safely stored on your device (IndexedDB) and never leaves your phone.",
+  signupWelcomeTitle: "Welcome to Udhaar Sathi",
+  signupWelcomeSubtitle: "Hands-free voice ledger built for Indian Kirana stores",
+  dataStaysOnPhone: "Your data stays on this phone",
+  getStarted: "Get Started",
+  stepOf: "Step {current} of {total}",
+  shopNamePrompt: "What is your shop name?",
+  shopNameSpoken: "Please speak your shop name",
+  shopNameHelper: "Spoken or typed name of your store",
+  shopNameError: "Please enter a valid shop name (at least 2 characters)",
+  ownerNamePrompt: "What is your name?",
+  ownerNameSpoken: "Please speak your name",
+  ownerNamePlaceholder: "e.g. Ramesh Kumar",
+  ownerNameHelper: "Your name as store owner",
+  ownerNameError: "Please enter your name (at least 2 characters)",
+  phonePrompt: "Your mobile phone number",
+  phoneSpoken: "Please enter your 10-digit mobile number",
+  phonePlaceholder: "e.g. 9876543210",
+  phoneHelper: "10-digit mobile number for reminders & WhatsApp",
+  phoneError: "Enter a valid 10-digit Indian mobile number starting with 6-9",
+  upiPrompt: "Your UPI ID",
+  upiSpoken: "Speak or enter your UPI ID",
+  upiPlaceholder: "e.g. ramesh@oksbi",
+  upiHelperText: "Only your UPI ID is needed. We never ask for bank account numbers.",
+  upiPaste: "Paste",
+  upiReadBack: "Read back",
+  upiReadingBack: "Reading back...",
+  upiError: "Enter a valid UPI ID (e.g. name@bank)",
+  pinPrompt: "Set Security PIN (Optional)",
+  pinSpoken: "Choose a 4 to 6 digit security PIN or skip",
+  pinPlaceholder: "4-6 digit PIN",
+  pinHelperText: "Protects your ledger with on-device encryption. You can also set it later in Settings.",
+  pinSkip: "Skip for now",
+  pinSkipWarning: "Without a PIN, anyone opening this app can view your ledger. You can set a PIN anytime in Settings.",
+  pinSkipConfirm: "Skip PIN",
+  pinError: "PIN must be 4-6 digits and not a simple sequence (e.g. 1234, 0000)",
+  reviewTitle: "Review Shop Profile",
+  reviewSubtitle: "Confirm your store details. You can update these anytime in Settings.",
+  startAppButton: "Start Udhaar Sathi",
+  editField: "Edit",
+  nextStep: "Next",
+  prevStep: "Back",
+  settingsProfileTitle: "Shop Profile",
+  settingsProfileSubtitle: "Manage store details, owner information and payment UPI ID",
+  confirmUpiChangeTitle: "Change UPI ID?",
+  confirmUpiChangeWarning: "Changing your UPI ID will update payment QR codes and links sent to all customers. Are you sure?",
+  confirmUpiChangeButton: "Yes, Update UPI ID",
+  noPinWarningBanner: "Your ledger is not protected with a PIN. Set a PIN to secure your customer data.",
+  setPinNow: "Set PIN Now",
+  profileUpdatedToast: "Shop profile updated successfully!",
+  registerCustomerTitle: "Register Customer",
+  registerCustomerSubtitle: "Add customer details to save in your encrypted ledger",
+  enterCustomerPhone: "Customer Phone Number",
+  phoneReadBackQuestion: "{phone}. Is this correct?",
+  readBackConfirm: "Yes, Correct",
+  readBackWrong: "No, Change",
+  skipPhoneForNow: "Skip for now",
+  noNumberWarning: "No phone number saved. Reminders will ask for the number.",
+  duplicatePhoneWarning: "This phone number belongs to {name}. Is it the same person?",
+  openExistingCustomer: "Yes, Open {name}",
+  useAnotherNumber: "Use another number",
+  requireCustomerPhoneLabel: "Require Phone Number",
+  requireCustomerPhoneDesc: "Require phone number when registering new customers",
+  customerRegisteredSpoken: "{name} added successfully",
+  customerNewAskPhoneSpoken: "{name} is a new customer. Please tell the phone number.",
+  whichCustomerTitle: "Which {name}?",
+  tellLast4DigitsSubtitle: "Tell the last 4 digits of phone number or tap card",
+  noNumberSavedChip: "No number saved",
+  disambiguateRetryToast: "Number not found. Please say again or tap card.",
+  disambiguateConfirmSpoken: "{name}, confirmed.",
+  autoOpenPaymentRequestLabel: "Auto-open payment request after udhaar",
+  autoOpenPaymentRequestDesc: "Show UPI QR code and WhatsApp link immediately after recording credit",
+  showMyQr: "Show My QR",
+  showMyQrDesc: "Counter payment QR for walk-in customers",
+  showMyQrTitle: "Shop Counter QR",
+  paymentRequestTitle: "Payment Request",
+  paymentRequestSubtitle: "Share QR code or WhatsApp link to collect payment",
+  sendWhatsAppPayment: "Send WhatsApp",
+  sendWhatsAppHint: "Tap to open WhatsApp, then press Send",
+  shareQr: "Share QR",
+  downloadQr: "Download QR",
+  laterDismiss: "Later",
+  noPhoneAddNumber: "Add phone number",
+  noPhoneWarning: "No phone number saved for this customer",
+  noUpiIdWarning: "No UPI ID set in shop profile. Set up in Settings to enable QR payments.",
+  setupUpiNow: "Set up UPI ID",
+  whatsappOfflineHint: "Internet required for WhatsApp",
+  qrSavedToast: "QR code ready to share",
+  receiptQrTitle: "Scan & Pay via UPI",
+  chooseLanguage: "Choose Language",
+  language: "Language",
+  speechLanguage: "Speech Language",
+  entries: "entries",
+  entriesCount: "{count} entries",
+  clear: "Clear",
+  reset: "Reset",
+  viewAll: "View All \u2192",
+  loading: "Loading...",
+  loadingCustomers: "Loading Customer Ledger...",
+  loadingSummary: "Loading Daybook Summary...",
+  securingLedger: "Securing Ledger...",
+  micPromptSpeak: "SPEAK",
+  micPromptListening: "LISTENING...",
+  micPromptProcessing: "PROCESSING...",
+  micPromptRetry: "RETRY",
+  micCaptionIdle: "Tap once and speak",
+  micCaptionListening: "Speak clearly \u2022 Auto-stops on silence",
+  micCaptionProcessing: "Calculating entry...",
+  micErrorFallbackNote: "If mic is not working, record entry by typing.",
+  listeningSpeakYourLanguage: "Listening... Speak in your language",
+  streamingSpeech: "Streaming Speech...",
+  processingSpeech: "Processing Speech...",
+  heardVoice: "Heard Voice",
+  quickDemoPhrases: "Quick Demo / Example Phrases",
+  tapToTest: "Tap to test",
+  hintPhrase1: "Ramesh given 500 credit",
+  hintPhrase2: "Ramesh 340 credit, yesterday gave 200",
+  hintPhrase3: "Ramesh total?",
+  creditGivenTodaySub: "Credit given today",
+  paymentReceivedTodaySub: "Payment received today",
+  marketPending: "Market Pending",
+  last5Entries: "Last 5 entries",
+  noEntriesYetPrompt: "No entries recorded yet. Tap mic and speak!",
+  creditBadge: "Credit",
+  paymentBadge: "Payment",
+  udhaar: "Credit",
+  jama: "Payment",
+  customersCountSorted: "{count} customers registered \u2022 Sorted by highest balance",
+  noCustomersYet: "No customers yet",
+  noCustomersDescription: "No customers yet. Record first credit by voice.",
+  noCustomerFound: "No Customer Found",
+  noMatchingCustomerQuery: 'No customer matches "{query}". Record new entry by voice.',
+  noCustomersInFilter: "No customers in this filter.",
+  firstUdhaarVoice: "\u{1F3A4} Record First Credit by Voice",
+  addCustomerButton: "+ Add customer",
+  addNewCustomerTitle: "Add New Customer",
+  addNewCustomerSubtitle: "Add customer without recording credit or payment",
+  lastActivity: "Last: {date}",
+  badgeOwes: "OWES",
+  badgeSettled: "SETTLED",
+  badgeNew: "New",
+  listenBalance: "Listen",
+  lastReminderDate: "Last reminder: {date}",
+  outstandingUdhaar: "Outstanding Balance",
+  allSettled: "All Settled",
+  amountToReceive: "To receive from customer",
+  noBalancePending: "No balance pending",
+  totalCreditLabel: "Total Credit:",
+  totalPaymentLabel: "Total Payment:",
+  sendWhatsAppReminder: "WhatsApp Reminder",
+  printReceipt: "Print Slip",
+  addUdhaarButton: "+ Add Udhaar",
+  addPaymentButton: "+ Add Payment",
+  timelineEntries: "Ledger Timeline ({count} entries)",
+  latestFirst: "Latest first",
+  noEntriesTitle: "No Entries",
+  noEntriesCustomerDesc: "No transactions recorded for this customer yet.",
+  deleteEntryConfirm: "Are you sure you want to delete this entry?",
+  enterValidAmount: "Please enter a valid amount",
+  entryDeletedToast: "Entry deleted successfully",
+  customerNotFoundTitle: "Customer Not Found",
+  customerNotFoundDesc: "This customer is not present in the ledger.",
+  viewCustomersList: "View Customers List",
+  customerAlreadyExists: "{name} already exists",
+  similarCustomerWarning: "A customer with a similar name already exists. Do you want to use this customer?",
+  useThisOne: "Use this one",
+  createAnyway: "Create anyway",
+  customerNameLabel: "Customer Name",
+  mobileNumberOptional: "Mobile Number (Optional)",
+  phoneReminderHelper: "Useful for WhatsApp reminders (can also be added later).",
+  saveCustomer: "Save Customer",
+  saving: "Saving...",
+  enterCustomerNameError: "Please enter customer name",
+  errorSavingCustomer: "Error saving customer",
+  dailySummarySubtitle: "Daily Collection & Udhaar Summary",
+  shareSlip: "Share Slip",
+  copied: "Copied",
+  dateLabel: "Date:",
+  creditGivenToday: "Credit given today",
+  paymentReceivedToday: "Payment received today",
+  netUdhaarIncreased: "Net credit increased",
+  netUdhaarDecreased: "Net credit decreased",
+  entriesCountLabel: "Total Entries",
+  activeCustomersCount: "{count} active customers",
+  noDataAvailable: "No Data Available",
+  noDataForDate: "No transactions available for this date.",
+  noPendingCustomersAllSettled: "No pending credit customers. All accounts settled! \u2713",
+  reviewEntryTitle: "Review Entry",
+  duplicateEntryWarningTitle: "Similar entry recorded just now. Save again?",
+  duplicateEntryWarningDesc: "\u20B9{amount} {type} for {name} was already saved in the last 10 minutes.",
+  saveAnyway: "Save Anyway",
+  correctByVoice: "Correct by voice",
+  listeningTapToStop: "Listening... (Tap to stop)",
+  confirmAndSave: "Confirm & Save",
+  voiceSavingCommand: "Saving by voice command...",
+  voiceCancelledCommand: "Cancelled by voice",
+  voiceAmountUpdated: "Amount updated to \u20B9{amount}",
+  amountInRupees: "Amount in \u20B9",
+  relativeToday: "Today",
+  relativeYesterday: "Yesterday",
+  relativeDayBefore: "Day before",
+  pickDate: "Pick date",
+  notePlaceholder: "Note (e.g. Milk, Sugar, Dal)",
+  balanceInquiryTitle: "Ledger Balance Inquiry",
+  balancePendingUdhaar: "Outstanding Balance",
+  advancePayment: "Advance Payment",
+  speaking: "Speaking...",
+  replayVoice: "Listen",
+  allClear: "All Clear \u2713",
+  last3Transactions: "Last 3 Transactions",
+  noPreviousTransactions: "No previous transactions found",
+  viewKhata: "View Ledger",
+  whichCustomerAskDigits: "Which {name}? Please tell the last 4 digits of phone number.",
+  sameLastDigitsAskMore: "Both have the same last digits. Please tell the last {count} digits.",
+  numberNotFoundRetry: "Number not found. Please say again.",
+  numberNotFoundTapCard: "Number not found. Please tap the card.",
+  newCustomerAddedToast: "New customer added: {name}",
+  entrySavedSuccess: "{type} of {name} recorded successfully!",
+  multiEntriesSavedSuccess: "{count} ledger entries saved successfully!",
+  didNotUnderstandRepeat: "Could not understand. Please speak again.",
+  languageChangedToast: "Language changed: {lang}",
+  speechLanguageChangedToast: "Speech language: {lang}",
+  offlineModeNoticeTitle: "Offline Mode",
+  offlineModeNoticeDesc: "Ledger works 100% offline. Voice speech may require internet; use typing if offline.",
+  networkDisconnected: "Network disconnected",
+  pinIncorrect: "Incorrect PIN! Please try again.",
+  pinLockedMessage: "Your ledger is AES-256 encrypted. Please enter your PIN:",
+  pinResetConfirm: "Yes, Reset Ledger",
+  totalUdhaar: "Total Credit",
+  totalJama: "Total Payment",
+  totalBalance: "Total Balance",
+  udhaarAdded: "Credit Added",
+  savePhoneToProfileHint: "Saved once, this phone number will be stored in customer profile.",
+  numberClearedSpeakAgain: "Number cleared. Please speak again or use keypad.",
+  pendingEntrySavedAfterReg: "{type} \u20B9{amount} will be saved after registration",
+  recentEntriesReceipt: "Recent Entries:",
+  numeralScriptLabel: "Number Script",
+  numeralScriptDesc: "Display numbers in English (1, 2, 3) or regional script",
+  scriptLatin: "English (1, 2, 3)",
+  scriptNative: "Native Script",
+  invalidPhoneError: "Please enter a valid 10-digit Indian phone number (starting 6-9)",
+  speakNamePrompt: "Speak customer name...",
+  phoneHelpText: "Useful for WhatsApp reminders (can also add later).",
+  manualEntryTitle: "Manual Entry (No Voice)",
+  today: "Today",
+  yesterday: "Yesterday",
+  dayBeforeYesterday: "Day before",
+  baakiOwed: "pending",
+  listenReplay: "Listen",
+  sendReminder: "Send Reminder",
+  active: "Active",
+  noRecentActivity: "No recent activity",
+  listeningDigitsPrompt: "Listening... speak last 4 digits",
+  tapCardOrMic: "Tap a card or tap mic to speak again",
+  first: "First",
+  second: "Second",
+  qrSaveError: "Could not save QR image",
+  khataStatementSlip: "KHATA STATEMENT SLIP",
+  thankYouShopping: "Thank you for shopping with us! \u{1F64F}",
+  receiptSharedSuccess: "Receipt shared successfully!",
+  receiptCopiedSuccess: "Receipt copied to clipboard!",
+  whatsappPhoneNumber: "WhatsApp Phone Number",
+  selectTemplateLanguage: "Select Template Language",
+  messagePreview: "Message Preview (Editable)",
+  messageCopiedToast: "Message text copied!",
+  offlineSabChalega: "Offline \u2013 Everything Works",
+  offlineSafeMessage: "Your ledger is 100% safe and securely saved on this device.",
+  offlineMicWarning: "Voice recognition may require internet in some browsers. If mic doesn't respond, tap 'Type instead' for 100% offline entry.",
+  openTypeInstead: "Open 'Type Instead'",
+  gotIt: "Got It",
+  pinLockedNotice: "Your ledger is AES-256 encrypted. Please enter your PIN:",
+  pinCryptoLockDesc: "All ledger records are encrypted on-device via Web Crypto (AES-256 GCM).",
+  yesReset: "Yes, Reset",
+  dailySummarySub: "Daily Collection & Credit Summary",
+  activeCustomersLabel: "active customers",
+  noDataAvailableDesc: "No ledger entries recorded for this date.",
+  noPendingUdhaarAllSettled: "No pending credit. All customer accounts settled! \u2713",
+  zeroBalance: "All settled, zero balance",
+  khataTimeline: "Ledger Timeline",
+  saveEntry: "Save Entry",
+  addUdhaar: "+ Add Credit",
+  addPayment: "+ Add Payment",
+  addEntry: "Add Entry",
+  noteOptional: "Note (Optional)",
+  whatsappReminder: "WhatsApp",
+  lastReminder: "Last reminder",
+  savingByVoice: "Saving by voice command...",
+  cancelledByVoice: "Cancelled by voice",
+  noCustomersEmptyState: "No customers yet. Add first credit by speaking",
+  addFirstUdhaarVoice: "\u{1F3A4} Add First Credit by Voice",
+  onboardingStep1Title: "1. Just Tap Mic & Speak",
+  onboardingStep1Desc: "Hands busy at shop counter? Simply tap the mic and speak in your language.",
+  onboardingStep2Title: "2. Review Preview On Screen",
+  onboardingStep2Desc: "App instantly previews your entry. Tap to save, or correct with your voice.",
+  onboardingStep3Title: "3. Instant Ledger & Reminders",
+  onboardingStep3Desc: "Customer ledger updates instantly! Send WhatsApp reminder or print receipt in one tap.",
+  grantMicAndStart: "Grant Mic & Get Started",
+  installAppTitle: "Install App (Home Screen)",
+  installAppSub: "Fast & 100% works offline \u2022 1 tap ledger",
+  install: "Install",
+  errorBoundaryTitle: "Something Went Wrong",
+  errorBoundarySub: "Something went wrong, but don't worry!",
+  errorBoundarySafety: "All your ledger data is completely safe on your phone (IndexedDB). Nothing is lost.",
+  retryButton: "Try Again (Retry)",
+  goHomeButton: "Go to Home",
+  technicalDetails: "Technical Error Details"
+};
+
+// src/i18n/locales/hi.json
+var hi_default = {
+  appName: "Udhaar Sathi (\u0909\u0927\u093E\u0930 \u0938\u093E\u0925\u0940)",
+  tagline: "\u092C\u094B\u0932\u0915\u0930 \u0909\u0927\u093E\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
+  online: "\u0911\u0928\u0932\u093E\u0907\u0928",
+  offlineSafe: "\u0911\u092B\u0932\u093E\u0907\u0928 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 (\u0932\u094B\u0915\u0932)",
+  navHome: "\u0939\u094B\u092E (\u092E\u093E\u0907\u0915)",
+  navCustomers: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0916\u093E\u0924\u093E",
+  navSummary: "\u0926\u0948\u0928\u093F\u0915 \u0939\u093F\u0938\u093E\u092C",
+  navSettings: "\u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938",
+  navStyleguide: "\u0938\u094D\u091F\u093E\u0907\u0932\u0917\u093E\u0907\u0921",
+  save: "\u0938\u0939\u0947\u091C\u0947\u0902",
+  cancel: "\u0930\u0926\u094D\u0926 \u0915\u0930\u0947\u0902",
+  delete: "\u0939\u091F\u093E\u090F\u0902",
+  edit: "\u0938\u0902\u092A\u093E\u0926\u093F\u0924 \u0915\u0930\u0947\u0902",
+  close: "\u092C\u0902\u0926 \u0915\u0930\u0947\u0902",
+  search: "\u0916\u094B\u091C\u0947\u0902",
+  back: "\u092A\u0940\u091B\u0947",
+  done: "\u092A\u0942\u0930\u094D\u0923",
+  creditGiven: "\u0909\u0927\u093E\u0930 \u0926\u093F\u092F\u093E",
+  paymentReceived: "\u091C\u092E\u093E \u092E\u093F\u0932\u093E",
+  balanceOwed: "\u0915\u0941\u0932 \u092C\u093E\u0915\u0940",
+  netBalance: "\u0936\u0941\u0926\u094D\u0927 \u092C\u093E\u0915\u0940",
+  todaySummary: "\u0906\u091C \u0915\u093E \u0939\u093F\u0938\u093E\u092C",
+  recentEntries: "\u0939\u093E\u0932 \u0915\u0947 \u0932\u0947\u0928-\u0926\u0947\u0928",
+  noEntries: "\u0905\u092D\u0940 \u0915\u094B\u0908 \u0932\u0947\u0928-\u0926\u0947\u0928 \u0926\u0930\u094D\u091C \u0928\u0939\u0940\u0902 \u0939\u0948",
+  micIdle: "\u092E\u093E\u0907\u0915 \u0926\u092C\u093E\u0915\u0930 \u092C\u094B\u0932\u0947\u0902",
+  micListening: "\u0938\u0941\u0928 \u0930\u0939\u093E \u0939\u0942\u0901... \u092C\u094B\u0932\u093F\u090F",
+  micProcessing: "\u0939\u093F\u0938\u093E\u092C \u0938\u092E\u091D \u0930\u0939\u093E \u0939\u0942\u0901...",
+  micError: "\u0938\u093E\u092B\u093C \u0938\u0941\u0928\u093E\u0908 \u0928\u0939\u0940\u0902 \u0926\u093F\u092F\u093E\u0964 \u0915\u0943\u092A\u092F\u093E \u092A\u0941\u0928\u0903 \u092A\u094D\u0930\u092F\u093E\u0938 \u0915\u0930\u0947\u0902\u0964",
+  typeInstead: "\u0932\u093F\u0916\u0915\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
+  trySpeaking: "\u092C\u094B\u0932\u0915\u0930 \u0926\u0947\u0916\u0947\u0902:",
+  customersTitle: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0916\u093E\u0924\u093E",
+  searchCustomerPlaceholder: "\u0928\u093E\u092E \u092F\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0916\u094B\u091C\u0947\u0902...",
+  filterAll: "\u0938\u092D\u0940",
+  filterOwes: "\u092C\u093E\u0915\u0940 \u0935\u093E\u0932\u0947",
+  filterSettled: "\u091A\u0941\u0915\u0924\u093E",
+  addJama: "+ \u091C\u092E\u093E \u091C\u094B\u0921\u093C\u0947\u0902",
+  printSlip: "\u092A\u0930\u094D\u091A\u0940 \u092A\u094D\u0930\u093F\u0902\u091F \u0915\u0930\u0947\u0902",
+  sendWhatsApp: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930",
+  summaryTitle: "\u0926\u0948\u0928\u093F\u0915 \u0939\u093F\u0938\u093E\u092C",
+  todayUdhaar: "\u0909\u0927\u093E\u0930 \u0926\u093F\u092F\u093E",
+  todayJama: "\u091C\u092E\u093E \u092E\u093F\u0932\u093E",
+  todayNet: "\u0936\u0941\u0926\u094D\u0927 \u092C\u0926\u0932\u093E\u0935",
+  weeklyTrend: "\u092A\u093F\u091B\u0932\u0947 7 \u0926\u093F\u0928\u094B\u0902 \u0915\u093E \u0939\u093F\u0938\u093E\u092C",
+  topPending: "\u0936\u0940\u0930\u094D\u0937 \u092C\u093E\u0915\u0940 \u0935\u093E\u0932\u0947 \u0917\u094D\u0930\u093E\u0939\u0915",
+  settingsTitle: "\u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938",
+  settingsSubtitle: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E, \u092D\u093E\u0937\u093E, \u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u0914\u0930 \u0921\u0947\u091F\u093E \u092C\u0948\u0915\u0905\u092A",
+  shopNameLabel: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E",
+  shopNamePlaceholder: "\u0909\u0926\u093E. \u0930\u092E\u0947\u0936 \u0915\u093F\u0930\u093E\u0928\u093E \u0938\u094D\u091F\u094B\u0930",
+  uiLanguageLabel: "\u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0915\u0940 \u092D\u093E\u0937\u093E",
+  uiLanguageDesc: "\u092C\u091F\u0928, \u092E\u0947\u0928\u0942 \u0914\u0930 \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u0926\u093F\u0916\u0928\u0947 \u0935\u093E\u0932\u0940 \u092D\u093E\u0937\u093E",
+  speechLanguageLabel: "\u092C\u094B\u0932\u0928\u0947 \u0915\u0940 \u092D\u093E\u0937\u093E",
+  speechLanguageDesc: "\u092E\u093E\u0907\u0915 \u0938\u0947 \u0938\u092E\u091D\u0928\u0947 \u0914\u0930 \u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u0906\u0935\u093E\u091C\u093C \u0915\u0947 \u0932\u093F\u090F",
+  speechSpeedLabel: "\u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u092C\u094B\u0932\u0928\u0947 \u0915\u0940 \u0930\u092B\u094D\u0924\u093E\u0930",
+  speedSlow: "\u0927\u0940\u092E\u0940",
+  speedNormal: "\u0938\u093E\u092E\u093E\u0928\u094D\u092F",
+  speedFast: "\u0924\u0947\u091C\u093C",
+  muteRepliesLabel: "\u0938\u093E\u0909\u0902\u0921\u092C\u0949\u0915\u094D\u0938 \u0906\u0935\u093E\u091C\u093C \u092C\u0902\u0926 \u0930\u0916\u0947\u0902",
+  muteRepliesDesc: "\u0915\u0947\u0935\u0932 \u0918\u0902\u091F\u0940 \u092C\u091C\u0947\u0917\u0940, \u092C\u094B\u0932\u0915\u0930 \u0939\u093F\u0938\u093E\u092C \u0928\u0939\u0940\u0902 \u092C\u0924\u093E\u090F\u0917\u093E",
+  themeLabel: "\u0910\u092A \u0925\u0940\u092E",
+  themeLight: "\u0932\u093E\u0907\u091F \u0925\u0940\u092E",
+  themeHighContrast: "\u0939\u093E\u0908 \u0915\u0902\u091F\u094D\u0930\u093E\u0938\u094D\u091F (\u0921\u093E\u0930\u094D\u0915)",
+  themeDesc: "\u0927\u0942\u092A \u092E\u0947\u0902 \u092F\u093E \u0930\u093E\u0924 \u092E\u0947\u0902 \u0938\u093E\u092B\u093C \u0926\u093F\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0905\u0928\u0941\u0915\u0942\u0932\u093F\u0924",
+  asrEngineLabel: "\u0938\u094D\u092A\u0940\u091A \u0907\u0902\u091C\u0928 (ASR)",
+  asrEngineDesc: "\u0906\u0935\u093E\u091C\u093C \u0915\u094B \u091F\u0947\u0915\u094D\u0938\u094D\u091F \u092E\u0947\u0902 \u092C\u0926\u0932\u0928\u0947 \u0935\u093E\u0932\u093E \u0907\u0902\u091C\u0928",
+  asrBrowser: "\u092C\u094D\u0930\u093E\u0909\u091C\u093C\u0930 \u0911\u0928-\u0921\u093F\u0935\u093E\u0907\u0938 (\u092E\u0941\u092B\u093C\u094D\u0924, \u0911\u092B\u0932\u093E\u0907\u0928, \u0924\u0941\u0930\u0902\u0924)",
+  asrBhashini: "\u092D\u093E\u0937\u093F\u0923\u0940 AI (\u092D\u093E\u0930\u0924 \u0938\u0930\u0915\u093E\u0930 \u0921\u093F\u091C\u093F\u091F\u0932 \u0907\u0902\u0921\u093F\u092F\u093E) [Stubbed]",
+  asrSarvam: "\u0938\u0930\u094D\u0935\u092E AI (\u0938\u093E\u0930\u0938 \u0907\u0902\u0921\u093F\u0915 \u0938\u094D\u092A\u0940\u091A) [Stubbed]",
+  exportLedgerLabel: "\u0916\u093E\u0924\u093E \u0921\u0947\u091F\u093E \u0928\u093F\u0930\u094D\u092F\u093E\u0924 \u0915\u0930\u0947\u0902",
+  exportJson: "\u0916\u093E\u0924\u093E \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930\u0947\u0902 (JSON)",
+  exportCsv: "\u0916\u093E\u0924\u093E \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930\u0947\u0902 (CSV / Excel)",
+  dangerZoneLabel: "\u0921\u0947\u091F\u093E \u0939\u091F\u093E\u090F\u0902",
+  clearAllData: "\u0938\u093E\u0930\u093E \u0916\u093E\u0924\u093E \u0921\u0947\u091F\u093E \u092E\u093F\u091F\u093E\u090F\u0902",
+  clearConfirm: "\u0915\u094D\u092F\u093E \u0906\u092A \u0935\u093E\u0915\u0908 \u0938\u093E\u0930\u093E \u0916\u093E\u0924\u093E \u0921\u0947\u091F\u093E \u092E\u093F\u091F\u093E\u0928\u093E \u091A\u093E\u0939\u0924\u0947 \u0939\u0948\u0902? \u092F\u0939 \u0935\u093E\u092A\u0938 \u0928\u0939\u0940\u0902 \u0932\u093E\u092F\u093E \u091C\u093E \u0938\u0915\u0947\u0917\u093E\u0964",
+  clearSuccess: "\u0938\u093E\u0930\u093E \u0921\u0947\u091F\u093E \u0938\u092B\u0932\u0924\u093E\u092A\u0942\u0930\u094D\u0935\u0915 \u092E\u093F\u091F\u093E \u0926\u093F\u092F\u093E \u0917\u092F\u093E!",
+  resetDemo: "\u0938\u0948\u0902\u092A\u0932 \u0921\u0947\u092E\u094B \u0916\u093E\u0924\u093E \u0932\u094B\u0921 \u0915\u0930\u0947\u0902",
+  resetSuccess: "\u0921\u0947\u092E\u094B \u0916\u093E\u0924\u093E \u0932\u094B\u0921 \u0939\u094B \u0917\u092F\u093E!",
+  localFirstInfo: "Udhaar Sathi 100% \u0911\u092B\u0932\u093E\u0907\u0928 \u0939\u0948\u0964 \u0906\u092A\u0915\u093E \u0938\u093E\u0930\u093E \u0921\u0947\u091F\u093E \u0906\u092A\u0915\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0939\u0940 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 (IndexedDB) \u0930\u0939\u0924\u093E \u0939\u0948 \u0914\u0930 \u0915\u0939\u0940\u0902 \u0928\u0939\u0940\u0902 \u092D\u0947\u091C\u093E \u091C\u093E\u0924\u093E\u0964",
+  signupWelcomeTitle: "Udhaar Sathi (\u0909\u0927\u093E\u0930 \u0938\u093E\u0925\u0940) \u092E\u0947\u0902 \u0906\u092A\u0915\u093E \u0938\u094D\u0935\u093E\u0917\u0924 \u0939\u0948",
+  signupWelcomeSubtitle: "\u092D\u093E\u0930\u0924\u0940\u092F \u0915\u093F\u0930\u093E\u0928\u093E \u0926\u0941\u0915\u093E\u0928\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F \u0939\u0948\u0902\u0921\u094D\u0938-\u092B\u094D\u0930\u0940 \u0906\u0935\u093E\u091C\u093C \u0916\u093E\u0924\u093E",
+  dataStaysOnPhone: "\u0906\u092A\u0915\u093E \u0921\u0947\u091F\u093E \u0907\u0938\u0940 \u092B\u094B\u0928 \u092A\u0930 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0930\u0939\u0924\u093E \u0939\u0948",
+  getStarted: "\u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902",
+  stepOf: "\u091A\u0930\u0923 {current} / {total}",
+  shopNamePrompt: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
+  shopNameSpoken: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
+  shopNameHelper: "\u0905\u092A\u0928\u0940 \u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u092C\u094B\u0932\u0947\u0902 \u092F\u093E \u0932\u093F\u0916\u0947\u0902",
+  shopNameError: "\u0915\u0943\u092A\u092F\u093E \u092E\u093E\u0928\u094D\u092F \u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0928\u093E\u092E \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E 2 \u0905\u0915\u094D\u0937\u0930)",
+  ownerNamePrompt: "\u0905\u092A\u0928\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
+  ownerNameSpoken: "\u0905\u092A\u0928\u093E \u0928\u093E\u092E \u092C\u0924\u093E\u0907\u090F",
+  ownerNamePlaceholder: "\u0909\u0926\u093E. \u0930\u092E\u0947\u0936 \u0915\u0941\u092E\u093E\u0930",
+  ownerNameHelper: "\u0926\u0941\u0915\u093E\u0928\u0926\u093E\u0930 \u0915\u093E \u0928\u093E\u092E",
+  ownerNameError: "\u0915\u0943\u092A\u092F\u093E \u0905\u092A\u0928\u093E \u0928\u093E\u092E \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E 2 \u0905\u0915\u094D\u0937\u0930)",
+  phonePrompt: "\u0906\u092A\u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930",
+  phoneSpoken: "\u0905\u092A\u0928\u093E 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0921\u093E\u0932\u093F\u090F",
+  phonePlaceholder: "\u0909\u0926\u093E. 9876543210",
+  phoneHelper: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0914\u0930 \u0924\u0917\u093E\u0926\u093E \u0938\u0902\u0926\u0947\u0936\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930",
+  phoneError: "6-9 \u0938\u0947 \u0936\u0941\u0930\u0942 \u0939\u094B\u0928\u0947 \u0935\u093E\u0932\u093E 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092D\u093E\u0930\u0924\u0940\u092F \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
+  upiPrompt: "\u0906\u092A\u0915\u0940 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940",
+  upiSpoken: "\u0905\u092A\u0928\u0940 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u094B\u0932\u093F\u090F \u092F\u093E \u0932\u093F\u0916\u093F\u090F",
+  upiPlaceholder: "\u0909\u0926\u093E. ramesh@oksbi",
+  upiHelperText: "\u0915\u0947\u0935\u0932 \u0906\u092A\u0915\u0940 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u0906\u0935\u0936\u094D\u092F\u0915 \u0939\u0948\u0964 \u0939\u092E \u0915\u092D\u0940 \u092C\u0948\u0902\u0915 \u0916\u093E\u0924\u093E \u0938\u0902\u0916\u094D\u092F\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0902\u0917\u0924\u0947\u0964",
+  upiPaste: "\u092A\u0947\u0938\u094D\u091F \u0915\u0930\u0947\u0902",
+  upiReadBack: "\u0905\u0915\u094D\u0937\u0930\u0936\u0903 \u0938\u0941\u0928\u0947\u0902",
+  upiReadingBack: "\u092A\u0922\u093C \u0930\u0939\u0947 \u0939\u0948\u0902...",
+  upiError: "\u092E\u093E\u0928\u094D\u092F \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902 (\u0909\u0926\u093E. name@bank)",
+  pinPrompt: "\u0938\u0941\u0930\u0915\u094D\u0937\u093E \u092A\u093F\u0928 \u0938\u0947\u091F \u0915\u0930\u0947\u0902 (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915)",
+  pinSpoken: "4 \u0938\u0947 6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0938\u0941\u0930\u0915\u094D\u0937\u093E \u092A\u093F\u0928 \u091A\u0941\u0928\u0947\u0902 \u092F\u093E \u091B\u094B\u0921\u093C \u0926\u0947\u0902",
+  pinPlaceholder: "4-6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092A\u093F\u0928",
+  pinHelperText: "\u0921\u093F\u0935\u093E\u0907\u0938 \u090F\u0928\u094D\u0915\u094D\u0930\u093F\u092A\u094D\u0936\u0928 \u0915\u0947 \u0938\u093E\u0925 \u0916\u093E\u0924\u0947 \u0915\u094B \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0915\u0930\u0924\u093E \u0939\u0948\u0964 \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u092C\u093E\u0926 \u092E\u0947\u0902 \u092D\u0940 \u0938\u0947\u091F \u0915\u0930 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964",
+  pinSkip: "\u0905\u092D\u0940 \u091B\u094B\u0921\u093C\u0947\u0902",
+  pinSkipWarning: "\u092A\u093F\u0928 \u0915\u0947 \u092C\u093F\u0928\u093E \u0915\u094B\u0908 \u092D\u0940 \u092F\u0939 \u0910\u092A \u0916\u094B\u0932\u0915\u0930 \u0906\u092A\u0915\u093E \u0916\u093E\u0924\u093E \u0926\u0947\u0916 \u0938\u0915\u0924\u093E \u0939\u0948\u0964 \u0906\u092A \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u0915\u092D\u0940 \u092D\u0940 \u092A\u093F\u0928 \u0932\u0917\u093E \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964",
+  pinSkipConfirm: "\u092A\u093F\u0928 \u091B\u094B\u0921\u093C\u0947\u0902",
+  pinError: "\u092A\u093F\u0928 4-6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0939\u094B\u0928\u093E \u091A\u093E\u0939\u093F\u090F \u0914\u0930 \u0906\u0938\u093E\u0928 \u0915\u094D\u0930\u092E \u0928\u0939\u0940\u0902 (\u091C\u0948\u0938\u0947 1234, 0000)",
+  reviewTitle: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932 \u0915\u0940 \u091C\u093E\u0902\u091A \u0915\u0930\u0947\u0902",
+  reviewSubtitle: "\u0905\u092A\u0928\u0940 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u091C\u093E\u0902\u091A \u0932\u0947\u0902\u0964 \u0907\u0928\u094D\u0939\u0947\u0902 \u0915\u092D\u0940 \u092D\u0940 \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u092C\u0926\u0932\u093E \u091C\u093E \u0938\u0915\u0924\u093E \u0939\u0948\u0964",
+  startAppButton: "Udhaar Sathi \u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902",
+  editField: "\u092C\u0926\u0932\u0947\u0902",
+  nextStep: "\u0906\u0917\u0947",
+  prevStep: "\u092A\u0940\u091B\u0947",
+  settingsProfileTitle: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932",
+  settingsProfileSubtitle: "\u0926\u0941\u0915\u093E\u0928, \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u093E\u092E \u0914\u0930 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092A\u094D\u0930\u092C\u0902\u0927\u093F\u0924 \u0915\u0930\u0947\u0902",
+  confirmUpiChangeTitle: "\u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u0926\u0932\u0947\u0902?",
+  confirmUpiChangeWarning: "\u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u0926\u0932\u0928\u0947 \u092A\u0930 \u0938\u092D\u0940 \u0917\u094D\u0930\u093E\u0939\u0915\u094B\u0902 \u0915\u094B \u092D\u0947\u091C\u0947 \u091C\u093E\u0928\u0947 \u0935\u093E\u0932\u0947 \u092D\u0941\u0917\u0924\u093E\u0928 \u0915\u094D\u092F\u0942\u0906\u0930 \u0915\u094B\u0921 \u0914\u0930 \u0932\u093F\u0902\u0915 \u092C\u0926\u0932 \u091C\u093E\u090F\u0902\u0917\u0947\u0964 \u0915\u094D\u092F\u093E \u0906\u092A \u0928\u093F\u0936\u094D\u091A\u093F\u0924 \u0939\u0948\u0902?",
+  confirmUpiChangeButton: "\u0939\u093E\u0902, \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u092C\u0926\u0932\u0947\u0902",
+  noPinWarningBanner: "\u0906\u092A\u0915\u093E \u0916\u093E\u0924\u093E \u092A\u093F\u0928 \u0938\u0947 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0921\u0947\u091F\u093E \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0915\u0930\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0905\u092D\u0940 \u092A\u093F\u0928 \u0932\u0917\u093E\u090F\u0902\u0964",
+  setPinNow: "\u0905\u092D\u0940 \u092A\u093F\u0928 \u0932\u0917\u093E\u090F\u0902",
+  profileUpdatedToast: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932 \u0938\u092B\u0932\u0924\u093E\u092A\u0942\u0930\u094D\u0935\u0915 \u0905\u092A\u0921\u0947\u091F \u0939\u094B \u0917\u092F\u093E!",
+  registerCustomerTitle: "\u0928\u092F\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0947\u0902",
+  registerCustomerSubtitle: "\u090F\u0928\u094D\u0915\u094D\u0930\u093F\u092A\u094D\u091F\u0947\u0921 \u0916\u093E\u0924\u0947 \u092E\u0947\u0902 \u0938\u0939\u0947\u091C\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0917\u094D\u0930\u093E\u0939\u0915 \u0935\u093F\u0935\u0930\u0923 \u092D\u0930\u0947\u0902",
+  enterCustomerPhone: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930",
+  phoneReadBackQuestion: "{phone}\u0964 \u0915\u094D\u092F\u093E \u092F\u0939 \u0938\u0939\u0940 \u0939\u0948?",
+  readBackConfirm: "\u0939\u093E\u0901, \u0938\u0939\u0940 \u0939\u0948",
+  readBackWrong: "\u0928\u0939\u0940\u0902, \u092C\u0926\u0932\u094B",
+  skipPhoneForNow: "\u0905\u092D\u0940 \u091B\u094B\u0921\u093C\u0947\u0902",
+  noNumberWarning: "\u092C\u093F\u0928\u093E \u0928\u0902\u092C\u0930 \u0915\u0947 \u0938\u0939\u0947\u091C\u093E \u0917\u092F\u093E\u0964 \u0924\u0917\u093E\u0926\u093E \u0938\u0902\u0926\u0947\u0936\u094B\u0902 \u092E\u0947\u0902 \u0928\u0902\u092C\u0930 \u092E\u093E\u0902\u0917\u093E \u091C\u093E\u090F\u0917\u093E\u0964",
+  duplicatePhoneWarning: "\u092F\u0939 \u0928\u0902\u092C\u0930 {name} \u0915\u093E \u0939\u0948\u0964 \u0915\u094D\u092F\u093E \u092F\u0939 \u0935\u0939\u0940 \u0917\u094D\u0930\u093E\u0939\u0915 \u0939\u0948\u0902?",
+  openExistingCustomer: "\u0939\u093E\u0901, {name} \u0915\u094B \u0916\u094B\u0932\u0947\u0902",
+  useAnotherNumber: "\u0926\u0942\u0938\u0930\u093E \u0928\u0902\u092C\u0930 \u0921\u093E\u0932\u0947\u0902",
+  requireCustomerPhoneLabel: "\u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0905\u0928\u093F\u0935\u093E\u0930\u094D\u092F \u0915\u0930\u0947\u0902",
+  requireCustomerPhoneDesc: "\u0928\u090F \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0924\u0947 \u0938\u092E\u092F \u092B\u094B\u0928 \u0928\u0902\u092C\u0930 \u0905\u0928\u093F\u0935\u093E\u0930\u094D\u092F \u0930\u0916\u0947\u0902",
+  customerRegisteredSpoken: "{name} \u0915\u094B \u091C\u094B\u0921\u093C \u0926\u093F\u092F\u093E \u0917\u092F\u093E",
+  customerNewAskPhoneSpoken: "{name} \u0928\u092F\u093E \u0939\u0948\u0964 \u0928\u0902\u092C\u0930 \u092C\u0924\u093E\u0907\u090F",
+  whichCustomerTitle: "\u0915\u094C\u0928 \u0938\u093E {name}?",
+  tellLast4DigitsSubtitle: "\u0928\u0902\u092C\u0930 \u0915\u0947 \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915 \u092C\u0924\u093E\u0907\u090F \u092F\u093E \u0915\u093E\u0930\u094D\u0921 \u092A\u0930 \u091F\u0948\u092A \u0915\u0930\u0947\u0902",
+  noNumberSavedChip: "\u0928\u0902\u092C\u0930 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u0948",
+  disambiguateRetryToast: "\u092F\u0939 \u0928\u0902\u092C\u0930 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u0964 \u0915\u0943\u092A\u092F\u093E \u0926\u094B\u092C\u093E\u0930\u093E \u092C\u094B\u0932\u0947\u0902 \u092F\u093E \u0915\u093E\u0930\u094D\u0921 \u091F\u0948\u092A \u0915\u0930\u0947\u0902\u0964",
+  disambiguateConfirmSpoken: "{name}, \u0920\u0940\u0915 \u0939\u0948\u0964",
+  autoOpenPaymentRequestLabel: "\u0909\u0927\u093E\u0930 \u0915\u0947 \u092C\u093E\u0926 \u092A\u0947\u092E\u0947\u0902\u091F \u0930\u093F\u0915\u094D\u0935\u0947\u0938\u094D\u091F \u0926\u093F\u0916\u093E\u090F\u0902",
+  autoOpenPaymentRequestDesc: "\u0909\u0927\u093E\u0930 \u0926\u0930\u094D\u091C \u0939\u094B\u0924\u0947 \u0939\u0940 \u0924\u0941\u0930\u0902\u0924 \u092F\u0942\u092A\u0940\u0906\u0908 \u0915\u094D\u092F\u0942\u0906\u0930 \u0914\u0930 \u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0932\u093F\u0902\u0915 \u0926\u093F\u0916\u093E\u090F\u0902",
+  showMyQr: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E \u0915\u094D\u092F\u0942\u0906\u0930",
+  showMyQrDesc: "\u0915\u093E\u0909\u0902\u091F\u0930 \u092A\u0930 \u0916\u0921\u093C\u0947 \u0917\u094D\u0930\u093E\u0939\u0915\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F \u092F\u0942\u092A\u0940\u0906\u0908 \u0915\u094D\u092F\u0942\u0906\u0930",
+  showMyQrTitle: "\u0926\u0941\u0915\u093E\u0928 \u0915\u093E\u0909\u0902\u091F\u0930 \u0915\u094D\u092F\u0942\u0906\u0930",
+  paymentRequestTitle: "\u092A\u0947\u092E\u0947\u0902\u091F \u0930\u093F\u0915\u094D\u0935\u0947\u0938\u094D\u091F",
+  paymentRequestSubtitle: "\u092D\u0941\u0917\u0924\u093E\u0928 \u092A\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0915\u094D\u092F\u0942\u0906\u0930 \u092F\u093E \u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0932\u093F\u0902\u0915 \u0938\u093E\u091D\u093E \u0915\u0930\u0947\u0902",
+  sendWhatsAppPayment: "WhatsApp \u092D\u0947\u091C\u0947\u0902",
+  sendWhatsAppHint: "WhatsApp \u0916\u0941\u0932\u0947\u0917\u093E, \u092B\u093F\u0930 \u0938\u0947\u0902\u0921 \u092C\u091F\u0928 \u0926\u092C\u093E\u090F\u0902",
+  shareQr: "QR \u0936\u0947\u092F\u0930 \u0915\u0930\u0947\u0902",
+  downloadQr: "QR \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0915\u0930\u0947\u0902",
+  laterDismiss: "\u092C\u093E\u0926 \u092E\u0947\u0902",
+  noPhoneAddNumber: "\u0928\u0902\u092C\u0930 \u091C\u094B\u0921\u093C\u0947\u0902",
+  noPhoneWarning: "\u0907\u0938 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u092B\u094B\u0928 \u0928\u0902\u092C\u0930 \u0926\u0930\u094D\u091C \u0928\u0939\u0940\u0902 \u0939\u0948",
+  noUpiIdWarning: "\u0926\u0941\u0915\u093E\u0928 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932 \u092E\u0947\u0902 \u092F\u0942\u092A\u0940\u0906\u0908 \u0906\u0908\u0921\u0940 \u0938\u0947\u091F \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0915\u094D\u092F\u0942\u0906\u0930 \u0915\u0947 \u0932\u093F\u090F \u0938\u0947\u091F\u093F\u0902\u0917\u094D\u0938 \u092E\u0947\u0902 \u091C\u094B\u0921\u093C\u0947\u0902\u0964",
+  setupUpiNow: "UPI ID \u091C\u094B\u0921\u093C\u0947\u0902",
+  whatsappOfflineHint: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0915\u0947 \u0932\u093F\u090F \u0907\u0902\u091F\u0930\u0928\u0947\u091F \u0906\u0935\u0936\u094D\u092F\u0915 \u0939\u0948",
+  qrSavedToast: "\u0915\u094D\u092F\u0942\u0906\u0930 \u0915\u094B\u0921 \u0924\u0948\u092F\u093E\u0930 \u0939\u0948",
+  receiptQrTitle: "UPI \u0938\u0947 \u0938\u094D\u0915\u0948\u0928 \u0914\u0930 \u092A\u0947 \u0915\u0930\u0947\u0902",
+  chooseLanguage: "\u092D\u093E\u0937\u093E \u091A\u0941\u0928\u0947\u0902",
+  language: "\u092D\u093E\u0937\u093E",
+  speechLanguage: "\u092C\u094B\u0932\u0928\u0947 \u0915\u0940 \u092D\u093E\u0937\u093E",
+  entries: "\u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F\u092F\u093E\u0902",
+  entriesCount: "{count} \u0932\u0947\u0928-\u0926\u0947\u0928",
+  clear: "\u0939\u091F\u093E\u090F\u0902",
+  reset: "\u0930\u0940\u0938\u0947\u091F",
+  viewAll: "\u0938\u092D\u0940 \u0926\u0947\u0916\u0947\u0902 \u2192",
+  loading: "\u0932\u094B\u0921 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  loadingCustomers: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0916\u093E\u0924\u093E \u0932\u094B\u0921 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  loadingSummary: "\u0926\u0948\u0928\u093F\u0915 \u0939\u093F\u0938\u093E\u092C \u0932\u094B\u0921 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  securingLedger: "\u0916\u093E\u0924\u093E \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  micPromptSpeak: "\u092C\u094B\u0932\u093F\u090F",
+  micPromptListening: "\u0938\u0941\u0928 \u0930\u0939\u0947 \u0939\u0948\u0902...",
+  micPromptProcessing: "\u0938\u092E\u091D \u0930\u0939\u0947 \u0939\u0948\u0902...",
+  micPromptRetry: "\u0926\u094B\u092C\u093E\u0930\u093E \u092C\u094B\u0932\u0947\u0902",
+  micCaptionIdle: "\u090F\u0915 \u092C\u093E\u0930 \u091F\u0948\u092A \u0915\u0930\u0947\u0902 \u0914\u0930 \u092C\u094B\u0932\u0947\u0902",
+  micCaptionListening: "\u0938\u093E\u092B\u093C \u092C\u094B\u0932\u0947\u0902 \u2022 \u0930\u0941\u0915\u0928\u0947 \u092A\u0930 \u0905\u092A\u0928\u0947 \u0906\u092A \u092C\u0902\u0926 \u0939\u094B\u0917\u093E",
+  micCaptionProcessing: "\u0939\u093F\u0938\u093E\u092C \u0924\u0948\u092F\u093E\u0930 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  micErrorFallbackNote: "\u092E\u093E\u0907\u0915 \u0915\u093E\u092E \u0928\u0939\u0940\u0902 \u0915\u0930 \u0930\u0939\u093E \u0924\u094B \u0932\u093F\u0916\u0915\u0930 \u0939\u093F\u0938\u093E\u092C \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902\u0964",
+  listeningSpeakYourLanguage: "\u0938\u0941\u0928 \u0930\u0939\u0947 \u0939\u0948\u0902... \u0905\u092A\u0928\u0940 \u092D\u093E\u0937\u093E \u092E\u0947\u0902 \u092C\u094B\u0932\u0947\u0902",
+  streamingSpeech: "\u0906\u0935\u093E\u091C\u093C \u0906 \u0930\u0939\u0940 \u0939\u0948...",
+  processingSpeech: "\u0906\u0935\u093E\u091C\u093C \u0938\u092E\u091D \u0930\u0939\u0947 \u0939\u0948\u0902...",
+  heardVoice: "\u0938\u0941\u0928\u0940 \u0917\u0908 \u0906\u0935\u093E\u091C\u093C",
+  quickDemoPhrases: "\u0924\u094D\u0935\u0930\u093F\u0924 \u0909\u0926\u093E\u0939\u0930\u0923 / \u092C\u094B\u0932\u0915\u0930 \u0926\u0947\u0916\u0947\u0902",
+  tapToTest: "\u092A\u0930\u0940\u0915\u094D\u0937\u0923 \u0915\u0947 \u0932\u093F\u090F \u091F\u0948\u092A \u0915\u0930\u0947\u0902",
+  hintPhrase1: "\u0930\u092E\u0947\u0936 \u0915\u094B 500 \u0909\u0927\u093E\u0930 \u0926\u093F\u092F\u093E",
+  hintPhrase2: "\u0930\u092E\u0947\u0936 \u0915\u093E 340 \u0909\u0927\u093E\u0930, \u0915\u0932 200 \u0926\u093F\u092F\u093E \u0925\u093E",
+  hintPhrase3: "\u0930\u092E\u0947\u0936 \u0915\u093E \u091F\u094B\u091F\u0932?",
+  creditGivenTodaySub: "\u0906\u091C \u0926\u093F\u092F\u093E \u0917\u092F\u093E \u0909\u0927\u093E\u0930",
+  paymentReceivedTodaySub: "\u0906\u091C \u091C\u092E\u093E \u0939\u0941\u0908 \u0930\u093E\u0936\u093F",
+  marketPending: "\u092C\u093E\u091C\u093C\u093E\u0930 \u092C\u093E\u0915\u0940",
+  last5Entries: "\u092A\u093F\u091B\u0932\u0940 5 \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F\u092F\u093E\u0902",
+  noEntriesYetPrompt: "\u0905\u092D\u0940 \u0915\u094B\u0908 \u0939\u093F\u0938\u093E\u092C \u0926\u0930\u094D\u091C \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u092E\u093E\u0907\u0915 \u0926\u092C\u093E\u0915\u0930 \u092C\u094B\u0932\u0947\u0902!",
+  creditBadge: "\u0909\u0927\u093E\u0930",
+  paymentBadge: "\u091C\u092E\u093E",
+  udhaar: "\u0909\u0927\u093E\u0930",
+  jama: "\u091C\u092E\u093E",
+  customersCountSorted: "{count} \u0917\u094D\u0930\u093E\u0939\u0915 \u0926\u0930\u094D\u091C \u2022 \u0938\u092C\u0938\u0947 \u0905\u0927\u093F\u0915 \u092C\u093E\u0915\u0940 \u0905\u0928\u0941\u0938\u093E\u0930",
+  noCustomersYet: "\u0905\u092D\u0940 \u0915\u094B\u0908 \u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0939\u0940\u0902",
+  noCustomersDescription: "\u0905\u092D\u0940 \u0915\u094B\u0908 \u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u092A\u0939\u0932\u093E \u0909\u0927\u093E\u0930 \u092C\u094B\u0932\u0915\u0930 \u091C\u094B\u0921\u093C\u0947\u0902\u0964",
+  noCustomerFound: "\u0915\u094B\u0908 \u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E",
+  noMatchingCustomerQuery: '"{query}" \u0915\u0947 \u0932\u093F\u090F \u0915\u094B\u0908 \u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u0964 \u092C\u094B\u0932\u0915\u0930 \u0928\u092F\u093E \u0939\u093F\u0938\u093E\u092C \u091C\u094B\u0921\u093C\u0947\u0902\u0964',
+  noCustomersInFilter: "\u0907\u0938 \u092B\u093C\u093F\u0932\u094D\u091F\u0930 \u092E\u0947\u0902 \u0915\u094B\u0908 \u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964",
+  firstUdhaarVoice: "\u{1F3A4} \u092A\u0939\u0932\u093E \u0909\u0927\u093E\u0930 \u092C\u094B\u0932\u0915\u0930 \u091C\u094B\u0921\u093C\u0947\u0902",
+  addCustomerButton: "+ \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0947\u0902",
+  addNewCustomerTitle: "\u0928\u092F\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0947\u0902",
+  addNewCustomerSubtitle: "\u092C\u093F\u0928\u093E \u0939\u093F\u0938\u093E\u092C \u0915\u0947 \u0928\u092F\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0947\u0902",
+  lastActivity: "\u0905\u0902\u0924\u093F\u092E: {date}",
+  badgeOwes: "\u092C\u093E\u0915\u0940",
+  badgeSettled: "\u091A\u0941\u0915\u0924\u093E",
+  badgeNew: "\u0928\u092F\u093E",
+  listenBalance: "\u0938\u0941\u0928\u0947\u0902",
+  lastReminderDate: "\u0905\u0902\u0924\u093F\u092E \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930: {date}",
+  outstandingUdhaar: "\u0915\u0941\u0932 \u092C\u093E\u0915\u0940 \u0909\u0927\u093E\u0930",
+  allSettled: "\u0938\u092C \u0939\u093F\u0938\u093E\u092C \u091A\u0941\u0915\u0924\u093E",
+  amountToReceive: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u0932\u0947\u0928\u093E \u0939\u0948",
+  noBalancePending: "\u0915\u094B\u0908 \u092C\u093E\u0915\u0940 \u0928\u0939\u0940\u0902 \u0939\u0948",
+  totalCreditLabel: "\u0915\u0941\u0932 \u0909\u0927\u093E\u0930:",
+  totalPaymentLabel: "\u0915\u0941\u0932 \u091C\u092E\u093E:",
+  sendWhatsAppReminder: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930",
+  printReceipt: "\u0930\u0938\u0940\u0926 \u092A\u094D\u0930\u093F\u0902\u091F \u0915\u0930\u0947\u0902",
+  addUdhaarButton: "+ \u0909\u0927\u093E\u0930 \u0932\u093F\u0916\u0947\u0902",
+  addPaymentButton: "+ \u091C\u092E\u093E \u0932\u093F\u0916\u0947\u0902",
+  timelineEntries: "\u0939\u093F\u0938\u093E\u092C \u091F\u093E\u0907\u092E\u0932\u093E\u0907\u0928 ({count} \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F\u092F\u093E\u0902)",
+  latestFirst: "\u0928\u0935\u0940\u0928\u0924\u092E \u092A\u0939\u0932\u0947",
+  noEntriesTitle: "\u0915\u094B\u0908 \u0939\u093F\u0938\u093E\u092C \u0928\u0939\u0940\u0902 \u0939\u0948",
+  noEntriesCustomerDesc: "\u0907\u0938 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u0947 \u0932\u093F\u090F \u0905\u092D\u0940 \u0915\u094B\u0908 \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F \u0928\u0939\u0940\u0902 \u0939\u0948\u0964",
+  deleteEntryConfirm: "\u0915\u094D\u092F\u093E \u0906\u092A \u0907\u0938 \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F \u0915\u094B \u0939\u091F\u093E\u0928\u093E \u091A\u093E\u0939\u0924\u0947 \u0939\u0948\u0902?",
+  enterValidAmount: "\u0915\u0943\u092A\u092F\u093E \u0938\u0939\u0940 \u0930\u0915\u092E \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
+  entryDeletedToast: "\u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F \u0939\u091F\u093E \u0926\u0940 \u0917\u0908",
+  customerNotFoundTitle: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E",
+  customerNotFoundDesc: "\u092F\u0939 \u0917\u094D\u0930\u093E\u0939\u0915 \u0916\u093E\u0924\u0947 \u092E\u0947\u0902 \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964",
+  viewCustomersList: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0942\u091A\u0940 \u0926\u0947\u0916\u0947\u0902",
+  customerAlreadyExists: "{name} \u092A\u0939\u0932\u0947 \u0938\u0947 \u0926\u0930\u094D\u091C \u0939\u0948",
+  similarCustomerWarning: "\u0907\u0938 \u0928\u093E\u092E \u0938\u0947 \u092E\u093F\u0932\u0924\u093E-\u091C\u0941\u0932\u0924\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u092A\u0939\u0932\u0947 \u0938\u0947 \u0926\u0930\u094D\u091C \u0939\u0948\u0964 \u0915\u094D\u092F\u093E \u0906\u092A \u0907\u0928\u094D\u0939\u0940\u0902 \u0915\u093E \u0916\u093E\u0924\u093E \u0909\u092A\u092F\u094B\u0917 \u0915\u0930\u0928\u093E \u091A\u093E\u0939\u0924\u0947 \u0939\u0948\u0902?",
+  useThisOne: "\u092F\u0939 \u091A\u0941\u0928\u0947\u0902",
+  createAnyway: "\u0928\u092F\u093E \u092C\u0928\u093E\u090F\u0902",
+  customerNameLabel: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u0928\u093E\u092E",
+  mobileNumberOptional: "\u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915)",
+  phoneReminderHelper: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930 \u0915\u0947 \u0932\u093F\u090F \u0909\u092A\u092F\u094B\u0917\u0940 (\u092C\u093E\u0926 \u092E\u0947\u0902 \u092D\u0940 \u091C\u094B\u0921\u093C \u0938\u0915\u0924\u0947 \u0939\u0948\u0902)\u0964",
+  saveCustomer: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0915\u0930\u0947\u0902",
+  saving: "\u0938\u0947\u0935 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  enterCustomerNameError: "\u0915\u0943\u092A\u092F\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u0928\u093E\u092E \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902",
+  errorSavingCustomer: "\u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u0928\u0947 \u092E\u0947\u0902 \u0938\u092E\u0938\u094D\u092F\u093E \u0906\u0908",
+  dailySummarySubtitle: "\u0926\u0948\u0928\u093F\u0915 \u0935\u0938\u0942\u0932\u0940 \u090F\u0935\u0902 \u0909\u0927\u093E\u0930 \u0938\u093E\u0930\u093E\u0902\u0936",
+  shareSlip: "\u092A\u0930\u094D\u091A\u0940 \u0938\u093E\u091D\u093E \u0915\u0930\u0947\u0902",
+  copied: "\u0915\u0949\u092A\u0940 \u0939\u094B \u0917\u092F\u093E",
+  dateLabel: "\u0924\u093E\u0930\u0940\u0916:",
+  creditGivenToday: "\u0906\u091C \u0926\u093F\u092F\u093E \u0917\u092F\u093E \u0909\u0927\u093E\u0930",
+  paymentReceivedToday: "\u0906\u091C \u092A\u094D\u0930\u093E\u092A\u094D\u0924 \u091C\u092E\u093E",
+  netUdhaarIncreased: "\u0928\u0947\u091F \u0909\u0927\u093E\u0930 \u092C\u0922\u093C\u093E",
+  netUdhaarDecreased: "\u0928\u0947\u091F \u0909\u0927\u093E\u0930 \u0918\u091F\u093E",
+  entriesCountLabel: "\u0915\u0941\u0932 \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F\u092F\u093E\u0902",
+  activeCustomersCount: "{count} \u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0915\u094D\u0930\u093F\u092F",
+  noDataAvailable: "\u0921\u0947\u091F\u093E \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948",
+  noDataForDate: "\u0907\u0938 \u0924\u093E\u0930\u0940\u0916 \u0915\u0947 \u0932\u093F\u090F \u0939\u093F\u0938\u093E\u092C \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964",
+  noPendingCustomersAllSettled: "\u0915\u094B\u0908 \u092C\u093E\u0915\u0940 \u0909\u0927\u093E\u0930 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0938\u092C \u0939\u093F\u0938\u093E\u092C \u091A\u0941\u0915\u0924\u093E \u0939\u0948! \u2713",
+  reviewEntryTitle: "\u0939\u093F\u0938\u093E\u092C \u091C\u093E\u0902\u091A\u0947\u0902",
+  duplicateEntryWarningTitle: "\u0910\u0938\u093E \u0939\u093F\u0938\u093E\u092C \u0905\u092D\u0940 \u0926\u0930\u094D\u091C \u0939\u0941\u0906 \u0925\u093E\u0964 \u092B\u093F\u0930 \u0938\u0947 \u0938\u0947\u0935 \u0915\u0930\u0947\u0902?",
+  duplicateEntryWarningDesc: "{name} \u0915\u0947 \u0932\u093F\u090F \u20B9{amount} \u0915\u093E {type} \u092A\u093F\u091B\u0932\u0947 10 \u092E\u093F\u0928\u091F \u092E\u0947\u0902 \u0926\u0930\u094D\u091C \u0939\u094B \u091A\u0941\u0915\u093E \u0939\u0948\u0964",
+  saveAnyway: "\u092B\u093F\u0930 \u092D\u0940 \u0938\u0947\u0935 \u0915\u0930\u0947\u0902",
+  correctByVoice: "\u0906\u0935\u093E\u091C\u093C \u0938\u0947 \u0938\u0941\u0927\u093E\u0930\u0947\u0902",
+  listeningTapToStop: "\u0938\u0941\u0928 \u0930\u0939\u0947 \u0939\u0948\u0902... (\u0930\u094B\u0915\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u091F\u0948\u092A \u0915\u0930\u0947\u0902)",
+  confirmAndSave: "\u092A\u0941\u0937\u094D\u091F\u093F \u0915\u0930\u0947\u0902 \u0914\u0930 \u0938\u0947\u0935 \u0915\u0930\u0947\u0902",
+  voiceSavingCommand: "\u0906\u0935\u093E\u091C\u093C \u0938\u0947 \u0938\u0947\u0935 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  voiceCancelledCommand: "\u0906\u0935\u093E\u091C\u093C \u0938\u0947 \u0930\u0926\u094D\u0926 \u0915\u093F\u092F\u093E \u0917\u092F\u093E",
+  voiceAmountUpdated: "\u0930\u0915\u092E \u092C\u0926\u0932\u0915\u0930 \u20B9{amount} \u0915\u0940 \u0917\u0908",
+  amountInRupees: "\u0930\u0915\u092E (\u20B9 \u092E\u0947\u0902)",
+  relativeToday: "\u0906\u091C",
+  relativeYesterday: "\u0915\u0932",
+  relativeDayBefore: "\u092A\u0930\u0938\u094B\u0902",
+  pickDate: "\u0924\u093E\u0930\u0940\u0916 \u091A\u0941\u0928\u0947\u0902",
+  notePlaceholder: "\u0935\u093F\u0935\u0930\u0923 / \u0928\u094B\u091F (\u0909\u0926\u093E. \u0926\u0942\u0927, \u091A\u0940\u0928\u0940, \u0926\u093E\u0932)",
+  balanceInquiryTitle: "\u0916\u093E\u0924\u093E \u092C\u0948\u0932\u0947\u0902\u0938 \u092A\u0942\u091B\u0924\u093E\u091B",
+  balancePendingUdhaar: "\u0915\u0941\u0932 \u092C\u093E\u0915\u0940 \u0909\u0927\u093E\u0930",
+  advancePayment: "\u0905\u0917\u094D\u0930\u093F\u092E \u091C\u092E\u093E",
+  speaking: "\u092C\u094B\u0932 \u0930\u0939\u0947 \u0939\u0948\u0902...",
+  replayVoice: "\u0938\u0941\u0928\u0947\u0902",
+  allClear: "\u0938\u092C \u091A\u0941\u0915\u0924\u093E \u0939\u0948 \u2713",
+  last3Transactions: "\u092A\u093F\u091B\u0932\u0947 3 \u0939\u093F\u0938\u093E\u092C",
+  noPreviousTransactions: "\u0915\u094B\u0908 \u092A\u093F\u091B\u0932\u093E \u0939\u093F\u0938\u093E\u092C \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E",
+  viewKhata: "\u0916\u093E\u0924\u093E \u0926\u0947\u0916\u0947\u0902",
+  whichCustomerAskDigits: "\u0915\u094C\u0928 \u0938\u093E {name}? \u0928\u0902\u092C\u0930 \u0915\u0947 \u0906\u0916\u093C\u093F\u0930\u0940 \u091A\u093E\u0930 \u0905\u0902\u0915 \u092C\u0924\u093E\u0907\u090F\u0964",
+  sameLastDigitsAskMore: "\u0926\u094B\u0928\u094B\u0902 \u0915\u0947 \u0906\u0916\u093C\u093F\u0930\u0940 \u0905\u0902\u0915 \u090F\u0915 \u091C\u0948\u0938\u0947 \u0939\u0948\u0902\u0964 \u0915\u0943\u092A\u092F\u093E \u0906\u0916\u093C\u093F\u0930\u0940 {count} \u0905\u0902\u0915 \u092C\u0924\u093E\u0907\u090F\u0964",
+  numberNotFoundRetry: "\u092F\u0939 \u0928\u0902\u092C\u0930 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E, \u092B\u093F\u0930 \u0938\u0947 \u092C\u0924\u093E\u0907\u090F\u0964",
+  numberNotFoundTapCard: "\u092F\u0939 \u0928\u0902\u092C\u0930 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u0964 \u0915\u0943\u092A\u092F\u093E \u0915\u093E\u0930\u094D\u0921 \u092A\u0930 \u091F\u0948\u092A \u0915\u0930\u0947\u0902\u0964",
+  newCustomerAddedToast: "\u0928\u092F\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u091C\u094B\u0921\u093C\u093E \u0917\u092F\u093E: {name}",
+  entrySavedSuccess: "{name} \u0915\u093E {type} \u0938\u092B\u0932\u0924\u093E\u092A\u0942\u0930\u094D\u0935\u0915 \u0926\u0930\u094D\u091C \u0939\u0941\u0906!",
+  multiEntriesSavedSuccess: "{count} \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F\u092F\u093E\u0902 \u0938\u092B\u0932\u0924\u093E\u092A\u0942\u0930\u094D\u0935\u0915 \u0938\u0947\u0935 \u0939\u094B \u0917\u0908\u0902!",
+  didNotUnderstandRepeat: "\u0939\u093F\u0938\u093E\u092C \u0938\u092E\u091D \u0928\u0939\u0940\u0902 \u0906\u092F\u093E\u0964 \u0915\u0943\u092A\u092F\u093E \u0926\u094B\u092C\u093E\u0930\u093E \u092C\u094B\u0932\u0947\u0902\u0964",
+  languageChangedToast: "\u092D\u093E\u0937\u093E \u092C\u0926\u0932 \u0917\u0908: {lang}",
+  speechLanguageChangedToast: "\u092C\u094B\u0932\u0928\u0947 \u0915\u0940 \u092D\u093E\u0937\u093E: {lang}",
+  offlineModeNoticeTitle: "\u0911\u092B\u0932\u093E\u0907\u0928 \u092E\u094B\u0921",
+  offlineModeNoticeDesc: "\u0916\u093E\u0924\u093E 100% \u0911\u092B\u0932\u093E\u0907\u0928 \u0915\u093E\u092E \u0915\u0930\u0924\u093E \u0939\u0948\u0964 \u092C\u094B\u0932\u0915\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0907\u0902\u091F\u0930\u0928\u0947\u091F \u0915\u0940 \u0906\u0935\u0936\u094D\u092F\u0915\u0924\u093E \u0939\u094B \u0938\u0915\u0924\u0940 \u0939\u0948; \u091F\u093E\u0907\u092A\u093F\u0902\u0917 \u0915\u093E \u0909\u092A\u092F\u094B\u0917 \u0915\u0930\u0947\u0902\u0964",
+  networkDisconnected: "\u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u0921\u093F\u0938\u094D\u0915\u0928\u0947\u0915\u094D\u091F \u0939\u094B \u0917\u092F\u093E",
+  pinIncorrect: "\u0917\u0932\u0924 \u092A\u093F\u0928! \u0915\u0943\u092A\u092F\u093E \u092A\u0941\u0928\u0903 \u092A\u094D\u0930\u092F\u093E\u0938 \u0915\u0930\u0947\u0902\u0964",
+  pinLockedMessage: "\u0906\u092A\u0915\u093E \u0916\u093E\u0924\u093E AES-256 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0939\u0948\u0964 \u0915\u0943\u092A\u092F\u093E \u0905\u092A\u0928\u093E \u092A\u093F\u0928 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902:",
+  pinResetConfirm: "\u0939\u093E\u0901, \u0930\u0940\u0938\u0947\u091F \u0915\u0930\u0947\u0902",
+  totalUdhaar: "\u0915\u0941\u0932 \u0909\u0927\u093E\u0930",
+  totalJama: "\u0915\u0941\u0932 \u091C\u092E\u093E",
+  totalBalance: "\u0915\u0941\u0932 \u092C\u093E\u0915\u0940",
+  udhaarAdded: "\u0909\u0927\u093E\u0930 \u091C\u094B\u0921\u093C\u093E \u0917\u092F\u093E",
+  savePhoneToProfileHint: "\u090F\u0915 \u092C\u093E\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0928\u0947 \u092A\u0930 \u092F\u0939 \u0928\u0902\u092C\u0930 \u0917\u094D\u0930\u093E\u0939\u0915 \u092A\u094D\u0930\u094B\u092B\u093E\u0907\u0932 \u092E\u0947\u0902 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0939\u094B \u091C\u093E\u090F\u0917\u093E\u0964",
+  numberClearedSpeakAgain: "\u0928\u0902\u092C\u0930 \u0939\u091F\u093E \u0926\u093F\u092F\u093E \u0917\u092F\u093E\u0964 \u0926\u094B\u092C\u093E\u0930\u093E \u092C\u094B\u0932\u0947\u0902 \u092F\u093E \u0915\u0940\u092A\u0948\u0921 \u0915\u093E \u0909\u092A\u092F\u094B\u0917 \u0915\u0930\u0947\u0902\u0964",
+  pendingEntrySavedAfterReg: "{type} \u20B9{amount} \u092A\u0902\u091C\u0940\u0915\u0930\u0923 \u0915\u0947 \u092C\u093E\u0926 \u0938\u0947\u0935 \u0939\u094B \u091C\u093E\u090F\u0917\u093E",
+  recentEntriesReceipt: "\u0939\u093E\u0932\u093F\u092F\u093E \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F\u092F\u093E\u0902:",
+  numeralScriptLabel: "\u0905\u0902\u0915 \u0932\u093F\u092A\u093F",
+  numeralScriptDesc: "\u0938\u0902\u0916\u094D\u092F\u093E\u090F\u0902 \u0905\u0902\u0917\u094D\u0930\u0947\u091C\u0940 (1, 2, 3) \u092F\u093E \u0926\u0947\u0935\u0928\u093E\u0917\u0930\u0940 \u0932\u093F\u092A\u093F \u092E\u0947\u0902 \u0926\u093F\u0916\u093E\u090F\u0902",
+  scriptLatin: "\u0905\u0902\u0917\u094D\u0930\u0947\u091C\u0940 (1, 2, 3)",
+  scriptNative: "\u0926\u0947\u0935\u0928\u093E\u0917\u0930\u0940 (\u0967, \u0968, \u0969)",
+  invalidPhoneError: "\u0915\u0943\u092A\u092F\u093E 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092E\u093E\u0928\u094D\u092F \u092D\u093E\u0930\u0924\u0940\u092F \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902 (6-9 \u0938\u0947 \u0936\u0941\u0930\u0942)",
+  speakNamePrompt: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u0928\u093E\u092E \u092C\u094B\u0932\u0947\u0902...",
+  phoneHelpText: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930 \u0915\u0947 \u0932\u093F\u090F \u0909\u092A\u092F\u094B\u0917\u0940 (\u092C\u093E\u0926 \u092E\u0947\u0902 \u092D\u0940 \u091C\u094B\u0921\u093C \u0938\u0915\u0924\u0947 \u0939\u0948\u0902)\u0964",
+  manualEntryTitle: "\u092E\u0948\u0928\u0941\u0905\u0932 \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F (\u092C\u093F\u0928\u093E \u0906\u0935\u093E\u091C\u093C)",
+  today: "\u0906\u091C",
+  yesterday: "\u0915\u0932",
+  dayBeforeYesterday: "\u092A\u0930\u0938\u094B\u0902",
+  baakiOwed: "\u092C\u093E\u0915\u0940",
+  listenReplay: "\u0938\u0941\u0928\u0947\u0902",
+  sendReminder: "\u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930 \u092D\u0947\u091C\u0947\u0902",
+  active: "\u0938\u0915\u094D\u0930\u093F\u092F",
+  noRecentActivity: "\u0915\u094B\u0908 \u0939\u093E\u0932\u093F\u092F\u093E \u0917\u0924\u093F\u0935\u093F\u0927\u093F \u0928\u0939\u0940\u0902",
+  listeningDigitsPrompt: "\u0938\u0941\u0928 \u0930\u0939\u0947 \u0939\u0948\u0902... \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915 \u092C\u094B\u0932\u0947\u0902",
+  tapCardOrMic: "\u0915\u093E\u0930\u094D\u0921 \u092A\u0930 \u091F\u0948\u092A \u0915\u0930\u0947\u0902 \u092F\u093E \u0926\u094B\u092C\u093E\u0930\u093E \u092C\u094B\u0932\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u092E\u093E\u0907\u0915 \u0926\u092C\u093E\u090F\u0902",
+  first: "\u092A\u0939\u0932\u093E",
+  second: "\u0926\u0942\u0938\u0930\u093E",
+  qrSaveError: "QR \u0915\u094B\u0921 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u0938\u0915\u093E",
+  khataStatementSlip: "\u0916\u093E\u0924\u093E \u0935\u093F\u0935\u0930\u0923 \u092A\u0930\u094D\u091A\u0940",
+  thankYouShopping: "\u0935\u094D\u092F\u093E\u092A\u093E\u0930 \u0915\u0947 \u0932\u093F\u090F \u0927\u0928\u094D\u092F\u0935\u093E\u0926! \u{1F64F}",
+  receiptSharedSuccess: "\u0930\u0938\u0940\u0926 \u0936\u0947\u092F\u0930 \u0939\u094B \u0917\u0908!",
+  receiptCopiedSuccess: "\u0930\u0938\u0940\u0926 \u0915\u094D\u0932\u093F\u092A\u092C\u094B\u0930\u094D\u0921 \u092A\u0930 \u0915\u0949\u092A\u0940 \u0939\u094B \u0917\u0908!",
+  whatsappPhoneNumber: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930",
+  selectTemplateLanguage: "\u091F\u0947\u092E\u094D\u092A\u0932\u0947\u091F \u092D\u093E\u0937\u093E \u091A\u0941\u0928\u0947\u0902",
+  messagePreview: "\u0938\u0902\u0926\u0947\u0936 \u092A\u0942\u0930\u094D\u0935\u093E\u0935\u0932\u094B\u0915\u0928 (\u092C\u0926\u0932\u093E \u091C\u093E \u0938\u0915\u0924\u093E \u0939\u0948)",
+  messageCopiedToast: "\u0938\u0902\u0926\u0947\u0936 \u0915\u0949\u092A\u0940 \u0939\u094B \u0917\u092F\u093E!",
+  offlineSabChalega: "\u0911\u092B\u0932\u093E\u0907\u0928 \u2013 \u0938\u092C \u091A\u0932\u0947\u0917\u093E",
+  offlineSafeMessage: "\u0906\u092A\u0915\u093E \u092A\u0942\u0930\u093E \u0916\u093E\u0924\u093E 100% \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0939\u0948 \u0914\u0930 \u0907\u0938\u0940 \u092B\u094B\u0928 \u092E\u0947\u0902 \u0938\u0947\u0935 \u0939\u094B\u0924\u093E \u0930\u0939\u0947\u0917\u093E\u0964",
+  offlineMicWarning: "\u092C\u094D\u0930\u093E\u0909\u091C\u093C\u0930 \u092E\u0947\u0902 \u0935\u0949\u0907\u0938 \u092E\u093E\u0907\u0915 \u0915\u0947 \u0932\u093F\u090F \u0907\u0902\u091F\u0930\u0928\u0947\u091F \u0915\u0940 \u0906\u0935\u0936\u094D\u092F\u0915\u0924\u093E \u0939\u094B \u0938\u0915\u0924\u0940 \u0939\u0948\u0964 \u092F\u0926\u093F \u092E\u093E\u0907\u0915 \u0928 \u091A\u0932\u0947, \u0924\u094B '\u091F\u093E\u0907\u092A \u0915\u0930\u0947\u0902' \u0938\u0947 \u092C\u093F\u0928\u093E \u0930\u0941\u0915\u093E\u0935\u091F \u090F\u0902\u091F\u094D\u0930\u0940 \u0915\u0930\u0947\u0902\u0964",
+  openTypeInstead: "'\u091F\u093E\u0907\u092A \u0915\u0930\u0947\u0902' \u0916\u094B\u0932\u0947\u0902",
+  gotIt: "\u0920\u0940\u0915 \u0939\u0948, \u0938\u092E\u091D \u0917\u092F\u093E",
+  pinLockedNotice: "\u0906\u092A\u0915\u093E \u0916\u093E\u0924\u093E AES-256 \u090F\u0928\u094D\u0915\u094D\u0930\u093F\u092A\u094D\u091F\u0947\u0921 \u0939\u0948\u0964 \u0915\u0943\u092A\u092F\u093E \u0905\u092A\u0928\u093E \u092A\u093F\u0928 \u0926\u0930\u094D\u091C \u0915\u0930\u0947\u0902:",
+  pinCryptoLockDesc: "\u0938\u092D\u0940 \u0916\u093E\u0924\u093E \u0930\u093F\u0915\u0949\u0930\u094D\u0921 \u0935\u0947\u092C \u0915\u094D\u0930\u093F\u092A\u094D\u091F\u094B (AES-256 GCM) \u0938\u0947 \u0921\u093F\u0935\u093E\u0907\u0938 \u092E\u0947\u0902 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0939\u0948\u0902\u0964",
+  yesReset: "\u0939\u093E\u0901, \u0930\u0940\u0938\u0947\u091F \u0915\u0930\u0947\u0902",
+  dailySummarySub: "\u0926\u0948\u0928\u093F\u0915 \u0935\u0938\u0942\u0932\u0940 \u090F\u0935\u0902 \u0909\u0927\u093E\u0930 \u0938\u093E\u0930\u093E\u0902\u0936",
+  activeCustomersLabel: "\u0938\u0915\u094D\u0930\u093F\u092F \u0917\u094D\u0930\u093E\u0939\u0915",
+  noDataAvailableDesc: "\u0907\u0938 \u0924\u093E\u0930\u0940\u0916 \u0915\u0947 \u0932\u093F\u090F \u0915\u094B\u0908 \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u0940\u0964",
+  noPendingUdhaarAllSettled: "\u0915\u094B\u0908 \u0932\u0902\u092C\u093F\u0924 \u0909\u0927\u093E\u0930 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0938\u092D\u0940 \u0916\u093E\u0924\u0947 \u091A\u0941\u0915\u0924\u093E \u0939\u0948\u0902! \u2713",
+  zeroBalance: "\u0939\u093F\u0938\u093E\u092C \u091A\u0941\u0915\u0924\u093E, \u0915\u094B\u0908 \u092C\u093E\u0915\u0940 \u0928\u0939\u0940\u0902",
+  khataTimeline: "\u0916\u093E\u0924\u093E \u0938\u092E\u092F\u0930\u0947\u0916\u093E",
+  saveEntry: "\u090F\u0902\u091F\u094D\u0930\u0940 \u0938\u0947\u0935 \u0915\u0930\u0947\u0902",
+  addUdhaar: "+ \u0909\u0927\u093E\u0930 \u091C\u094B\u0921\u093C\u0947\u0902",
+  addPayment: "+ \u091C\u092E\u093E \u091C\u094B\u0921\u093C\u0947\u0902",
+  addEntry: "\u090F\u0902\u091F\u094D\u0930\u0940 \u091C\u094B\u0921\u093C\u0947\u0902",
+  noteOptional: "\u0935\u093F\u0935\u0930\u0923 / \u0928\u094B\u091F (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915)",
+  whatsappReminder: "\u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A",
+  lastReminder: "\u0906\u0916\u093C\u093F\u0930\u0940 \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930",
+  savingByVoice: "\u0906\u0935\u093E\u091C\u093C \u0938\u0947 \u0938\u0947\u0935 \u0939\u094B \u0930\u0939\u093E \u0939\u0948...",
+  cancelledByVoice: "\u0906\u0935\u093E\u091C\u093C \u0938\u0947 \u0930\u0926\u094D\u0926 \u0915\u093F\u092F\u093E \u0917\u092F\u093E",
+  noCustomersEmptyState: "\u0905\u092D\u0940 \u0915\u094B\u0908 \u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u092A\u0939\u0932\u093E \u0909\u0927\u093E\u0930 \u092C\u094B\u0932\u0915\u0930 \u091C\u094B\u0921\u093C\u0947\u0902",
+  addFirstUdhaarVoice: "\u{1F3A4} \u092A\u0939\u0932\u093E \u0909\u0927\u093E\u0930 \u092C\u094B\u0932\u0915\u0930 \u091C\u094B\u0921\u093C\u0947\u0902",
+  onboardingStep1Title: "1. \u092C\u0938 \u092E\u093E\u0907\u0915 \u0926\u092C\u093E\u0915\u0930 \u092C\u094B\u0932\u0947\u0902",
+  onboardingStep1Desc: "\u0926\u0941\u0915\u093E\u0928 \u092A\u0930 \u0939\u093E\u0925 \u0935\u094D\u092F\u0938\u094D\u0924 \u0939\u0948\u0902? \u092C\u0938 \u092E\u093E\u0907\u0915 \u0926\u092C\u093E\u090F\u0902 \u0914\u0930 \u0905\u092A\u0928\u0940 \u092D\u093E\u0937\u093E \u092E\u0947\u0902 \u092C\u094B\u0932\u0947\u0902\u0964",
+  onboardingStep2Title: "2. \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u092A\u0942\u0930\u094D\u0935\u093E\u0935\u0932\u094B\u0915\u0928 \u0926\u0947\u0916\u0947\u0902",
+  onboardingStep2Desc: "\u0906\u0935\u093E\u091C\u093C \u0938\u0941\u0928\u0924\u0947 \u0939\u0940 \u0910\u092A \u092A\u094D\u0930\u0935\u093F\u0937\u094D\u091F\u093F \u0915\u093E \u092A\u0942\u0930\u094D\u0935\u093E\u0935\u0932\u094B\u0915\u0928 \u0926\u093F\u0916\u093E\u090F\u0917\u093E\u0964 \u0938\u0947\u0935 \u0915\u0930\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u091F\u0948\u092A \u0915\u0930\u0947\u0902 \u092F\u093E \u0906\u0935\u093E\u091C\u093C \u0938\u0947 \u0938\u0941\u0927\u093E\u0930\u0947\u0902\u0964",
+  onboardingStep3Title: "3. \u0924\u0941\u0930\u0902\u0924 \u0916\u093E\u0924\u093E \u0905\u092A\u0921\u0947\u091F \u0935 \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930",
+  onboardingStep3Desc: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u0916\u093E\u0924\u093E \u0924\u0941\u0930\u0902\u0924 \u0905\u092A\u0921\u0947\u091F \u0939\u094B \u091C\u093E\u0924\u093E \u0939\u0948! \u090F\u0915 \u091F\u0948\u092A \u092E\u0947\u0902 \u0935\u094D\u0939\u093E\u091F\u094D\u0938\u090F\u092A \u0930\u093F\u092E\u093E\u0907\u0902\u0921\u0930 \u092D\u0947\u091C\u0947\u0902 \u092F\u093E \u0930\u0938\u0940\u0926 \u092A\u094D\u0930\u093F\u0902\u091F \u0915\u0930\u0947\u0902\u0964",
+  grantMicAndStart: "\u092E\u093E\u0907\u0915 \u0905\u0928\u0941\u092E\u0924\u093F \u0926\u0947\u0902 \u0914\u0930 \u0936\u0941\u0930\u0942 \u0915\u0930\u0947\u0902",
+  installAppTitle: "\u0910\u092A \u0907\u0902\u0938\u094D\u091F\u0949\u0932 \u0915\u0930\u0947\u0902 (\u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928)",
+  installAppSub: "\u092B\u093E\u0938\u094D\u091F \u0914\u0930 100% \u0911\u092B\u0932\u093E\u0907\u0928 \u091A\u0932\u0947\u0917\u093E \u2022 1 \u091F\u0948\u092A \u092E\u0947\u0902 \u0916\u093E\u0924\u093E",
+  install: "\u0907\u0902\u0938\u094D\u091F\u0949\u0932",
+  errorBoundaryTitle: "\u0915\u0941\u091B \u0917\u0921\u093C\u092C\u0921\u093C \u0939\u0941\u0908",
+  errorBoundarySub: "\u0915\u0941\u091B \u0917\u0921\u093C\u092C\u0921\u093C \u0939\u0941\u0908, \u0932\u0947\u0915\u093F\u0928 \u091A\u093F\u0902\u0924\u093E \u0928 \u0915\u0930\u0947\u0902!",
+  errorBoundarySafety: "\u0906\u092A\u0915\u093E \u0938\u093E\u0930\u093E \u0916\u093E\u0924\u093E \u0921\u0947\u091F\u093E \u0906\u092A\u0915\u0947 \u092B\u094B\u0928 \u092E\u0947\u0902 \u092C\u093F\u0932\u094D\u0915\u0941\u0932 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 (IndexedDB) \u0939\u0948\u0964 \u0915\u0941\u091B \u0916\u094B\u092F\u093E \u0928\u0939\u0940\u0902 \u0939\u0948\u0964",
+  retryButton: "\u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902",
+  goHomeButton: "\u0939\u094B\u092E \u092A\u0930 \u091C\u093E\u090F\u0902",
+  technicalDetails: "\u0924\u0915\u0928\u0940\u0915\u0940 \u0924\u094D\u0930\u0941\u091F\u093F \u0935\u093F\u0935\u0930\u0923"
+};
+
+// src/i18n/locales/kn.json
+var kn_default = {
+  appName: "Udhaar Sathi (\u0C89\u0CA6\u0CCD\u0CB0\u0CBF \u0CB8\u0CBE\u0CA5\u0CBF)",
+  tagline: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF \u0CB8\u0CBE\u0CB2 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
+  online: "\u0C86\u0CA8\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD",
+  offlineSafe: "\u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4 (\u0CB8\u0CCD\u0CA5\u0CB3\u0CC0\u0CAF)",
+  navHome: "\u0CAE\u0CC1\u0C96\u0CAA\u0CC1\u0C9F (\u0CAE\u0CC8\u0C95\u0CCD)",
+  navCustomers: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0C96\u0CBE\u0CA4\u0CC6",
+  navSummary: "\u0CA6\u0CC8\u0CA8\u0C82\u0CA6\u0CBF\u0CA8 \u0CB8\u0CBE\u0CB0\u0CBE\u0C82\u0CB6",
+  navSettings: "\u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u200C\u0C97\u0CB3\u0CC1",
+  navStyleguide: "\u0CB6\u0CC8\u0CB2\u0CBF \u0CAE\u0CBE\u0CB0\u0CCD\u0C97\u0CA6\u0CB0\u0CCD\u0CB6\u0CBF",
+  save: "\u0C89\u0CB3\u0CBF\u0CB8\u0CBF",
+  cancel: "\u0CB0\u0CA6\u0CCD\u0CA6\u0CC1\u0CAE\u0CBE\u0CA1\u0CBF",
+  delete: "\u0C85\u0CB3\u0CBF\u0CB8\u0CBF",
+  edit: "\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC1",
+  close: "\u0CAE\u0CC1\u0C9A\u0CCD\u0C9A\u0CBF",
+  search: "\u0CB9\u0CC1\u0CA1\u0CC1\u0C95\u0CBF",
+  back: "\u0CB9\u0CBF\u0C82\u0CA6\u0C95\u0CCD\u0C95\u0CC6",
+  done: "\u0CAA\u0CC2\u0CB0\u0CCD\u0CA3",
+  creditGiven: "\u0CB8\u0CBE\u0CB2 \u0CA8\u0CC0\u0CA1\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  paymentReceived: "\u0CB9\u0CA3 \u0CAC\u0C82\u0CA6\u0CBF\u0CA6\u0CC6",
+  balanceOwed: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF",
+  netBalance: "\u0CA8\u0CBF\u0CB5\u0CCD\u0CB5\u0CB3 \u0CAC\u0CBE\u0C95\u0CBF",
+  todaySummary: "\u0C87\u0C82\u0CA6\u0CBF\u0CA8 \u0CB2\u0CC6\u0C95\u0CCD\u0C95",
+  recentEntries: "\u0C87\u0CA4\u0CCD\u0CA4\u0CC0\u0C9A\u0CBF\u0CA8 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1",
+  noEntries: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1 \u0CB2\u0CAD\u0CCD\u0CAF\u0CB5\u0CBF\u0CB2\u0CCD\u0CB2",
+  micIdle: "\u0CAE\u0CC8\u0C95\u0CCD \u0C92\u0CA4\u0CCD\u0CA4\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
+  micListening: "\u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC7\u0CA8\u0CC6... \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
+  micProcessing: "\u0CB2\u0CC6\u0C95\u0CCD\u0C95 \u0CAA\u0CB0\u0CBF\u0CB6\u0CC0\u0CB2\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  micError: "\u0CB8\u0CCD\u0CAA\u0CB7\u0CCD\u0C9F\u0CB5\u0CBE\u0C97\u0CBF \u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CB2\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAA\u0CC1\u0CA8\u0C83 \u0CAA\u0CCD\u0CB0\u0CAF\u0CA4\u0CCD\u0CA8\u0CBF\u0CB8\u0CBF.",
+  typeInstead: "\u0C9F\u0CC8\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0CAC\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
+  trySpeaking: "\u0CB9\u0CC7\u0CB3\u0CBF \u0CAA\u0CCD\u0CB0\u0CAF\u0CA4\u0CCD\u0CA8\u0CBF\u0CB8\u0CBF:",
+  customersTitle: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0C96\u0CBE\u0CA4\u0CC6",
+  searchCustomerPlaceholder: "\u0CB9\u0CC6\u0CB8\u0CB0\u0CC1 \u0C85\u0CA5\u0CB5\u0CBE \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB9\u0CC1\u0CA1\u0CC1\u0C95\u0CBF...",
+  filterAll: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE",
+  filterOwes: "\u0CAC\u0CBE\u0C95\u0CBF \u0C87\u0CB0\u0CC1\u0CB5\u0CB5\u0CB0\u0CC1",
+  filterSettled: "\u0C9A\u0CC1\u0C95\u0CCD\u0CA4\u0CBE",
+  addJama: "+ \u0CB9\u0CA3 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  printSlip: "\u0CB0\u0CB6\u0CC0\u0CA6\u0CBF \u0CAE\u0CC1\u0CA6\u0CCD\u0CB0\u0CBF\u0CB8\u0CBF",
+  sendWhatsApp: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6",
+  summaryTitle: "\u0CA6\u0CC8\u0CA8\u0C82\u0CA6\u0CBF\u0CA8 \u0CB8\u0CBE\u0CB0\u0CBE\u0C82\u0CB6",
+  todayUdhaar: "\u0CB8\u0CBE\u0CB2 \u0CA8\u0CC0\u0CA1\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  todayJama: "\u0CB9\u0CA3 \u0CB8\u0CCD\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  todayNet: "\u0CA8\u0CBF\u0CB5\u0CCD\u0CB5\u0CB3 \u0CAC\u0CA6\u0CB2\u0CBE\u0CB5\u0CA3\u0CC6",
+  weeklyTrend: "\u0C95\u0CB3\u0CC6\u0CA6 7 \u0CA6\u0CBF\u0CA8\u0C97\u0CB3 \u0CB5\u0CBF\u0CB5\u0CB0",
+  topPending: "\u0CB9\u0CC6\u0C9A\u0CCD\u0C9A\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF \u0C87\u0CB0\u0CC1\u0CB5\u0CB5\u0CB0\u0CC1",
+  settingsTitle: "\u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u200C\u0C97\u0CB3\u0CC1",
+  settingsSubtitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CC1, \u0CAD\u0CBE\u0CB7\u0CC6, \u0CB8\u0CCC\u0C82\u0CA1\u0CCD\u200C\u0CAC\u0CBE\u0C95\u0CCD\u0CB8\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAC\u0CCD\u0CAF\u0CBE\u0C95\u0CAA\u0CCD",
+  shopNameLabel: "\u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CC1",
+  shopNamePlaceholder: "\u0C89\u0CA6\u0CBE. \u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C95\u0CBF\u0CB0\u0CBE\u0CA3\u0CBF \u0C85\u0C82\u0C97\u0CA1\u0CBF",
+  uiLanguageLabel: "\u0CAA\u0CB0\u0CA6\u0CC6\u0CAF \u0CAD\u0CBE\u0CB7\u0CC6",
+  uiLanguageDesc: "\u0CAC\u0C9F\u0CA8\u0CCD\u200C\u0C97\u0CB3\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAA\u0CB0\u0CA6\u0CC6\u0CAF \u0CAE\u0CC7\u0CB2\u0CBF\u0CA8 \u0CAD\u0CBE\u0CB7\u0CC6",
+  speechLanguageLabel: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CC1\u0CB5 \u0CAD\u0CBE\u0CB7\u0CC6",
+  speechLanguageDesc: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C97\u0CC1\u0CB0\u0CC1\u0CA4\u0CBF\u0CB8\u0CC1\u0CB5\u0CBF\u0C95\u0CC6 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB8\u0CCC\u0C82\u0CA1\u0CCD\u200C\u0CAC\u0CBE\u0C95\u0CCD\u0CB8\u0CCD\u200C\u0C97\u0CC6",
+  speechSpeedLabel: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0CB5\u0CC7\u0C97 (Soundbox)",
+  speedSlow: "\u0CA8\u0CBF\u0CA7\u0CBE\u0CA8",
+  speedNormal: "\u0CB8\u0CBE\u0CAE\u0CBE\u0CA8\u0CCD\u0CAF",
+  speedFast: "\u0CB5\u0CC7\u0C97",
+  muteRepliesLabel: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C89\u0CA4\u0CCD\u0CA4\u0CB0 \u0CAE\u0CCD\u0CAF\u0CC2\u0C9F\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
+  muteRepliesDesc: "\u0CAC\u0CC6\u0CB2\u0CCD \u0CAE\u0CBE\u0CA4\u0CCD\u0CB0 \u0CB0\u0CBF\u0C82\u0C97\u0CCD \u0C86\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6, \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C93\u0CA6\u0CC1\u0CB5\u0CC1\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2",
+  themeLabel: "\u0CA5\u0CC0\u0CAE\u0CCD",
+  themeLight: "\u0CB2\u0CC8\u0C9F\u0CCD \u0CA5\u0CC0\u0CAE\u0CCD",
+  themeHighContrast: "\u0CB9\u0CC8 \u0C95\u0CBE\u0C82\u0C9F\u0CCD\u0CB0\u0CBE\u0CB8\u0CCD\u0C9F\u0CCD (\u0C95\u0CAA\u0CCD\u0CAA\u0CC1)",
+  themeDesc: "\u0CAC\u0CBF\u0CB8\u0CBF\u0CB2\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB0\u0CBE\u0CA4\u0CCD\u0CB0\u0CBF\u0CAF \u0CAC\u0CC6\u0CB3\u0C95\u0CBF\u0C97\u0CC6 \u0CB8\u0CC2\u0C95\u0CCD\u0CA4\u0CB5\u0CBE\u0CA6 \u0C95\u0CBE\u0C82\u0C9F\u0CCD\u0CB0\u0CBE\u0CB8\u0CCD\u0C9F\u0CCD",
+  asrEngineLabel: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C8E\u0C82\u0C9C\u0CBF\u0CA8\u0CCD (ASR)",
+  asrEngineDesc: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAA\u0CA0\u0CCD\u0CAF\u0CB5\u0CBE\u0C97\u0CBF \u0CAA\u0CB0\u0CBF\u0CB5\u0CB0\u0CCD\u0CA4\u0CBF\u0CB8\u0CC1\u0CB5 \u0C8E\u0C82\u0C9C\u0CBF\u0CA8\u0CCD",
+  asrBrowser: "\u0CAC\u0CCD\u0CB0\u0CCC\u0CB8\u0CB0\u0CCD \u0C86\u0CA8\u0CCD\u200C-\u0CA1\u0CBF\u0CB5\u0CC8\u0CB8\u0CCD (\u0C89\u0C9A\u0CBF\u0CA4, \u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD)",
+  asrBhashini: "\u0CAD\u0CBE\u0CB7\u0CBF\u0CA3\u0CBF AI (\u0CA1\u0CBF\u0C9C\u0CBF\u0C9F\u0CB2\u0CCD \u0C87\u0C82\u0CA1\u0CBF\u0CAF\u0CBE) [Stubbed]",
+  asrSarvam: "\u0CB8\u0CB0\u0CCD\u0CB5\u0C82 AI (\u0C87\u0C82\u0CA1\u0CBF\u0C95\u0CCD \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF) [Stubbed]",
+  exportLedgerLabel: "\u0C96\u0CBE\u0CA4\u0CC6 \u0CA1\u0CC7\u0C9F\u0CBE \u0CB0\u0CAB\u0CCD\u0CA4\u0CC1",
+  exportJson: "JSON \u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CA1\u0CCC\u0CA8\u0CCD\u200C\u0CB2\u0CCB\u0CA1\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
+  exportCsv: "CSV \u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CA1\u0CCC\u0CA8\u0CCD\u200C\u0CB2\u0CCB\u0CA1\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
+  dangerZoneLabel: "\u0C85\u0CAA\u0CBE\u0CAF \u0CB5\u0CB2\u0CAF",
+  clearAllData: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0C96\u0CBE\u0CA4\u0CC6 \u0CA1\u0CC7\u0C9F\u0CBE\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u0C85\u0CB3\u0CBF\u0CB8\u0CBF",
+  clearConfirm: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB5\u0CB9\u0CBF\u0CB5\u0CBE\u0C9F\u0CC1\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0C85\u0CB3\u0CBF\u0CB8\u0CB2\u0CC1 \u0CA8\u0CC0\u0CB5\u0CC1 \u0C96\u0C9A\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CCD\u0CA6\u0CC0\u0CB0\u0CBE? \u0C87\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB0\u0CA6\u0CCD\u0CA6\u0CC1\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CB5\u0CC1\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2.",
+  clearSuccess: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0CA1\u0CC7\u0C9F\u0CBE\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAF\u0CB6\u0CB8\u0CCD\u0CB5\u0CBF\u0CAF\u0CBE\u0C97\u0CBF \u0C85\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
+  resetDemo: "\u0CA1\u0CC6\u0CAE\u0CCA \u0CA1\u0CC7\u0C9F\u0CBE \u0CAE\u0CB0\u0CC1\u0CB8\u0CCD\u0CA5\u0CBE\u0CAA\u0CBF\u0CB8\u0CBF",
+  resetSuccess: "\u0CA1\u0CC6\u0CAE\u0CCA \u0CA1\u0CC7\u0C9F\u0CBE \u0CB2\u0CCB\u0CA1\u0CCD \u0C86\u0C97\u0CBF\u0CA6\u0CC6!",
+  localFirstInfo: "Udhaar Sathi 100% \u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD \u0C86\u0C97\u0CBF\u0CA6\u0CC6. \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0CA1\u0CC7\u0C9F\u0CBE \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6 (IndexedDB).",
+  signupWelcomeTitle: "Udhaar Sathi \u0C97\u0CC6 \u0CB8\u0CC1\u0CB8\u0CCD\u0CB5\u0CBE\u0C97\u0CA4",
+  signupWelcomeSubtitle: "\u0CAD\u0CBE\u0CB0\u0CA4\u0CC0\u0CAF \u0C95\u0CBF\u0CB0\u0CBE\u0CA3\u0CBF \u0C85\u0C82\u0C97\u0CA1\u0CBF\u0C97\u0CB3\u0CBF\u0C97\u0CBE\u0C97\u0CBF \u0CB9\u0CCD\u0CAF\u0CBE\u0C82\u0CA1\u0CCD\u0CB8\u0CCD-\u0CAB\u0CCD\u0CB0\u0CC0 \u0CB5\u0CBE\u0CAF\u0CCD\u0CB8\u0CCD \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD",
+  dataStaysOnPhone: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CA1\u0CC7\u0C9F\u0CBE \u0C88 \u0CAB\u0CCB\u0CA8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAE\u0CBE\u0CA4\u0CCD\u0CB0 \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CB0\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6",
+  getStarted: "\u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD\u0CBF\u0CB8\u0CBF",
+  stepOf: "\u0CB9\u0C82\u0CA4 {current} / {total}",
+  shopNamePrompt: "\u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CC7\u0CA8\u0CC1?",
+  shopNameSpoken: "\u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF",
+  shopNameHelper: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CAC\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
+  shopNameError: "\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CBE\u0CA8\u0CCD\u0CAF \u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF (\u0C95\u0CA8\u0CBF\u0CB7\u0CCD\u0CA0 2 \u0C85\u0C95\u0CCD\u0CB7\u0CB0\u0C97\u0CB3\u0CC1)",
+  ownerNamePrompt: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB9\u0CC6\u0CB8\u0CB0\u0CC7\u0CA8\u0CC1?",
+  ownerNameSpoken: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF",
+  ownerNamePlaceholder: "\u0C89\u0CA6\u0CBE. \u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C95\u0CC1\u0CAE\u0CBE\u0CB0\u0CCD",
+  ownerNameHelper: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAE\u0CBE\u0CB2\u0CC0\u0C95\u0CB0 \u0CB9\u0CC6\u0CB8\u0CB0\u0CC1",
+  ownerNameError: "\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF (\u0C95\u0CA8\u0CBF\u0CB7\u0CCD\u0CA0 2 \u0C85\u0C95\u0CCD\u0CB7\u0CB0\u0C97\u0CB3\u0CC1)",
+  phonePrompt: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6",
+  phoneSpoken: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE 10 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
+  phonePlaceholder: "\u0C89\u0CA6\u0CBE. 9876543210",
+  phoneHelper: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF \u0CA8\u0CC6\u0CA8\u0CAA\u0CBF\u0CB8\u0CB2\u0CC1 10 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6",
+  phoneError: "6-9 \u0CB0\u0CBF\u0C82\u0CA6 \u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD\u0CB5\u0CBE\u0C97\u0CC1\u0CB5 10 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
+  upiPrompt: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF",
+  upiSpoken: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CB9\u0CC7\u0CB3\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CAC\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
+  upiPlaceholder: "\u0C89\u0CA6\u0CBE. ramesh@oksbi",
+  upiHelperText: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAE\u0CBE\u0CA4\u0CCD\u0CB0 \u0CB8\u0CBE\u0C95\u0CC1. \u0CA8\u0CBE\u0CB5\u0CC1 \u0C8E\u0C82\u0CA6\u0CBF\u0C97\u0CC2 \u0CAC\u0CCD\u0CAF\u0CBE\u0C82\u0C95\u0CCD \u0C96\u0CBE\u0CA4\u0CC6 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C95\u0CC7\u0CB3\u0CC1\u0CB5\u0CC1\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2.",
+  upiPaste: "\u0CAA\u0CC7\u0CB8\u0CCD\u0C9F\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
+  upiReadBack: "\u0C85\u0C95\u0CCD\u0CB7\u0CB0\u0CB6\u0C83 \u0C95\u0CC7\u0CB3\u0CBF",
+  upiReadingBack: "\u0C93\u0CA6\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  upiError: "\u0CAE\u0CBE\u0CA8\u0CCD\u0CAF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF (\u0C89\u0CA6\u0CBE. name@bank)",
+  pinPrompt: "\u0CB8\u0CC6\u0C95\u0CCD\u0CAF\u0CC1\u0CB0\u0CBF\u0C9F\u0CBF \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF (\u0C90\u0C9A\u0CCD\u0C9B\u0CBF\u0C95)",
+  pinSpoken: "4 \u0CB0\u0CBF\u0C82\u0CA6 6 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAA\u0CBF\u0CA8\u0CCD \u0C86\u0CAF\u0CCD\u0C95\u0CC6\u0CAE\u0CBE\u0CA1\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
+  pinPlaceholder: "4-6 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3 \u0CAA\u0CBF\u0CA8\u0CCD",
+  pinHelperText: "\u0CB8\u0CBE\u0CA7\u0CA8\u0CA6 \u0C8E\u0CA8\u0CCD\u200C\u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0CB6\u0CA8\u0CCD \u0CAE\u0CC2\u0CB2\u0C95 \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6. \u0CA8\u0C82\u0CA4\u0CB0 \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CC2 \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1.",
+  pinSkip: "\u0C88\u0C97 \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
+  pinSkipWarning: "\u0CAA\u0CBF\u0CA8\u0CCD \u0C87\u0CB2\u0CCD\u0CB2\u0CA6\u0CC6 \u0CAF\u0CBE\u0CB0\u0CBE\u0CA6\u0CB0\u0CC2 \u0C88 \u0C86\u0CCD\u0CAF\u0CAA\u0CCD \u0CA4\u0CC6\u0CB0\u0CC6\u0CA6\u0CC1 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CCB\u0CA1\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1. \u0CA8\u0CC0\u0CB5\u0CC1 \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CBE\u0CB5\u0CBE\u0C97 \u0CAC\u0CC7\u0C95\u0CBE\u0CA6\u0CB0\u0CC2 \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1.",
+  pinSkipConfirm: "\u0CAA\u0CBF\u0CA8\u0CCD \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
+  pinError: "\u0CAA\u0CBF\u0CA8\u0CCD 4-6 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CBE\u0C97\u0CBF\u0CB0\u0CAC\u0CC7\u0C95\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB8\u0CB0\u0CB3 \u0C85\u0CA8\u0CC1\u0C95\u0CCD\u0CB0\u0CAE\u0CB5\u0CBE\u0C97\u0CBF\u0CB0\u0CAC\u0CBE\u0CB0\u0CA6\u0CC1 (\u0C89\u0CA6\u0CBE. 1234, 0000)",
+  reviewTitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD \u0CAA\u0CB0\u0CBF\u0CB6\u0CC0\u0CB2\u0CBF\u0CB8\u0CBF",
+  reviewSubtitle: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAA\u0CB0\u0CBF\u0CB6\u0CC0\u0CB2\u0CBF\u0CB8\u0CBF. \u0C87\u0CB5\u0CC1\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CBE\u0CB5\u0CBE\u0C97 \u0CAC\u0CC7\u0C95\u0CBE\u0CA6\u0CB0\u0CC2 \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1.",
+  startAppButton: "Udhaar Sathi \u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD\u0CBF\u0CB8\u0CBF",
+  editField: "\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC1",
+  nextStep: "\u0CAE\u0CC1\u0C82\u0CA6\u0CC6",
+  prevStep: "\u0CB9\u0CBF\u0C82\u0CA6\u0CC6",
+  settingsProfileTitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD",
+  settingsProfileSubtitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CC1, \u0CAE\u0CBE\u0CB2\u0CC0\u0C95\u0CB0 \u0CB9\u0CC6\u0CB8\u0CB0\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF",
+  confirmUpiChangeTitle: "\u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CAC\u0CC7\u0C95\u0CC7?",
+  confirmUpiChangeWarning: "\u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CC1\u0CB5\u0CC1\u0CA6\u0CB0\u0CBF\u0C82\u0CA6 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0C97\u0CC6 \u0C95\u0CB3\u0CC1\u0CB9\u0CBF\u0CB8\u0CC1\u0CB5 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0C95\u0CCB\u0CA1\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB2\u0CBF\u0C82\u0C95\u0CCD\u200C\u0C97\u0CB3\u0CC1 \u0CAC\u0CA6\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CB5\u0CC6. \u0CA8\u0CC0\u0CB5\u0CC1 \u0C96\u0C9A\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CCD\u0CA6\u0CC0\u0CB0\u0CBE?",
+  confirmUpiChangeButton: "\u0CB9\u0CCC\u0CA6\u0CC1, \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CBF",
+  noPinWarningBanner: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CC1 \u0CAA\u0CBF\u0CA8\u0CCD\u200C\u0CA8\u0CBF\u0C82\u0CA6 \u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CB2\u0CCD\u0CAA\u0C9F\u0CCD\u0C9F\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA1\u0CC7\u0C9F\u0CBE \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CB0\u0CBF\u0CB8\u0CB2\u0CC1 \u0C88\u0C97\u0CB2\u0CC7 \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF.",
+  setPinNow: "\u0C88\u0C97\u0CB2\u0CC7 \u0CAA\u0CBF\u0CA8\u0CCD \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF",
+  profileUpdatedToast: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD \u0CAF\u0CB6\u0CB8\u0CCD\u0CB5\u0CBF\u0CAF\u0CBE\u0C97\u0CBF \u0CA8\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
+  registerCustomerTitle: "\u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CA8\u0CCB\u0C82\u0CA6\u0CA3\u0CBF",
+  registerCustomerSubtitle: "\u0C8E\u0CA8\u0CCD\u200C\u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0C9F\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF\u0CA6 \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CC1 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CC1",
+  enterCustomerPhone: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6",
+  phoneReadBackQuestion: "{phone}. \u0CB8\u0CB0\u0CBF\u0CAF\u0CBE\u0C97\u0CBF\u0CA6\u0CC6\u0CAF\u0CC7?",
+  readBackConfirm: "\u0CB9\u0CCC\u0CA6\u0CC1, \u0CB8\u0CB0\u0CBF",
+  readBackWrong: "\u0C87\u0CB2\u0CCD\u0CB2, \u0CAC\u0CA6\u0CB2\u0CBE\u0CAF\u0CBF\u0CB8\u0CBF",
+  skipPhoneForNow: "\u0C88\u0C97 \u0CAC\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1\u0CAC\u0CBF\u0CA1\u0CBF",
+  noNumberWarning: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CBF\u0CB2\u0CCD\u0CB2\u0CA6\u0CC6 \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6. \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6\u0C97\u0CB3\u0CB2\u0CCD\u0CB2\u0CBF \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C95\u0CC7\u0CB3\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6.",
+  duplicatePhoneWarning: "\u0C88 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 {name} \u0C85\u0CB5\u0CB0\u0CA6\u0CCD\u0CA6\u0CC1. \u0C87\u0CB5\u0CB0\u0CC7 \u0C86 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC7?",
+  openExistingCustomer: "\u0CB9\u0CCC\u0CA6\u0CC1, {name} \u0CA4\u0CC6\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
+  useAnotherNumber: "\u0CAC\u0CC7\u0CB0\u0CC6 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CAC\u0CB3\u0CB8\u0CBF",
+  requireCustomerPhoneLabel: "\u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C95\u0CA1\u0CCD\u0CA1\u0CBE\u0CAF\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CBF",
+  requireCustomerPhoneDesc: "\u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CC1\u0CB5\u0CBE\u0C97 \u0CAB\u0CCB\u0CA8\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C95\u0CA1\u0CCD\u0CA1\u0CBE\u0CAF\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CBF",
+  customerRegisteredSpoken: "{name} \u0C85\u0CB5\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  customerNewAskPhoneSpoken: "{name} \u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95. \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CB9\u0CC7\u0CB3\u0CBF",
+  whichCustomerTitle: "\u0CAF\u0CBE\u0CB5 {name}?",
+  tellLast4DigitsSubtitle: "\u0CAB\u0CCB\u0CA8\u0CCD \u0CA8\u0C82\u0CAC\u0CB0\u0CCD\u200C\u0CA8 \u0C95\u0CCA\u0CA8\u0CC6\u0CAF 4 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA4\u0CBF\u0CB3\u0CBF\u0CB8\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0C95\u0CBE\u0CB0\u0CCD\u0CA1\u0CCD \u0CB8\u0CCD\u0CAA\u0CB0\u0CCD\u0CB6\u0CBF\u0CB8\u0CBF",
+  noNumberSavedChip: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C89\u0CB3\u0CBF\u0CB8\u0CBF\u0CB2\u0CCD\u0CB2",
+  disambiguateRetryToast: "\u0C88 \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0C95\u0CC6\u0CAF\u0CBE\u0C97\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CCA\u0CAE\u0CCD\u0CAE\u0CC6 \u0CB9\u0CC7\u0CB3\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0C95\u0CBE\u0CB0\u0CCD\u0CA1\u0CCD \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF.",
+  disambiguateConfirmSpoken: "{name}, \u0CB8\u0CB0\u0CBF.",
+  autoOpenPaymentRequestLabel: "\u0CB8\u0CBE\u0CB2\u0CA6 \u0CA8\u0C82\u0CA4\u0CB0 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB5\u0CBF\u0CA8\u0C82\u0CA4\u0CBF \u0CA4\u0CCB\u0CB0\u0CBF\u0CB8\u0CBF",
+  autoOpenPaymentRequestDesc: "\u0CB8\u0CBE\u0CB2 \u0CA6\u0CBE\u0C96\u0CB2\u0CBF\u0CB8\u0CBF\u0CA6 \u0CA4\u0C95\u0CCD\u0CB7\u0CA3 \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0CB2\u0CBF\u0C82\u0C95\u0CCD \u0CA4\u0CCB\u0CB0\u0CBF\u0CB8\u0CBF",
+  showMyQr: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD",
+  showMyQrDesc: "\u0C95\u0CCC\u0C82\u0C9F\u0CB0\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF\u0CB0\u0CC1\u0CB5 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0C97\u0CBE\u0C97\u0CBF \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD",
+  showMyQrTitle: "\u0C85\u0C82\u0C97\u0CA1\u0CBF \u0C95\u0CCC\u0C82\u0C9F\u0CB0\u0CCD \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD",
+  paymentRequestTitle: "\u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB5\u0CBF\u0CA8\u0C82\u0CA4\u0CBF",
+  paymentRequestSubtitle: "\u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB8\u0C82\u0C97\u0CCD\u0CB0\u0CB9\u0CBF\u0CB8\u0CB2\u0CC1 \u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0C85\u0CA5\u0CB5\u0CBE \u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0CB2\u0CBF\u0C82\u0C95\u0CCD \u0CB9\u0C82\u0C9A\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CBF",
+  sendWhatsAppPayment: "WhatsApp \u0C95\u0CB3\u0CC1\u0CB9\u0CBF\u0CB8\u0CBF",
+  sendWhatsAppHint: "WhatsApp \u0CA4\u0CC6\u0CB0\u0CC6\u0CAF\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6, \u0CA8\u0C82\u0CA4\u0CB0 Send \u0C92\u0CA4\u0CCD\u0CA4\u0CBF",
+  shareQr: "QR \u0CB9\u0C82\u0C9A\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CBF",
+  downloadQr: "QR \u0CA1\u0CCC\u0CA8\u0CCD\u200C\u0CB2\u0CCB\u0CA1\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
+  laterDismiss: "\u0CA8\u0C82\u0CA4\u0CB0",
+  noPhoneAddNumber: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  noPhoneWarning: "\u0C88 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CAB\u0CCB\u0CA8\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C89\u0CB3\u0CBF\u0CB8\u0CBF\u0CB2\u0CCD\u0CB2",
+  noUpiIdWarning: "\u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0C90\u0CA1\u0CBF \u0C87\u0CB2\u0CCD\u0CB2. \u0CB8\u0CC6\u0C9F\u0CCD\u0C9F\u0CBF\u0C82\u0C97\u0CCD\u0CB8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CC1\u0CAA\u0CBF\u0C90 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF.",
+  setupUpiNow: "UPI ID \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  whatsappOfflineHint: "WhatsApp \u0C97\u0CBE\u0C97\u0CBF \u0C87\u0C82\u0C9F\u0CB0\u0CCD\u0CA8\u0CC6\u0C9F\u0CCD \u0C85\u0C97\u0CA4\u0CCD\u0CAF\u0CB5\u0CBF\u0CA6\u0CC6",
+  qrSavedToast: "\u0C95\u0CCD\u0CAF\u0CC2\u0C86\u0CB0\u0CCD \u0C95\u0CCB\u0CA1\u0CCD \u0CB8\u0CBF\u0CA6\u0CCD\u0CA7\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  receiptQrTitle: "UPI \u0CAE\u0CC2\u0CB2\u0C95 \u0CB8\u0CCD\u0C95\u0CCD\u0CAF\u0CBE\u0CA8\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF\u0CB8\u0CBF",
+  chooseLanguage: "\u0CAD\u0CBE\u0CB7\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C86\u0CAF\u0CCD\u0C95\u0CC6\u0CAE\u0CBE\u0CA1\u0CBF",
+  language: "\u0CAD\u0CBE\u0CB7\u0CC6",
+  speechLanguage: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0CAD\u0CBE\u0CB7\u0CC6",
+  entries: "\u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1",
+  entriesCount: "{count} \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1",
+  clear: "\u0C85\u0CB3\u0CBF\u0CB8\u0CBF",
+  reset: "\u0CB0\u0CC0\u0CB8\u0CC6\u0C9F\u0CCD",
+  viewAll: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CB5\u0CA8\u0CCD\u0CA8\u0CC2 \u0CB5\u0CC0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CBF \u2192",
+  loading: "\u0CB2\u0CCB\u0CA1\u0CCD \u0C86\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  loadingCustomers: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD \u0CB2\u0CCB\u0CA1\u0CCD \u0C86\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  loadingSummary: "\u0CA6\u0CBF\u0CA8\u0C9A\u0CB0\u0CBF \u0CB8\u0CBE\u0CB0\u0CBE\u0C82\u0CB6 \u0CB2\u0CCB\u0CA1\u0CCD \u0C86\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  securingLedger: "\u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  micPromptSpeak: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
+  micPromptListening: "\u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC7\u0CB5\u0CC6...",
+  micPromptProcessing: "\u0CAA\u0CCD\u0CB0\u0C95\u0CCD\u0CB0\u0CBF\u0CAF\u0CC6\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  micPromptRetry: "\u0CAE\u0CA4\u0CCD\u0CA4\u0CC6 \u0CAA\u0CCD\u0CB0\u0CAF\u0CA4\u0CCD\u0CA8\u0CBF\u0CB8\u0CBF",
+  micCaptionIdle: "\u0C92\u0CAE\u0CCD\u0CAE\u0CC6 \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
+  micCaptionListening: "\u0CB8\u0CCD\u0CAA\u0CB7\u0CCD\u0C9F\u0CB5\u0CBE\u0C97\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF \u2022 \u0CAE\u0CCC\u0CA8\u0CB5\u0CBE\u0CA6\u0CBE\u0C97 \u0CA4\u0CBE\u0CA8\u0CC7 \u0CA8\u0CBF\u0CB2\u0CCD\u0CB2\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6",
+  micCaptionProcessing: "\u0CB2\u0CC6\u0C95\u0CCD\u0C95 \u0CAE\u0CBE\u0CA1\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  micErrorFallbackNote: "\u0CAE\u0CC8\u0C95\u0CCD \u0C95\u0CBE\u0CB0\u0CCD\u0CAF\u0CA8\u0CBF\u0CB0\u0CCD\u0CB5\u0CB9\u0CBF\u0CB8\u0CA6\u0CBF\u0CA6\u0CCD\u0CA6\u0CB0\u0CC6, \u0CAC\u0CB0\u0CC6\u0CA6\u0CC1 \u0CA6\u0CBE\u0C96\u0CB2\u0CBF\u0CB8\u0CBF.",
+  listeningSpeakYourLanguage: "\u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC7\u0CB5\u0CC6... \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAD\u0CBE\u0CB7\u0CC6\u0CAF\u0CB2\u0CCD\u0CB2\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
+  streamingSpeech: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0CB8\u0CCD\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  processingSpeech: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C97\u0CCD\u0CB0\u0CB9\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  heardVoice: "\u0C95\u0CC7\u0CB3\u0CBF\u0CA6 \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF",
+  quickDemoPhrases: "\u0CA4\u0CCD\u0CB5\u0CB0\u0CBF\u0CA4 \u0C89\u0CA6\u0CBE\u0CB9\u0CB0\u0CA3\u0CC6\u0C97\u0CB3\u0CC1",
+  tapToTest: "\u0CAA\u0CB0\u0CC0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CB2\u0CC1 \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF",
+  hintPhrase1: "\u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C85\u0CB5\u0CB0\u0CBF\u0C97\u0CC6 500 \u0CB8\u0CBE\u0CB2 \u0CA8\u0CC0\u0CA1\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  hintPhrase2: "\u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C85\u0CB5\u0CB0 340 \u0CB8\u0CBE\u0CB2, \u0CA8\u0CBF\u0CA8\u0CCD\u0CA8\u0CC6 200 \u0CA8\u0CC0\u0CA1\u0CBF\u0CA6\u0CCD\u0CA6\u0CB0\u0CC1",
+  hintPhrase3: "\u0CB0\u0CAE\u0CC7\u0CB6\u0CCD \u0C85\u0CB5\u0CB0 \u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF?",
+  creditGivenTodaySub: "\u0C87\u0C82\u0CA6\u0CC1 \u0CA8\u0CC0\u0CA1\u0CBF\u0CA6 \u0CB8\u0CBE\u0CB2",
+  paymentReceivedTodaySub: "\u0C87\u0C82\u0CA6\u0CC1 \u0CB8\u0CCD\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CBF\u0CA6 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF",
+  marketPending: "\u0CAC\u0CBE\u0C95\u0CBF \u0CAC\u0CB0\u0CAC\u0CC7\u0C95\u0CBE\u0CA6\u0CA6\u0CCD\u0CA6\u0CC1",
+  last5Entries: "\u0C95\u0CB3\u0CC6\u0CA6 5 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1",
+  noEntriesYetPrompt: "\u0C87\u0CA8\u0CCD\u0CA8\u0CC2 \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CB2\u0CC6\u0C95\u0CCD\u0C95 \u0CA6\u0CBE\u0C96\u0CB2\u0CBE\u0C97\u0CBF\u0CB2\u0CCD\u0CB2. \u0CAE\u0CC8\u0C95\u0CCD \u0C92\u0CA4\u0CCD\u0CA4\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF!",
+  creditBadge: "\u0CB8\u0CBE\u0CB2",
+  paymentBadge: "\u0CAA\u0CBE\u0CB5\u0CA4\u0CBF",
+  udhaar: "\u0CB8\u0CBE\u0CB2",
+  jama: "\u0CAA\u0CBE\u0CB5\u0CA4\u0CBF",
+  customersCountSorted: "{count} \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1 \u2022 \u0C97\u0CB0\u0CBF\u0CB7\u0CCD\u0CA0 \u0CAC\u0CBE\u0C95\u0CBF \u0CAA\u0CCD\u0CB0\u0C95\u0CBE\u0CB0",
+  noCustomersYet: "\u0C87\u0CA8\u0CCD\u0CA8\u0CC2 \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0CB2\u0CCD\u0CB2",
+  noCustomersDescription: "\u0C87\u0CA8\u0CCD\u0CA8\u0CC2 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0CB2\u0CCD\u0CB2. \u0CAE\u0CCA\u0CA6\u0CB2 \u0CB8\u0CBE\u0CB2\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF \u0CAE\u0CC2\u0CB2\u0C95 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF.",
+  noCustomerFound: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1 \u0CB8\u0CBF\u0C97\u0CB2\u0CBF\u0CB2\u0CCD\u0CB2",
+  noMatchingCustomerQuery: '"{query}" \u0CB9\u0CC6\u0CB8\u0CB0\u0CBF\u0CA8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0CAE\u0CC2\u0CB2\u0C95 \u0CB9\u0CCA\u0CB8 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF.',
+  noCustomersInFilter: "\u0C88 \u0CAB\u0CBF\u0CB2\u0CCD\u0C9F\u0CB0\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0CB2\u0CCD\u0CB2.",
+  firstUdhaarVoice: "\u{1F3A4} \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0CAE\u0CC2\u0CB2\u0C95 \u0CAE\u0CCA\u0CA6\u0CB2 \u0CB8\u0CBE\u0CB2 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  addCustomerButton: "+ \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  addNewCustomerTitle: "\u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  addNewCustomerSubtitle: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CB8\u0CBE\u0CB2 \u0C85\u0CA5\u0CB5\u0CBE \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0C87\u0CB2\u0CCD\u0CB2\u0CA6\u0CC6 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  lastActivity: "\u0C95\u0CCA\u0CA8\u0CC6\u0CAF\u0CA6\u0CC1: {date}",
+  badgeOwes: "\u0CAC\u0CBE\u0C95\u0CBF",
+  badgeSettled: "\u0C9A\u0CC1\u0C95\u0CCD\u0CA4\u0CBE",
+  badgeNew: "\u0CB9\u0CCA\u0CB8",
+  listenBalance: "\u0C95\u0CC7\u0CB3\u0CBF",
+  lastReminderDate: "\u0C95\u0CCA\u0CA8\u0CC6\u0CAF \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6: {date}",
+  outstandingUdhaar: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF \u0CB8\u0CBE\u0CB2",
+  allSettled: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0CB2\u0CC6\u0C95\u0CCD\u0C95 \u0C9A\u0CC1\u0C95\u0CCD\u0CA4\u0CBE",
+  amountToReceive: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0C82\u0CA6 \u0CAC\u0CB0\u0CAC\u0CC7\u0C95\u0CBE\u0CA6\u0CA6\u0CCD\u0CA6\u0CC1",
+  noBalancePending: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CAC\u0CBE\u0C95\u0CBF \u0C87\u0CB2\u0CCD\u0CB2",
+  totalCreditLabel: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CB8\u0CBE\u0CB2:",
+  totalPaymentLabel: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF:",
+  sendWhatsAppReminder: "WhatsApp \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6",
+  printReceipt: "\u0CB0\u0CB6\u0CC0\u0CA6\u0CBF \u0CAE\u0CC1\u0CA6\u0CCD\u0CB0\u0CBF\u0CB8\u0CBF",
+  addUdhaarButton: "+ \u0CB8\u0CBE\u0CB2 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  addPaymentButton: "+ \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  timelineEntries: "\u0CB2\u0CC6\u0C95\u0CCD\u0C95\u0CA6 \u0C87\u0CA4\u0CBF\u0CB9\u0CBE\u0CB8 ({count} \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1)",
+  latestFirst: "\u0C87\u0CA4\u0CCD\u0CA4\u0CC0\u0C9A\u0CBF\u0CA8\u0CB5\u0CC1 \u0CAE\u0CCA\u0CA6\u0CB2\u0CC1",
+  noEntriesTitle: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CB2\u0CC6\u0C95\u0CCD\u0C95\u0CB5\u0CBF\u0CB2\u0CCD\u0CB2",
+  noEntriesCustomerDesc: "\u0C88 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0C97\u0CC6 \u0C87\u0CA8\u0CCD\u0CA8\u0CC2 \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CB5\u0CB9\u0CBF\u0CB5\u0CBE\u0C9F\u0CC1 \u0CA6\u0CBE\u0C96\u0CB2\u0CBE\u0C97\u0CBF\u0CB2\u0CCD\u0CB2.",
+  deleteEntryConfirm: "\u0CA8\u0CC0\u0CB5\u0CC1 \u0C88 \u0CA8\u0CAE\u0CC2\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0C85\u0CB3\u0CBF\u0CB8\u0CB2\u0CC1 \u0C96\u0C9A\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF \u0CAC\u0CAF\u0CB8\u0CC1\u0CB5\u0CBF\u0CB0\u0CBE?",
+  enterValidAmount: "\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CBE\u0CA8\u0CCD\u0CAF \u0CAE\u0CCA\u0CA4\u0CCD\u0CA4\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
+  entryDeletedToast: "\u0CA8\u0CAE\u0CC2\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0C85\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  customerNotFoundTitle: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1 \u0CB8\u0CBF\u0C97\u0CB2\u0CBF\u0CB2\u0CCD\u0CB2",
+  customerNotFoundDesc: "\u0C88 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1 \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CB2\u0CAD\u0CCD\u0CAF\u0CB5\u0CBF\u0CB2\u0CCD\u0CB2.",
+  viewCustomersList: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CAA\u0C9F\u0CCD\u0C9F\u0CBF \u0CB5\u0CC0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CBF",
+  customerAlreadyExists: "{name} \u0C88\u0C97\u0CBE\u0C97\u0CB2\u0CC7 \u0C85\u0CB8\u0CCD\u0CA4\u0CBF\u0CA4\u0CCD\u0CB5\u0CA6\u0CB2\u0CCD\u0CB2\u0CBF\u0CA6\u0CCD\u0CA6\u0CBE\u0CB0\u0CC6",
+  similarCustomerWarning: "\u0C87\u0CA6\u0CC7 \u0CB0\u0CC0\u0CA4\u0CBF\u0CAF \u0CB9\u0CC6\u0CB8\u0CB0\u0CBF\u0CA8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1 \u0C88\u0C97\u0CBE\u0C97\u0CB2\u0CC7 \u0C87\u0CA6\u0CCD\u0CA6\u0CBE\u0CB0\u0CC6. \u0CA8\u0CC0\u0CB5\u0CC1 \u0C85\u0CB5\u0CB0 \u0C96\u0CBE\u0CA4\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAC\u0CB3\u0CB8\u0CB2\u0CC1 \u0CAC\u0CAF\u0CB8\u0CC1\u0CB5\u0CBF\u0CB0\u0CBE?",
+  useThisOne: "\u0C87\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAC\u0CB3\u0CB8\u0CBF",
+  createAnyway: "\u0CB9\u0CCA\u0CB8\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB0\u0C9A\u0CBF\u0CB8\u0CBF",
+  customerNameLabel: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CB9\u0CC6\u0CB8\u0CB0\u0CC1",
+  mobileNumberOptional: "\u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 (\u0C90\u0C9A\u0CCD\u0C9B\u0CBF\u0C95)",
+  phoneReminderHelper: "WhatsApp \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6\u0C97\u0CB3\u0CBF\u0C97\u0CC6 \u0C89\u0CAA\u0CAF\u0CC1\u0C95\u0CCD\u0CA4 (\u0CA8\u0C82\u0CA4\u0CB0\u0CB5\u0CC2 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1).",
+  saveCustomer: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0C89\u0CB3\u0CBF\u0CB8\u0CBF",
+  saving: "\u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  enterCustomerNameError: "\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF",
+  errorSavingCustomer: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0C89\u0CB3\u0CBF\u0CB8\u0CC1\u0CB5\u0CB2\u0CCD\u0CB2\u0CBF \u0CA6\u0CCB\u0CB7",
+  dailySummarySubtitle: "\u0CA6\u0CC8\u0CA8\u0C82\u0CA6\u0CBF\u0CA8 \u0CB8\u0C82\u0C97\u0CCD\u0CB0\u0CB9\u0CA3\u0CC6 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB8\u0CBE\u0CB2\u0CA6 \u0CB8\u0CBE\u0CB0\u0CBE\u0C82\u0CB6",
+  shareSlip: "\u0CB8\u0CCD\u0CB2\u0CBF\u0CAA\u0CCD \u0CB9\u0C82\u0C9A\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CBF",
+  copied: "\u0C95\u0CBE\u0CAA\u0CBF \u0CAE\u0CBE\u0CA1\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  dateLabel: "\u0CA6\u0CBF\u0CA8\u0CBE\u0C82\u0C95:",
+  creditGivenToday: "\u0C87\u0C82\u0CA6\u0CC1 \u0CA8\u0CC0\u0CA1\u0CBF\u0CA6 \u0CB8\u0CBE\u0CB2",
+  paymentReceivedToday: "\u0C87\u0C82\u0CA6\u0CC1 \u0CB8\u0CCD\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CBF\u0CA6 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF",
+  netUdhaarIncreased: "\u0CA8\u0CBF\u0CB5\u0CCD\u0CB5\u0CB3 \u0CB8\u0CBE\u0CB2 \u0CB9\u0CC6\u0C9A\u0CCD\u0C9A\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  netUdhaarDecreased: "\u0CA8\u0CBF\u0CB5\u0CCD\u0CB5\u0CB3 \u0CB8\u0CBE\u0CB2 \u0C95\u0CA1\u0CBF\u0CAE\u0CC6\u0CAF\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  entriesCountLabel: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1",
+  activeCustomersCount: "{count} \u0CB8\u0C95\u0CCD\u0CB0\u0CBF\u0CAF \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1",
+  noDataAvailable: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CA1\u0CC7\u0C9F\u0CBE \u0CB2\u0CAD\u0CCD\u0CAF\u0CB5\u0CBF\u0CB2\u0CCD\u0CB2",
+  noDataForDate: "\u0C88 \u0CA6\u0CBF\u0CA8\u0CBE\u0C82\u0C95\u0C95\u0CCD\u0C95\u0CC6 \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CB5\u0CB9\u0CBF\u0CB5\u0CBE\u0C9F\u0CC1 \u0CB2\u0CAD\u0CCD\u0CAF\u0CB5\u0CBF\u0CB2\u0CCD\u0CB2.",
+  noPendingCustomersAllSettled: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CAC\u0CBE\u0C95\u0CBF \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0CB2\u0CCD\u0CB2. \u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0CB2\u0CC6\u0C95\u0CCD\u0C95 \u0C9A\u0CC1\u0C95\u0CCD\u0CA4\u0CBE! \u2713",
+  reviewEntryTitle: "\u0CA8\u0CAE\u0CC2\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAA\u0CB0\u0CBF\u0CB6\u0CC0\u0CB2\u0CBF\u0CB8\u0CBF",
+  duplicateEntryWarningTitle: "\u0C87\u0CA6\u0CC7 \u0CB0\u0CC0\u0CA4\u0CBF\u0CAF \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1 \u0C87\u0CA4\u0CCD\u0CA4\u0CC0\u0C9A\u0CC6\u0C97\u0CB7\u0CCD\u0C9F\u0CC7 \u0CA6\u0CBE\u0C96\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6. \u0CAE\u0CA4\u0CCD\u0CA4\u0CC6 \u0C89\u0CB3\u0CBF\u0CB8\u0CC1\u0CB5\u0CC1\u0CA6\u0CC7?",
+  duplicateEntryWarningDesc: "{name} \u0C85\u0CB5\u0CB0\u0CBF\u0C97\u0CC6 \u20B9{amount} {type} \u0C95\u0CB3\u0CC6\u0CA6 10 \u0CA8\u0CBF\u0CAE\u0CBF\u0CB7\u0C97\u0CB3\u0CB2\u0CCD\u0CB2\u0CBF \u0CA6\u0CBE\u0C96\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6.",
+  saveAnyway: "\u0CB9\u0CC7\u0C97\u0CBE\u0CA6\u0CB0\u0CC2 \u0C89\u0CB3\u0CBF\u0CB8\u0CBF",
+  correctByVoice: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF\u0CBF\u0C82\u0CA6 \u0CB8\u0CB0\u0CBF\u0CAA\u0CA1\u0CBF\u0CB8\u0CBF",
+  listeningTapToStop: "\u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC7\u0CB5\u0CC6... (\u0CA8\u0CBF\u0CB2\u0CCD\u0CB2\u0CBF\u0CB8\u0CB2\u0CC1 \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF)",
+  confirmAndSave: "\u0CA6\u0CC3\u0CA2\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CBF \u0C89\u0CB3\u0CBF\u0CB8\u0CBF",
+  voiceSavingCommand: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C86\u0CA6\u0CC7\u0CB6\u0CA6\u0CBF\u0C82\u0CA6 \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  voiceCancelledCommand: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF \u0CAE\u0CC2\u0CB2\u0C95 \u0CB0\u0CA6\u0CCD\u0CA6\u0CC1\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  voiceAmountUpdated: "\u0CAE\u0CCA\u0CA4\u0CCD\u0CA4\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u20B9{amount} \u0C97\u0CC6 \u0CA8\u0CB5\u0CC0\u0C95\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  amountInRupees: "\u0CAE\u0CCA\u0CA4\u0CCD\u0CA4 (\u20B9 \u0C97\u0CB3\u0CB2\u0CCD\u0CB2\u0CBF)",
+  relativeToday: "\u0C87\u0C82\u0CA6\u0CC1",
+  relativeYesterday: "\u0CA8\u0CBF\u0CA8\u0CCD\u0CA8\u0CC6",
+  relativeDayBefore: "\u0CAE\u0CCA\u0CA8\u0CCD\u0CA8\u0CC6",
+  pickDate: "\u0CA6\u0CBF\u0CA8\u0CBE\u0C82\u0C95 \u0C86\u0CAF\u0CCD\u0C95\u0CC6\u0CAE\u0CBE\u0CA1\u0CBF",
+  notePlaceholder: "\u0C9F\u0CBF\u0CAA\u0CCD\u0CAA\u0CA3\u0CBF (\u0C89\u0CA6\u0CBE. \u0CB9\u0CBE\u0CB2\u0CC1, \u0CB8\u0C95\u0CCD\u0C95\u0CB0\u0CC6, \u0CAC\u0CC7\u0CB3\u0CC6)",
+  balanceInquiryTitle: "\u0C96\u0CBE\u0CA4\u0CC6 \u0CAC\u0CBE\u0C95\u0CBF \u0CB5\u0CBF\u0C9A\u0CBE\u0CB0\u0CA3\u0CC6",
+  balancePendingUdhaar: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF \u0CB8\u0CBE\u0CB2",
+  advancePayment: "\u0CAE\u0CC1\u0C82\u0C97\u0CA1 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF",
+  speaking: "\u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CBE\u0CB0\u0CC6...",
+  replayVoice: "\u0C95\u0CC7\u0CB3\u0CBF",
+  allClear: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CB5\u0CC2 \u0C9A\u0CC1\u0C95\u0CCD\u0CA4\u0CBE \u2713",
+  last3Transactions: "\u0C95\u0CCA\u0CA8\u0CC6\u0CAF 3 \u0CB5\u0CB9\u0CBF\u0CB5\u0CBE\u0C9F\u0CC1\u0C97\u0CB3\u0CC1",
+  noPreviousTransactions: "\u0CB9\u0CBF\u0C82\u0CA6\u0CBF\u0CA8 \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CB5\u0CB9\u0CBF\u0CB5\u0CBE\u0C9F\u0CC1\u0C97\u0CB3\u0CC1 \u0C95\u0C82\u0CA1\u0CC1\u0CAC\u0C82\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2",
+  viewKhata: "\u0C96\u0CBE\u0CA4\u0CC6 \u0CB5\u0CC0\u0C95\u0CCD\u0CB7\u0CBF\u0CB8\u0CBF",
+  whichCustomerAskDigits: "\u0CAF\u0CBE\u0CB5 {name}? \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF \u0C95\u0CCA\u0CA8\u0CC6\u0CAF 4 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA4\u0CBF\u0CB3\u0CBF\u0CB8\u0CBF.",
+  sameLastDigitsAskMore: "\u0C87\u0CAC\u0CCD\u0CAC\u0CB0 \u0C95\u0CCA\u0CA8\u0CC6\u0CAF \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CC2 \u0C92\u0C82\u0CA6\u0CC7 \u0C86\u0C97\u0CBF\u0CB5\u0CC6. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0C95\u0CCA\u0CA8\u0CC6\u0CAF {count} \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA4\u0CBF\u0CB3\u0CBF\u0CB8\u0CBF.",
+  numberNotFoundRetry: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C95\u0C82\u0CA1\u0CC1\u0CAC\u0C82\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CCA\u0CAE\u0CCD\u0CAE\u0CC6 \u0CB9\u0CC7\u0CB3\u0CBF.",
+  numberNotFoundTapCard: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0C95\u0C82\u0CA1\u0CC1\u0CAC\u0C82\u0CA6\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0C95\u0CBE\u0CB0\u0CCD\u0CA1\u0CCD \u0CAE\u0CC7\u0CB2\u0CC6 \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF.",
+  newCustomerAddedToast: "\u0CB9\u0CCA\u0CB8 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6: {name}",
+  entrySavedSuccess: "{name} \u0C85\u0CB5\u0CB0 {type} \u0CAF\u0CB6\u0CB8\u0CCD\u0CB5\u0CBF\u0CAF\u0CBE\u0C97\u0CBF \u0CA6\u0CBE\u0C96\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
+  multiEntriesSavedSuccess: "{count} \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1 \u0CAF\u0CB6\u0CB8\u0CCD\u0CB5\u0CBF\u0CAF\u0CBE\u0C97\u0CBF \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
+  didNotUnderstandRepeat: "\u0C85\u0CB0\u0CCD\u0CA5\u0CB5\u0CBE\u0C97\u0CB2\u0CBF\u0CB2\u0CCD\u0CB2. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CCA\u0CAE\u0CCD\u0CAE\u0CC6 \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF.",
+  languageChangedToast: "\u0CAD\u0CBE\u0CB7\u0CC6 \u0CAC\u0CA6\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6: {lang}",
+  speechLanguageChangedToast: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0CAD\u0CBE\u0CB7\u0CC6: {lang}",
+  offlineModeNoticeTitle: "\u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD \u0CAE\u0CCB\u0CA1\u0CCD",
+  offlineModeNoticeDesc: "\u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD 100% \u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0C95\u0CBE\u0CB0\u0CCD\u0CAF\u0CA8\u0CBF\u0CB0\u0CCD\u0CB5\u0CB9\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6. \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C97\u0CC1\u0CB0\u0CC1\u0CA4\u0CBF\u0CB8\u0CC1\u0CB5\u0CBF\u0C95\u0CC6\u0C97\u0CC6 \u0C87\u0C82\u0C9F\u0CB0\u0CCD\u0CA8\u0CC6\u0C9F\u0CCD \u0CAC\u0CC7\u0C95\u0CBE\u0C97\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1; \u0C9F\u0CC8\u0CAA\u0CBF\u0C82\u0C97\u0CCD \u0CAC\u0CB3\u0CB8\u0CBF.",
+  networkDisconnected: "\u0CA8\u0CC6\u0C9F\u0CCD\u200C\u0CB5\u0CB0\u0CCD\u0C95\u0CCD \u0CB8\u0C82\u0CAA\u0CB0\u0CCD\u0C95 \u0C95\u0CA1\u0CBF\u0CA4\u0C97\u0CCA\u0C82\u0CA1\u0CBF\u0CA6\u0CC6",
+  pinIncorrect: "\u0CA4\u0CAA\u0CCD\u0CAA\u0CC1 \u0CAA\u0CBF\u0CA8\u0CCD! \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC6 \u0CAA\u0CCD\u0CB0\u0CAF\u0CA4\u0CCD\u0CA8\u0CBF\u0CB8\u0CBF.",
+  pinLockedMessage: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD AES-256 \u0C8E\u0CA8\u0CCD\u200C\u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0C9F\u0CCD \u0C86\u0C97\u0CBF\u0CA6\u0CC6. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAA\u0CBF\u0CA8\u0CCD \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF:",
+  pinResetConfirm: "\u0CB9\u0CCC\u0CA6\u0CC1, \u0CAE\u0CB0\u0CC1\u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF",
+  totalUdhaar: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CB8\u0CBE\u0CB2",
+  totalJama: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF",
+  totalBalance: "\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF",
+  udhaarAdded: "\u0CB8\u0CBE\u0CB2 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  savePhoneToProfileHint: "\u0C92\u0CAE\u0CCD\u0CAE\u0CC6 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF\u0CA6\u0CB0\u0CC6, \u0C87\u0CA6\u0CC1 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CAA\u0CCD\u0CB0\u0CCA\u0CAB\u0CC8\u0CB2\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0C89\u0CB3\u0CBF\u0CAF\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6.",
+  numberClearedSpeakAgain: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CA4\u0CC6\u0CB0\u0CB5\u0CC1\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC6 \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0C95\u0CC0\u0CAA\u0CCD\u0CAF\u0CBE\u0CA1\u0CCD \u0CAC\u0CB3\u0CB8\u0CBF.",
+  pendingEntrySavedAfterReg: "\u0CA8\u0CCB\u0C82\u0CA6\u0CA3\u0CBF\u0CAF \u0CA8\u0C82\u0CA4\u0CB0 \u20B9{amount} {type} \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CB5\u0CC1\u0CA6\u0CC1",
+  recentEntriesReceipt: "\u0C87\u0CA4\u0CCD\u0CA4\u0CC0\u0C9A\u0CBF\u0CA8 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1\u0C97\u0CB3\u0CC1:",
+  numeralScriptLabel: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6 \u0CB2\u0CBF\u0CAA\u0CBF",
+  numeralScriptDesc: "\u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0C87\u0C82\u0C97\u0CCD\u0CB2\u0CBF\u0CB7\u0CCD (1, 2, 3) \u0C85\u0CA5\u0CB5\u0CBE \u0C95\u0CA8\u0CCD\u0CA8\u0CA1 \u0CB2\u0CBF\u0CAA\u0CBF\u0CAF\u0CB2\u0CCD\u0CB2\u0CBF \u0CA4\u0CCB\u0CB0\u0CBF\u0CB8\u0CBF",
+  scriptLatin: "\u0C87\u0C82\u0C97\u0CCD\u0CB2\u0CBF\u0CB7\u0CCD (1, 2, 3)",
+  scriptNative: "\u0C95\u0CA8\u0CCD\u0CA8\u0CA1 (\u0CE7, \u0CE8, \u0CE9)",
+  invalidPhoneError: "\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAE\u0CBE\u0CA8\u0CCD\u0CAF\u0CB5\u0CBE\u0CA6 10-\u0C85\u0C82\u0C95\u0CBF\u0CAF \u0CAD\u0CBE\u0CB0\u0CA4\u0CC0\u0CAF \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF (6-9 \u0CB0\u0CBF\u0C82\u0CA6 \u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD)",
+  speakNamePrompt: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CB9\u0CC6\u0CB8\u0CB0\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF...",
+  phoneHelpText: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6\u0C97\u0CC6 \u0C89\u0CAA\u0CAF\u0CC1\u0C95\u0CCD\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6 (\u0CA8\u0C82\u0CA4\u0CB0\u0CB5\u0CC2 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1).",
+  manualEntryTitle: "\u0CB9\u0CB8\u0CCD\u0CA4\u0C9A\u0CBE\u0CB2\u0CBF\u0CA4 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1 (\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF\u0CBF\u0CB2\u0CCD\u0CB2\u0CA6\u0CC6)",
+  today: "\u0C87\u0C82\u0CA6\u0CC1",
+  yesterday: "\u0CA8\u0CBF\u0CA8\u0CCD\u0CA8\u0CC6",
+  dayBeforeYesterday: "\u0CAE\u0CCA\u0CA8\u0CCD\u0CA8\u0CC6",
+  baakiOwed: "\u0CAC\u0CBE\u0C95\u0CBF",
+  listenReplay: "\u0C95\u0CC7\u0CB3\u0CBF",
+  sendReminder: "\u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6 \u0C95\u0CB3\u0CC1\u0CB9\u0CBF\u0CB8\u0CBF",
+  active: "\u0CB8\u0C95\u0CCD\u0CB0\u0CBF\u0CAF",
+  noRecentActivity: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0C87\u0CA4\u0CCD\u0CA4\u0CC0\u0C9A\u0CBF\u0CA8 \u0C9A\u0C9F\u0CC1\u0CB5\u0C9F\u0CBF\u0C95\u0CC6 \u0C87\u0CB2\u0CCD\u0CB2",
+  listeningDigitsPrompt: "\u0C86\u0CB2\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6... \u0C95\u0CCA\u0CA8\u0CC6\u0CAF 4 \u0C85\u0C82\u0C95\u0CBF\u0C97\u0CB3\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB9\u0CC7\u0CB3\u0CBF",
+  tapCardOrMic: "\u0C95\u0CBE\u0CB0\u0CCD\u0CA1\u0CCD \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CAE\u0CA4\u0CCD\u0CA4\u0CC6 \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CB2\u0CC1 \u0CAE\u0CC8\u0C95\u0CCD \u0C92\u0CA4\u0CCD\u0CA4\u0CBF",
+  first: "\u0CAE\u0CCA\u0CA6\u0CB2\u0CA8\u0CC6\u0CAF\u0CA6\u0CC1",
+  second: "\u0C8E\u0CB0\u0CA1\u0CA8\u0CC6\u0CAF\u0CA6\u0CC1",
+  qrSaveError: "QR \u0C95\u0CCB\u0CA1\u0CCD \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CC1 \u0CB8\u0CBE\u0CA7\u0CCD\u0CAF\u0CB5\u0CBE\u0C97\u0CB2\u0CBF\u0CB2\u0CCD\u0CB2",
+  khataStatementSlip: "\u0C96\u0CBE\u0CA4\u0CC6 \u0CB5\u0CBF\u0CB5\u0CB0 \u0CB0\u0CB8\u0CC0\u0CA6\u0CBF",
+  thankYouShopping: "\u0CB5\u0CCD\u0CAF\u0CBE\u0CAA\u0CBE\u0CB0\u0C95\u0CCD\u0C95\u0CBE\u0C97\u0CBF \u0CA7\u0CA8\u0CCD\u0CAF\u0CB5\u0CBE\u0CA6\u0C97\u0CB3\u0CC1! \u{1F64F}",
+  receiptSharedSuccess: "\u0CB0\u0CB8\u0CC0\u0CA6\u0CBF\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAF\u0CB6\u0CB8\u0CCD\u0CB5\u0CBF\u0CAF\u0CBE\u0C97\u0CBF \u0CB9\u0C82\u0C9A\u0CBF\u0C95\u0CCA\u0CB3\u0CCD\u0CB3\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
+  receiptCopiedSuccess: "\u0CB0\u0CB8\u0CC0\u0CA6\u0CBF\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0C95\u0CCD\u0CB2\u0CBF\u0CAA\u0CCD\u200C\u0CAC\u0CCB\u0CB0\u0CCD\u0CA1\u0CCD\u200C\u0C97\u0CC6 \u0CA8\u0C95\u0CB2\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
+  whatsappPhoneNumber: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD \u0CB8\u0C82\u0C96\u0CCD\u0CAF\u0CC6",
+  selectTemplateLanguage: "\u0C9F\u0CC6\u0C82\u0CAA\u0CCD\u0CB2\u0CC7\u0C9F\u0CCD \u0CAD\u0CBE\u0CB7\u0CC6 \u0C86\u0CAF\u0CCD\u0C95\u0CC6\u0CAE\u0CBE\u0CA1\u0CBF",
+  messagePreview: "\u0CB8\u0C82\u0CA6\u0CC7\u0CB6 \u0CAA\u0CC2\u0CB0\u0CCD\u0CB5\u0CB5\u0CC0\u0C95\u0CCD\u0CB7\u0CA3\u0CC6 (\u0CB8\u0C82\u0CAA\u0CBE\u0CA6\u0CBF\u0CB8\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1)",
+  messageCopiedToast: "\u0CB8\u0C82\u0CA6\u0CC7\u0CB6 \u0CA8\u0C95\u0CB2\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6!",
+  offlineSabChalega: "\u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD \u2013 \u0C8E\u0CB2\u0CCD\u0CB2\u0CB5\u0CC2 \u0C95\u0CBE\u0CB0\u0CCD\u0CAF\u0CA8\u0CBF\u0CB0\u0CCD\u0CB5\u0CB9\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6",
+  offlineSafeMessage: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD 100% \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0C88 \u0CB8\u0CBE\u0CA7\u0CA8\u0CA6\u0CB2\u0CCD\u0CB2\u0CBF \u0C89\u0CB3\u0CBF\u0CAF\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6.",
+  offlineMicWarning: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C97\u0CC1\u0CB0\u0CC1\u0CA4\u0CBF\u0CB8\u0CC1\u0CB5\u0CBF\u0C95\u0CC6\u0C97\u0CC6 \u0C87\u0C82\u0C9F\u0CB0\u0CCD\u0CA8\u0CC6\u0C9F\u0CCD \u0CAC\u0CC7\u0C95\u0CBE\u0C97\u0CAC\u0CB9\u0CC1\u0CA6\u0CC1. \u0CAE\u0CC8\u0C95\u0CCD \u0C95\u0CC6\u0CB2\u0CB8 \u0CAE\u0CBE\u0CA1\u0CA6\u0CBF\u0CA6\u0CCD\u0CA6\u0CB0\u0CC6, '\u0C9F\u0CC8\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF' \u0CAC\u0CB3\u0CB8\u0CBF.",
+  openTypeInstead: "'\u0C9F\u0CC8\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF' \u0CA4\u0CC6\u0CB0\u0CC6\u0CAF\u0CBF\u0CB0\u0CBF",
+  gotIt: "\u0CB8\u0CB0\u0CBF, \u0C85\u0CB0\u0CCD\u0CA5\u0CB5\u0CBE\u0CAF\u0CBF\u0CA4\u0CC1",
+  pinLockedNotice: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD AES-256 \u0C8E\u0CA8\u0CCD\u200C\u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0C9F\u0CCD \u0C86\u0C97\u0CBF\u0CA6\u0CC6. \u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAA\u0CBF\u0CA8\u0CCD \u0CA8\u0CAE\u0CC2\u0CA6\u0CBF\u0CB8\u0CBF:",
+  pinCryptoLockDesc: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0CA6\u0CBE\u0C96\u0CB2\u0CC6\u0C97\u0CB3\u0CC1 \u0CB5\u0CC6\u0CAC\u0CCD \u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0C9F\u0CCB (AES-256 GCM) \u0CAE\u0CC2\u0CB2\u0C95 \u0C8E\u0CA8\u0CCD\u200C\u0C95\u0CCD\u0CB0\u0CBF\u0CAA\u0CCD\u0C9F\u0CCD \u0C86\u0C97\u0CBF\u0CB5\u0CC6.",
+  yesReset: "\u0CB9\u0CCC\u0CA6\u0CC1, \u0CAE\u0CB0\u0CC1\u0CB9\u0CCA\u0C82\u0CA6\u0CBF\u0CB8\u0CBF",
+  dailySummarySub: "\u0CA6\u0CC8\u0CA8\u0C82\u0CA6\u0CBF\u0CA8 \u0CB8\u0C82\u0C97\u0CCD\u0CB0\u0CB9\u0CA3\u0CC6 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CB8\u0CBE\u0CB2\u0CA6 \u0CB8\u0CBE\u0CB0\u0CBE\u0C82\u0CB6",
+  activeCustomersLabel: "\u0CB8\u0C95\u0CCD\u0CB0\u0CBF\u0CAF \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CC1",
+  noDataAvailableDesc: "\u0C88 \u0CA6\u0CBF\u0CA8\u0CBE\u0C82\u0C95\u0C95\u0CCD\u0C95\u0CC6 \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CA8\u0CAE\u0CC2\u0CA6\u0CC1 \u0CA6\u0CBE\u0C96\u0CB2\u0CBE\u0C97\u0CBF\u0CB2\u0CCD\u0CB2.",
+  noPendingUdhaarAllSettled: "\u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0CAC\u0CBE\u0C95\u0CBF \u0CB8\u0CBE\u0CB2\u0CB5\u0CBF\u0CB2\u0CCD\u0CB2. \u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0C96\u0CBE\u0CA4\u0CC6\u0C97\u0CB3\u0CC1 \u0C87\u0CA4\u0CCD\u0CAF\u0CB0\u0CCD\u0CA5\u0CB5\u0CBE\u0C97\u0CBF\u0CB5\u0CC6! \u2713",
+  zeroBalance: "\u0C8E\u0CB2\u0CCD\u0CB2\u0CB5\u0CC2 \u0C87\u0CA4\u0CCD\u0CAF\u0CB0\u0CCD\u0CA5\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6, \u0CB6\u0CC2\u0CA8\u0CCD\u0CAF \u0CAC\u0CBE\u0C95\u0CBF",
+  khataTimeline: "\u0C96\u0CBE\u0CA4\u0CC6 \u0C95\u0CBE\u0CB2\u0CBE\u0CB5\u0CA7\u0CBF",
+  saveEntry: "\u0CA8\u0CAE\u0CC2\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0C89\u0CB3\u0CBF\u0CB8\u0CBF",
+  addUdhaar: "+ \u0CB8\u0CBE\u0CB2 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  addPayment: "+ \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  addEntry: "\u0CA8\u0CAE\u0CC2\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  noteOptional: "\u0C9F\u0CBF\u0CAA\u0CCD\u0CAA\u0CA3\u0CBF (\u0C90\u0C9A\u0CCD\u0C9B\u0CBF\u0C95)",
+  whatsappReminder: "\u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD",
+  lastReminder: "\u0C95\u0CCA\u0CA8\u0CC6\u0CAF \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6",
+  savingByVoice: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C86\u0CA6\u0CC7\u0CB6\u0CA6\u0CBF\u0C82\u0CA6 \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CC6...",
+  cancelledByVoice: "\u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF\u0CBF\u0C82\u0CA6 \u0CB0\u0CA6\u0CCD\u0CA6\u0CC1\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CB2\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  noCustomersEmptyState: "\u0C87\u0CA8\u0CCD\u0CA8\u0CC2 \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC7 \u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0\u0CBF\u0CB2\u0CCD\u0CB2. \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CC1\u0CB5 \u0CAE\u0CC2\u0CB2\u0C95 \u0CAE\u0CCA\u0CA6\u0CB2 \u0CB8\u0CBE\u0CB2\u0CB5\u0CA8\u0CCD\u0CA8\u0CC1 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  addFirstUdhaarVoice: "\u{1F3A4} \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF \u0CAE\u0CC2\u0CB2\u0C95 \u0CAE\u0CCA\u0CA6\u0CB2 \u0CB8\u0CBE\u0CB2 \u0CB8\u0CC7\u0CB0\u0CBF\u0CB8\u0CBF",
+  onboardingStep1Title: "1. \u0CAE\u0CC8\u0C95\u0CCD \u0C92\u0CA4\u0CCD\u0CA4\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF",
+  onboardingStep1Desc: "\u0C85\u0C82\u0C97\u0CA1\u0CBF\u0CAF \u0C95\u0CCC\u0C82\u0C9F\u0CB0\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0C95\u0CC8\u0C97\u0CB3\u0CC1 \u0C95\u0CBE\u0CB0\u0CCD\u0CAF\u0CA8\u0CBF\u0CB0\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CB5\u0CC6\u0CAF\u0CC7? \u0CAE\u0CC8\u0C95\u0CCD \u0C92\u0CA4\u0CCD\u0CA4\u0CBF \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAD\u0CBE\u0CB7\u0CC6\u0CAF\u0CB2\u0CCD\u0CB2\u0CBF \u0CAE\u0CBE\u0CA4\u0CA8\u0CBE\u0CA1\u0CBF.",
+  onboardingStep2Title: "2. \u0CAA\u0CB0\u0CA6\u0CC6\u0CAF \u0CAE\u0CC7\u0CB2\u0CC6 \u0CAA\u0CC2\u0CB0\u0CCD\u0CB5\u0CB5\u0CC0\u0C95\u0CCD\u0CB7\u0CA3\u0CC6 \u0CA8\u0CCB\u0CA1\u0CBF",
+  onboardingStep2Desc: "\u0C86\u0CCD\u0CAF\u0CAA\u0CCD \u0CA4\u0C95\u0CCD\u0CB7\u0CA3 \u0CA8\u0CAE\u0CC2\u0CA6\u0CA8\u0CCD\u0CA8\u0CC1 \u0CA4\u0CCB\u0CB0\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6. \u0C89\u0CB3\u0CBF\u0CB8\u0CB2\u0CC1 \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD \u0CAE\u0CBE\u0CA1\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF\u0CAF\u0CBF\u0C82\u0CA6 \u0CB8\u0CB0\u0CBF\u0CAA\u0CA1\u0CBF\u0CB8\u0CBF.",
+  onboardingStep3Title: "3. \u0CA4\u0C95\u0CCD\u0CB7\u0CA3\u0CA6 \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6\u0C97\u0CB3\u0CC1",
+  onboardingStep3Desc: "\u0C97\u0CCD\u0CB0\u0CBE\u0CB9\u0C95\u0CB0 \u0CB2\u0CC6\u0CA1\u0CCD\u0C9C\u0CB0\u0CCD \u0CA4\u0C95\u0CCD\u0CB7\u0CA3 \u0C85\u0CAA\u0CCD\u200C\u0CA1\u0CC7\u0C9F\u0CCD \u0C86\u0C97\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6! \u0CB5\u0CBE\u0C9F\u0CCD\u0CB8\u0CBE\u0CAA\u0CCD \u0C9C\u0CCD\u0C9E\u0CBE\u0CAA\u0CA8\u0CC6 \u0C95\u0CB3\u0CC1\u0CB9\u0CBF\u0CB8\u0CBF \u0C85\u0CA5\u0CB5\u0CBE \u0CB0\u0CB8\u0CC0\u0CA6\u0CBF \u0CAE\u0CC1\u0CA6\u0CCD\u0CB0\u0CBF\u0CB8\u0CBF.",
+  grantMicAndStart: "\u0CAE\u0CC8\u0C95\u0CCD \u0C85\u0CA8\u0CC1\u0CAE\u0CA4\u0CBF \u0CA8\u0CC0\u0CA1\u0CBF \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 \u0CAA\u0CCD\u0CB0\u0CBE\u0CB0\u0C82\u0CAD\u0CBF\u0CB8\u0CBF",
+  installAppTitle: "\u0C85\u0CAA\u0CCD\u0CB2\u0CBF\u0C95\u0CC7\u0CB6\u0CA8\u0CCD \u0CB8\u0CCD\u0CA5\u0CBE\u0CAA\u0CBF\u0CB8\u0CBF (\u0CAE\u0CC1\u0C96\u0CAA\u0CC1\u0C9F)",
+  installAppSub: "\u0CB5\u0CC7\u0C97 \u0CAE\u0CA4\u0CCD\u0CA4\u0CC1 100% \u0C86\u0CAB\u0CCD\u200C\u0CB2\u0CC8\u0CA8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0C95\u0CBE\u0CB0\u0CCD\u0CAF\u0CA8\u0CBF\u0CB0\u0CCD\u0CB5\u0CB9\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CA6\u0CC6 \u2022 1 \u0C9F\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0C96\u0CBE\u0CA4\u0CC6",
+  install: "\u0CB8\u0CCD\u0CA5\u0CBE\u0CAA\u0CBF\u0CB8\u0CBF",
+  errorBoundaryTitle: "\u0C8F\u0CA8\u0CCB \u0CA4\u0CAA\u0CCD\u0CAA\u0CBE\u0C97\u0CBF\u0CA6\u0CC6",
+  errorBoundarySub: "\u0C8F\u0CA8\u0CCB \u0CA4\u0CAA\u0CCD\u0CAA\u0CBE\u0C97\u0CBF\u0CA6\u0CC6, \u0C86\u0CA6\u0CB0\u0CC6 \u0C9A\u0CBF\u0C82\u0CA4\u0CBF\u0CB8\u0CAC\u0CC7\u0CA1\u0CBF!",
+  errorBoundarySafety: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0C8E\u0CB2\u0CCD\u0CB2\u0CBE \u0C96\u0CBE\u0CA4\u0CBE \u0CA1\u0CC7\u0C9F\u0CBE \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CAB\u0CCB\u0CA8\u0CCD\u200C\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF \u0CB8\u0CC1\u0CB0\u0C95\u0CCD\u0CB7\u0CBF\u0CA4\u0CB5\u0CBE\u0C97\u0CBF\u0CA6\u0CC6 (IndexedDB). \u0CAF\u0CBE\u0CB5\u0CC1\u0CA6\u0CC2 \u0C95\u0CB3\u0CC6\u0CA6\u0CC1\u0CB9\u0CCB\u0C97\u0CBF\u0CB2\u0CCD\u0CB2.",
+  retryButton: "\u0CAE\u0CA4\u0CCD\u0CA4\u0CC6 \u0CAA\u0CCD\u0CB0\u0CAF\u0CA4\u0CCD\u0CA8\u0CBF\u0CB8\u0CBF",
+  goHomeButton: "\u0CAE\u0CC1\u0C96\u0CAA\u0CC1\u0C9F\u0C95\u0CCD\u0C95\u0CC6 \u0CB9\u0CCB\u0C97\u0CBF",
+  technicalDetails: "\u0CA4\u0CBE\u0C82\u0CA4\u0CCD\u0CB0\u0CBF\u0C95 \u0CA6\u0CCB\u0CB7 \u0CB5\u0CBF\u0CB5\u0CB0\u0C97\u0CB3\u0CC1"
+};
+
+// src/i18n/locales/ta.json
+var ta_default = {
+  appName: "Udhaar Sathi (\u0B89\u0BA4\u0BBE\u0BB0\u0BCD \u0B9A\u0BBE\u0BA4\u0BBF)",
+  tagline: "\u0BAA\u0BC7\u0B9A\u0BBF \u0B95\u0B9F\u0BA9\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  online: "\u0B86\u0BA9\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD",
+  offlineSafe: "\u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0BA9\u0BA4\u0BC1 (\u0BB2\u0BCB\u0B95\u0BCD\u0B95\u0BB2\u0BCD)",
+  navHome: "\u0BAE\u0BC1\u0B95\u0BAA\u0BCD\u0BAA\u0BC1 (\u0BAE\u0BC8\u0B95\u0BCD)",
+  navCustomers: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD",
+  navSummary: "\u0BA4\u0BBF\u0BA9\u0B9A\u0BB0\u0BBF \u0B9A\u0BC1\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BAE\u0BCD",
+  navSettings: "\u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BCD",
+  navStyleguide: "\u0BB5\u0B9F\u0BBF\u0BB5\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1",
+  save: "\u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95",
+  cancel: "\u0BB0\u0BA4\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD",
+  delete: "\u0BA8\u0BC0\u0B95\u0BCD\u0B95\u0BC1",
+  edit: "\u0BA4\u0BBF\u0BB0\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1",
+  close: "\u0BAE\u0BC2\u0B9F\u0BC1",
+  search: "\u0BA4\u0BC7\u0B9F\u0BC1",
+  back: "\u0BAA\u0BBF\u0BA9\u0BCD\u0B9A\u0BC6\u0BB2\u0BCD",
+  done: "\u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
+  creditGiven: "\u0B95\u0B9F\u0BA9\u0BCD \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BA4\u0BC1",
+  paymentReceived: "\u0BAA\u0BA3\u0BAE\u0BCD \u0BB5\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
+  balanceOwed: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
+  netBalance: "\u0BA8\u0BBF\u0B95\u0BB0 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
+  todaySummary: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC8\u0BAF \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1",
+  recentEntries: "\u0B9A\u0BAE\u0BC0\u0BAA\u0BA4\u0BCD\u0BA4\u0BBF\u0BAF \u0B89\u0BB3\u0BCD\u0BB3\u0BC0\u0B9F\u0BC1\u0B95\u0BB3\u0BCD",
+  noEntries: "\u0B87\u0BA9\u0BCD\u0BA9\u0BC1\u0BAE\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8",
+  micIdle: "\u0BAE\u0BC8\u0B95\u0BCD \u0B85\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BBF \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  micListening: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1... \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  micProcessing: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBF\u0B9F\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  micError: "\u0BA4\u0BC6\u0BB3\u0BBF\u0BB5\u0BBE\u0B95 \u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAE\u0BC1\u0BAF\u0BB1\u0BCD\u0B9A\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.",
+  typeInstead: "\u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BB5\u0BC1\u0BAE\u0BCD",
+  trySpeaking: "\u0BAA\u0BC7\u0B9A\u0BBF\u0BAA\u0BCD \u0BAA\u0BBE\u0BB0\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD:",
+  customersTitle: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1",
+  searchCustomerPlaceholder: "\u0BAA\u0BC6\u0BAF\u0BB0\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0BA4\u0BC7\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD...",
+  filterAll: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1\u0BAE\u0BCD",
+  filterOwes: "\u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0B89\u0BB3\u0BCD\u0BB3\u0BB5\u0BB0\u0BCD\u0B95\u0BB3\u0BCD",
+  filterSettled: "\u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
+  addJama: "+ \u0BAA\u0BA3\u0BAE\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD",
+  printSlip: "\u0BB0\u0B9A\u0BC0\u0BA4\u0BC1 \u0B85\u0B9A\u0BCD\u0B9A\u0BBF\u0B9F\u0BC1\u0B95",
+  sendWhatsApp: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD",
+  summaryTitle: "\u0BA4\u0BBF\u0BA9\u0B9A\u0BB0\u0BBF \u0B9A\u0BC1\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BAE\u0BCD",
+  todayUdhaar: "\u0B95\u0B9F\u0BA9\u0BCD \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BA4\u0BC1",
+  todayJama: "\u0BAA\u0BA3\u0BAE\u0BCD \u0BB5\u0BB0\u0BB5\u0BC1",
+  todayNet: "\u0BA8\u0BBF\u0B95\u0BB0 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BAE\u0BCD",
+  weeklyTrend: "\u0B95\u0B9F\u0BA8\u0BCD\u0BA4 7 \u0BA8\u0BBE\u0B9F\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BCB\u0B95\u0BCD\u0B95\u0BC1",
+  topPending: "\u0B85\u0BA4\u0BBF\u0B95 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0B89\u0BB3\u0BCD\u0BB3\u0BB5\u0BB0\u0BCD\u0B95\u0BB3\u0BCD",
+  settingsTitle: "\u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BCD",
+  settingsSubtitle: "\u0B95\u0B9F\u0BC8 \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BCD, \u0BAE\u0BCA\u0BB4\u0BBF, \u0B92\u0BB2\u0BBF\u0BAA\u0BCD\u0BAA\u0BC6\u0B9F\u0BCD\u0B9F\u0BBF \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BC1\u0BAA\u0BCD\u0BAA\u0BBF\u0BB0\u0BA4\u0BBF",
+  shopNameLabel: "\u0B95\u0B9F\u0BC8 \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD",
+  shopNamePlaceholder: "\u0B8E.\u0B95\u0BBE. \u0BB0\u0BAE\u0BC7\u0BB7\u0BCD \u0BAE\u0BB3\u0BBF\u0B95\u0BC8\u0B95\u0BCD \u0B95\u0B9F\u0BC8",
+  uiLanguageLabel: "\u0BA4\u0BBF\u0BB0\u0BC8 \u0BAE\u0BCA\u0BB4\u0BBF",
+  uiLanguageDesc: "\u0BAA\u0BCA\u0BA4\u0BCD\u0BA4\u0BBE\u0BA9\u0BCD\u0B95\u0BB3\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BA4\u0BBF\u0BB0\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAE\u0BCA\u0BB4\u0BBF",
+  speechLanguageLabel: "\u0BAA\u0BC7\u0B9A\u0BC1\u0BAE\u0BCD \u0BAE\u0BCA\u0BB4\u0BBF",
+  speechLanguageDesc: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B85\u0B99\u0BCD\u0B95\u0BC0\u0B95\u0BBE\u0BB0\u0BAE\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B92\u0BB2\u0BBF\u0BAA\u0BCD\u0BAA\u0BC6\u0B9F\u0BCD\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC1",
+  speechSpeedLabel: "\u0BAA\u0BC7\u0B9A\u0BCD\u0B9A\u0BC1 \u0BB5\u0BC7\u0B95\u0BAE\u0BCD (Soundbox)",
+  speedSlow: "\u0BAE\u0BC6\u0BA4\u0BC1\u0BB5\u0BBE\u0B95",
+  speedNormal: "\u0B87\u0BAF\u0BB2\u0BCD\u0BAA\u0BBE\u0BA9\u0BA4\u0BC1",
+  speedFast: "\u0BB5\u0BC7\u0B95\u0BAE\u0BBE\u0B95",
+  muteRepliesLabel: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAA\u0BA4\u0BBF\u0BB2\u0BCD\u0B95\u0BB3\u0BC8 \u0BAE\u0BC1\u0B9F\u0B95\u0BCD\u0B95\u0BC1",
+  muteRepliesDesc: "\u0BAE\u0BA3\u0BBF \u0BAE\u0B9F\u0BCD\u0B9F\u0BC1\u0BAE\u0BC7 \u0B92\u0BB2\u0BBF\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD, \u0BAA\u0BC7\u0B9A\u0BBE\u0BA4\u0BC1",
+  themeLabel: "\u0BA4\u0BC0\u0BAE\u0BCD",
+  themeLight: "\u0BB2\u0BC8\u0B9F\u0BCD \u0BA4\u0BC0\u0BAE\u0BCD",
+  themeHighContrast: "\u0BB9\u0BC8 \u0B95\u0BBE\u0BA9\u0BCD\u0B9F\u0BCD\u0BB0\u0BBE\u0BB8\u0BCD\u0B9F\u0BCD (\u0B9F\u0BBE\u0BB0\u0BCD\u0B95\u0BCD)",
+  themeDesc: "\u0BB5\u0BC6\u0BAF\u0BBF\u0BB2\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B87\u0BB0\u0BB5\u0BC1 \u0BAA\u0BBE\u0BB0\u0BCD\u0BB5\u0BC8\u0B95\u0BCD\u0B95\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1 \u0BAE\u0BBE\u0BB1\u0BC1\u0BAA\u0BBE\u0B9F\u0BC1",
+  asrEngineLabel: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B87\u0BAF\u0BA8\u0BCD\u0BA4\u0BBF\u0BB0\u0BAE\u0BCD (ASR)",
+  asrEngineDesc: "\u0BAA\u0BC7\u0B9A\u0BCD\u0B9A\u0BC8 \u0B89\u0BB0\u0BC8\u0BAF\u0BBE\u0B95 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B87\u0BAF\u0BA8\u0BCD\u0BA4\u0BBF\u0BB0\u0BAE\u0BCD",
+  asrBrowser: "\u0B89\u0BB2\u0BB5\u0BBF \u0B86\u0BA9\u0BCD-\u0B9F\u0BBF\u0BB5\u0BC8\u0BB8\u0BCD (\u0B87\u0BB2\u0BB5\u0B9A\u0BAE\u0BCD, \u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD)",
+  asrBhashini: "\u0BAA\u0BBE\u0BB7\u0BBF\u0BA9\u0BBF AI (\u0B9F\u0BBF\u0B9C\u0BBF\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD \u0B87\u0BA8\u0BCD\u0BA4\u0BBF\u0BAF\u0BBE) [Stubbed]",
+  asrSarvam: "\u0B9A\u0BB0\u0BCD\u0BB5\u0BAE\u0BCD AI (\u0B87\u0BA3\u0BCD\u0B9F\u0BBF\u0B95\u0BCD \u0B95\u0BC1\u0BB0\u0BB2\u0BCD) [Stubbed]",
+  exportLedgerLabel: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BA4\u0BB0\u0BB5\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BA4\u0BBF",
+  exportJson: "JSON \u0B87\u0BB2\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1",
+  exportCsv: "CSV \u0B87\u0BB2\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1",
+  dangerZoneLabel: "\u0B86\u0BAA\u0BA4\u0BCD\u0BA4\u0BC1 \u0BAA\u0B95\u0BC1\u0BA4\u0BBF",
+  clearAllData: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0BA4\u0BB0\u0BB5\u0BC8\u0BAF\u0BC1\u0BAE\u0BCD \u0BA8\u0BC0\u0B95\u0BCD\u0B95\u0BC1",
+  clearConfirm: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BC8\u0BAF\u0BC1\u0BAE\u0BCD \u0B89\u0BB3\u0BCD\u0BB3\u0BC0\u0B9F\u0BC1\u0B95\u0BB3\u0BC8\u0BAF\u0BC1\u0BAE\u0BCD \u0BA8\u0BC0\u0B95\u0BCD\u0B95 \u0BB5\u0BBF\u0BB0\u0BC1\u0BAE\u0BCD\u0BAA\u0BC1\u0B95\u0BBF\u0BB1\u0BC0\u0BB0\u0BCD\u0B95\u0BB3\u0BBE? \u0B87\u0BA4\u0BC8 \u0BAE\u0BC0\u0B9F\u0BCD\u0B9F\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95 \u0BAE\u0BC1\u0B9F\u0BBF\u0BAF\u0BBE\u0BA4\u0BC1.",
+  clearSuccess: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0BA4\u0BB0\u0BB5\u0BC1\u0B95\u0BB3\u0BC1\u0BAE\u0BCD \u0BB5\u0BC6\u0BB1\u0BCD\u0BB1\u0BBF\u0B95\u0BB0\u0BAE\u0BBE\u0B95 \u0BA8\u0BC0\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA9!",
+  resetDemo: "\u0B9F\u0BC6\u0BAE\u0BCB \u0BA4\u0BB0\u0BB5\u0BC8 \u0BAE\u0BC0\u0B9F\u0BCD\u0B9F\u0BC6\u0B9F\u0BC1",
+  resetSuccess: "\u0B9F\u0BC6\u0BAE\u0BCB \u0BA4\u0BB0\u0BB5\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1!",
+  localFirstInfo: "Udhaar Sathi 100% \u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD. \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B8E\u0BB2\u0BCD\u0BB2\u0BBE \u0BA4\u0BB0\u0BB5\u0BC1\u0BAE\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF\u0BAF\u0BBF\u0BB2\u0BC7\u0BAF\u0BC7 \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1 (IndexedDB).",
+  signupWelcomeTitle: "Udhaar Sathi \u0B95\u0BCD\u0B95\u0BC1 \u0BA8\u0BB2\u0BCD\u0BB5\u0BB0\u0BB5\u0BC1",
+  signupWelcomeSubtitle: "\u0B87\u0BA8\u0BCD\u0BA4\u0BBF\u0BAF \u0BAE\u0BB3\u0BBF\u0B95\u0BC8\u0B95\u0BCD \u0B95\u0B9F\u0BC8\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BBE\u0BA9 \u0B95\u0BC8\u0B95\u0BB3\u0BCD-\u0B87\u0BB2\u0BB5\u0B9A \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BB2\u0BC6\u0B9F\u0BCD\u0B9C\u0BB0\u0BCD",
+  dataStaysOnPhone: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BA4\u0BB0\u0BB5\u0BC1 \u0B87\u0BA8\u0BCD\u0BA4 \u0BAA\u0BCB\u0BA9\u0BBF\u0BB2\u0BCD \u0BAE\u0B9F\u0BCD\u0B9F\u0BC1\u0BAE\u0BC7 \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0B95 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD",
+  getStarted: "\u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  stepOf: "\u0BAA\u0B9F\u0BBF {current} / {total}",
+  shopNamePrompt: "\u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD \u0B8E\u0BA9\u0BCD\u0BA9?",
+  shopNameSpoken: "\u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  shopNameHelper: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  shopNameError: "\u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9 \u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BA9\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD (\u0B95\u0BC1\u0BB1\u0BC8\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1 2 \u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BCD\u0B95\u0BB3\u0BCD)",
+  ownerNamePrompt: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD \u0B8E\u0BA9\u0BCD\u0BA9?",
+  ownerNameSpoken: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  ownerNamePlaceholder: "\u0B89\u0BA4\u0BBE. \u0BB0\u0BAE\u0BC7\u0BB7\u0BCD \u0B95\u0BC1\u0BAE\u0BBE\u0BB0\u0BCD",
+  ownerNameHelper: "\u0B95\u0B9F\u0BC8 \u0B89\u0BB0\u0BBF\u0BAE\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD",
+  ownerNameError: "\u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD (\u0B95\u0BC1\u0BB1\u0BC8\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1 2 \u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B95\u0BCD\u0B95\u0BB3\u0BCD)",
+  phonePrompt: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD",
+  phoneSpoken: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD 10 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  phonePlaceholder: "\u0B89\u0BA4\u0BBE. 9876543210",
+  phoneHelper: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BBE\u0BA9 10 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD",
+  phoneError: "6-9 \u0B87\u0BB2\u0BCD \u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BC1\u0BAE\u0BCD 10 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  upiPrompt: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF",
+  upiSpoken: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  upiPlaceholder: "\u0B89\u0BA4\u0BBE. ramesh@oksbi",
+  upiHelperText: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF \u0BAE\u0B9F\u0BCD\u0B9F\u0BC1\u0BAE\u0BC7 \u0BA4\u0BC7\u0BB5\u0BC8. \u0BA8\u0BBE\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B92\u0BB0\u0BC1\u0BAA\u0BCB\u0BA4\u0BC1\u0BAE\u0BCD \u0BB5\u0B99\u0BCD\u0B95\u0BBF \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8\u0B95\u0BCD \u0B95\u0BC7\u0B9F\u0BCD\u0BAA\u0BA4\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8.",
+  upiPaste: "\u0B92\u0B9F\u0BCD\u0B9F\u0BC1",
+  upiReadBack: "\u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1 \u0BB5\u0BBE\u0BB0\u0BBF\u0BAF\u0BBE\u0B95\u0B95\u0BCD \u0B95\u0BC7\u0BB3\u0BCD",
+  upiReadingBack: "\u0BB5\u0BBE\u0B9A\u0BBF\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  upiError: "\u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9 \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD (\u0B89\u0BA4\u0BBE. name@bank)",
+  pinPrompt: "\u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8 \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD (\u0BB5\u0BBF\u0BB0\u0BC1\u0BAA\u0BCD\u0BAA\u0BA4\u0BCD\u0BA4\u0BC7\u0BB0\u0BCD\u0BB5\u0BC1)",
+  pinSpoken: "4 \u0BAE\u0BC1\u0BA4\u0BB2\u0BCD 6 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8\u0BA4\u0BCD \u0BA4\u0BC7\u0BB0\u0BCD\u0BA8\u0BCD\u0BA4\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  pinPlaceholder: "4-6 \u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0BAA\u0BBF\u0BA9\u0BCD",
+  pinHelperText: "\u0B9A\u0BBE\u0BA4\u0BA9 \u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BBE\u0B95\u0BCD\u0B95\u0BA4\u0BCD\u0BA4\u0BC1\u0B9F\u0BA9\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BB0\u0BC1\u0BAE\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD.",
+  pinSkip: "\u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD",
+  pinSkipWarning: "\u0BAA\u0BBF\u0BA9\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BBE\u0BAE\u0BB2\u0BCD \u0B87\u0BA8\u0BCD\u0BA4 \u0B9A\u0BC6\u0BAF\u0BB2\u0BBF\u0BAF\u0BC8\u0BA4\u0BCD \u0BA4\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD \u0B8E\u0BB5\u0BB0\u0BC1\u0BAE\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B8E\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BBE\u0BA9\u0BBE\u0BB2\u0BC1\u0BAE\u0BCD \u0BAA\u0BBF\u0BA9\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD.",
+  pinSkipConfirm: "\u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8\u0BA4\u0BCD \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD",
+  pinError: "\u0BAA\u0BBF\u0BA9\u0BCD 4-6 \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BBE\u0B95 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B8E\u0BB3\u0BBF\u0BAF \u0BB5\u0BB0\u0BBF\u0B9A\u0BC8\u0BAF\u0BBE\u0B95 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0B95\u0BCD\u0B95\u0BC2\u0B9F\u0BBE\u0BA4\u0BC1 (\u0B89\u0BA4\u0BBE. 1234, 0000)",
+  reviewTitle: "\u0B95\u0B9F\u0BC8 \u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BA4\u0BCD\u0BA4\u0BC8 \u0B9A\u0BB0\u0BBF\u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  reviewSubtitle: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BC8 \u0B89\u0BB1\u0BC1\u0BA4\u0BBF\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B8E\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BBE\u0BA9\u0BBE\u0BB2\u0BC1\u0BAE\u0BCD \u0BAA\u0BC1\u0BA4\u0BC1\u0BAA\u0BCD\u0BAA\u0BBF\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD.",
+  startAppButton: "Udhaar Sathi \u0B90\u0BA4\u0BCD \u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  editField: "\u0BA4\u0BBF\u0BB0\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1",
+  nextStep: "\u0B85\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1",
+  prevStep: "\u0BAA\u0BBF\u0BA9\u0BCD\u0B9A\u0BC6\u0BB2\u0BCD",
+  settingsProfileTitle: "\u0B95\u0B9F\u0BC8 \u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BAE\u0BCD",
+  settingsProfileSubtitle: "\u0B95\u0B9F\u0BC8 \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BCD, \u0B89\u0BB0\u0BBF\u0BAE\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BA4\u0B95\u0BB5\u0BB2\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BA3 \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF",
+  confirmUpiChangeTitle: "\u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BB5\u0BBE?",
+  confirmUpiChangeWarning: "\u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BBF\u0BA9\u0BBE\u0BB2\u0BCD \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u0B85\u0BA9\u0BC1\u0BAA\u0BCD\u0BAA\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BA3 \u0B95\u0BBF\u0BAF\u0BC2\u0B86\u0BB0\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B87\u0BA3\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BCD \u0BAE\u0BBE\u0BB1\u0BC1\u0BAE\u0BCD. \u0BA8\u0BC0\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B89\u0BB1\u0BC1\u0BA4\u0BBF\u0BAF\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BC0\u0BB0\u0BCD\u0B95\u0BB3\u0BBE?",
+  confirmUpiChangeButton: "\u0B86\u0BAE\u0BCD, \u0BAF\u0BC1\u0BAA\u0BBF\u0B90 \u0B90\u0B9F\u0BBF\u0BAF\u0BC8 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BC1",
+  noPinWarningBanner: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BBE\u0BB2\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BA4\u0BB0\u0BB5\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95 \u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.",
+  setPinNow: "\u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BAA\u0BBF\u0BA9\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  profileUpdatedToast: "\u0B95\u0B9F\u0BC8 \u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BAE\u0BCD \u0BB5\u0BC6\u0BB1\u0BCD\u0BB1\u0BBF\u0B95\u0BB0\u0BAE\u0BBE\u0B95 \u0BAA\u0BC1\u0BA4\u0BC1\u0BAA\u0BCD\u0BAA\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1!",
+  registerCustomerTitle: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1",
+  registerCustomerSubtitle: "\u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BBE\u0B95\u0BCD\u0B95\u0BAE\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBF\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95 \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  enterCustomerPhone: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD",
+  phoneReadBackQuestion: "{phone}. \u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9\u0BA4\u0BBE?",
+  readBackConfirm: "\u0B86\u0BAE\u0BCD, \u0B9A\u0BB0\u0BBF",
+  readBackWrong: "\u0B87\u0BB2\u0BCD\u0BB2\u0BC8, \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BC1",
+  skipPhoneForNow: "\u0B87\u0BAA\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BA4\u0BB5\u0BBF\u0BB0\u0BCD",
+  noNumberWarning: "\u0B8E\u0BA3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BBE\u0BAE\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1. \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD \u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD.",
+  duplicatePhoneWarning: "\u0B87\u0BA8\u0BCD\u0BA4 \u0B8E\u0BA3\u0BCD {name} \u0B89\u0B9F\u0BC8\u0BAF\u0BA4\u0BC1. \u0B85\u0BA4\u0BC7 \u0BA8\u0BAA\u0BB0\u0BBE?",
+  openExistingCustomer: "\u0B86\u0BAE\u0BCD, {name} \u0BA4\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  useAnotherNumber: "\u0BB5\u0BC7\u0BB1\u0BC1 \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8\u0BAA\u0BCD \u0BAA\u0BAF\u0BA9\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD",
+  requireCustomerPhoneLabel: "\u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BBE\u0BAF\u0BAE\u0BCD",
+  requireCustomerPhoneDesc: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD\u0BAA\u0BCB\u0BA4\u0BC1 \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BBE\u0BAF\u0BAE\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD",
+  customerRegisteredSpoken: "{name} \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BBE\u0BB0\u0BCD",
+  customerNewAskPhoneSpoken: "{name} \u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD. \u0BAA\u0BCB\u0BA9\u0BCD \u0BA8\u0BAE\u0BCD\u0BAA\u0BB0\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  whichCustomerTitle: "\u0B8E\u0BA8\u0BCD\u0BA4 {name}?",
+  tellLast4DigitsSubtitle: "\u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD\u0BA3\u0BBF\u0BA9\u0BCD \u0B95\u0B9F\u0BC8\u0B9A\u0BBF 4 \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0B95\u0BBE\u0BB0\u0BCD\u0B9F\u0BC8\u0BA4\u0BCD \u0BA4\u0BCA\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  noNumberSavedChip: "\u0B8E\u0BA3\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  disambiguateRetryToast: "\u0B87\u0BA8\u0BCD\u0BA4 \u0B8E\u0BA3\u0BCD \u0BAA\u0BCA\u0BB0\u0BC1\u0BA8\u0BCD\u0BA4\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0B95\u0BBE\u0BB0\u0BCD\u0B9F\u0BC8\u0BA4\u0BCD \u0BA4\u0BCA\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD.",
+  disambiguateConfirmSpoken: "{name}, \u0B9A\u0BB0\u0BBF.",
+  autoOpenPaymentRequestLabel: "\u0B95\u0B9F\u0BA9\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAA\u0BCD \u0BAA\u0BBF\u0BB1\u0B95\u0BC1 \u0B95\u0B9F\u0BCD\u0B9F\u0BA3\u0B95\u0BCD \u0B95\u0BCB\u0BB0\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BC8\u0B95\u0BCD \u0B95\u0BBE\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  autoOpenPaymentRequestDesc: "\u0B95\u0B9F\u0BA9\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BB5\u0BC1\u0B9F\u0BA9\u0BCD UPI QR \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0B87\u0BA3\u0BC8\u0BAA\u0BCD\u0BAA\u0BC8\u0B95\u0BCD \u0B95\u0BBE\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  showMyQr: "\u0B95\u0B9F\u0BC8 QR",
+  showMyQrDesc: "\u0B95\u0BB5\u0BC1\u0BA3\u0BCD\u0B9F\u0BB0\u0BBF\u0BB2\u0BCD \u0B89\u0BB3\u0BCD\u0BB3 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BBE\u0BA9 \u0B95\u0B9F\u0BCD\u0B9F\u0BA3 QR",
+  showMyQrTitle: "\u0B95\u0B9F\u0BC8 \u0B95\u0BB5\u0BC1\u0BA3\u0BCD\u0B9F\u0BB0\u0BCD QR",
+  paymentRequestTitle: "\u0B95\u0B9F\u0BCD\u0B9F\u0BA3 \u0B95\u0BCB\u0BB0\u0BBF\u0B95\u0BCD\u0B95\u0BC8",
+  paymentRequestSubtitle: "\u0BAA\u0BA3\u0BAE\u0BCD \u0BAA\u0BC6\u0BB1 QR \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 WhatsApp \u0B87\u0BA3\u0BC8\u0BAA\u0BCD\u0BAA\u0BC8\u0BAA\u0BCD \u0BAA\u0B95\u0BBF\u0BB0\u0BB5\u0BC1\u0BAE\u0BCD",
+  sendWhatsAppPayment: "WhatsApp \u0B85\u0BA9\u0BC1\u0BAA\u0BCD\u0BAA\u0BB5\u0BC1\u0BAE\u0BCD",
+  sendWhatsAppHint: "WhatsApp \u0BA4\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD, \u0BAA\u0BBF\u0BA9\u0BCD Send \u0B85\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD",
+  shareQr: "QR \u0BAA\u0B95\u0BBF\u0BB0\u0BB5\u0BC1\u0BAE\u0BCD",
+  downloadQr: "QR \u0BAA\u0BA4\u0BBF\u0BB5\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  laterDismiss: "\u0BAA\u0BBF\u0BB1\u0B95\u0BC1",
+  noPhoneAddNumber: "\u0B8E\u0BA3\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  noPhoneWarning: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BBF\u0BA9\u0BCD \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  noUpiIdWarning: "\u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BA4\u0BCD\u0BA4\u0BBF\u0BB2\u0BCD UPI ID \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0B85\u0BAE\u0BC8\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.",
+  setupUpiNow: "UPI ID \u0B85\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  whatsappOfflineHint: "WhatsApp\u0B95\u0BCD\u0B95\u0BC1 \u0B87\u0BA3\u0BC8\u0BAF\u0BAE\u0BCD \u0BA4\u0BC7\u0BB5\u0BC8",
+  qrSavedToast: "QR \u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BC0\u0B9F\u0BC1 \u0BA4\u0BAF\u0BBE\u0BB0\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1",
+  receiptQrTitle: "UPI \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BB8\u0BCD\u0B95\u0BC7\u0BA9\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC6\u0BB2\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD",
+  chooseLanguage: "\u0BAE\u0BCA\u0BB4\u0BBF\u0BAF\u0BC8\u0BA4\u0BCD \u0BA4\u0BC7\u0BB0\u0BCD\u0BA8\u0BCD\u0BA4\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  language: "\u0BAE\u0BCA\u0BB4\u0BBF",
+  speechLanguage: "\u0BAA\u0BC7\u0B9A\u0BCD\u0B9A\u0BC1 \u0BAE\u0BCA\u0BB4\u0BBF",
+  entries: "\u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD",
+  entriesCount: "{count} \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD",
+  clear: "\u0B85\u0BB4\u0BBF",
+  reset: "\u0BAE\u0BC0\u0B9F\u0BCD\u0B9F\u0BAE\u0BC8",
+  viewAll: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC8\u0BAF\u0BC1\u0BAE\u0BCD \u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95 \u2192",
+  loading: "\u0B8F\u0BB1\u0BCD\u0BB1\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  loadingCustomers: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  loadingSummary: "\u0BA4\u0BBF\u0BA9\u0B9A\u0BB0\u0BBF \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B8F\u0BB1\u0BCD\u0BB1\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  securingLedger: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  micPromptSpeak: "\u0BAA\u0BC7\u0B9A\u0BB5\u0BC1\u0BAE\u0BCD",
+  micPromptListening: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  micPromptProcessing: "\u0B9A\u0BC6\u0BAF\u0BB2\u0BBE\u0B95\u0BCD\u0B95\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  micPromptRetry: "\u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAE\u0BC1\u0BAF\u0BB2\u0BB5\u0BC1\u0BAE\u0BCD",
+  micCaptionIdle: "\u0B92\u0BB0\u0BC1 \u0BAE\u0BC1\u0BB1\u0BC8 \u0BA4\u0B9F\u0BCD\u0B9F\u0BBF \u0BAA\u0BC7\u0B9A\u0BB5\u0BC1\u0BAE\u0BCD",
+  micCaptionListening: "\u0BA4\u0BC6\u0BB3\u0BBF\u0BB5\u0BBE\u0B95\u0BAA\u0BCD \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u2022 \u0B85\u0BAE\u0BC8\u0BA4\u0BBF\u0BAF\u0BBE\u0BA9\u0BA4\u0BC1\u0BAE\u0BCD \u0BA8\u0BBF\u0BB1\u0BCD\u0B95\u0BC1\u0BAE\u0BCD",
+  micCaptionProcessing: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBF\u0B9F\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  micErrorFallbackNote: "\u0BAE\u0BC8\u0B95\u0BCD \u0BB5\u0BC7\u0BB2\u0BC8 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8 \u0B8E\u0BA9\u0BCD\u0BB1\u0BBE\u0BB2\u0BCD, \u0B9F\u0BC8\u0BAA\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BB5\u0BC1\u0BAE\u0BCD.",
+  listeningSpeakYourLanguage: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1... \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAE\u0BCA\u0BB4\u0BBF\u0BAF\u0BBF\u0BB2\u0BCD \u0BAA\u0BC7\u0B9A\u0BB5\u0BC1\u0BAE\u0BCD",
+  streamingSpeech: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  processingSpeech: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B9A\u0BC6\u0BAF\u0BB2\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  heardVoice: "\u0B95\u0BC7\u0B9F\u0BCD\u0B9F \u0B95\u0BC1\u0BB0\u0BB2\u0BCD",
+  quickDemoPhrases: "\u0BB5\u0BBF\u0BB0\u0BC8\u0BB5\u0BC1 \u0B89\u0BA4\u0BBE\u0BB0\u0BA3\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  tapToTest: "\u0B9A\u0BCB\u0BA4\u0BBF\u0B95\u0BCD\u0B95 \u0BA4\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  hintPhrase1: "\u0BB0\u0BAE\u0BC7\u0BB7\u0BC1\u0B95\u0BCD\u0B95\u0BC1 500 \u0B95\u0B9F\u0BA9\u0BCD \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BC7\u0BA9\u0BCD",
+  hintPhrase2: "\u0BB0\u0BAE\u0BC7\u0BB7\u0BCD \u0B95\u0B9F\u0BA9\u0BCD 340, \u0BA8\u0BC7\u0BB1\u0BCD\u0BB1\u0BC1 200 \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BBE\u0BB0\u0BCD",
+  hintPhrase3: "\u0BB0\u0BAE\u0BC7\u0BB7\u0BCD \u0BAE\u0BCA\u0BA4\u0BCD\u0BA4\u0BAE\u0BCD?",
+  creditGivenTodaySub: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC1 \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4 \u0B95\u0B9F\u0BA9\u0BCD",
+  paymentReceivedTodaySub: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC1 \u0BAA\u0BC6\u0BB1\u0BCD\u0BB1 \u0BB5\u0BB0\u0BB5\u0BC1",
+  marketPending: "\u0B9A\u0BA8\u0BCD\u0BA4\u0BC8 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
+  last5Entries: "\u0B95\u0B9F\u0BC8\u0B9A\u0BBF 5 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD",
+  noEntriesYetPrompt: "\u0B87\u0BA9\u0BCD\u0BA9\u0BC1\u0BAE\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAE\u0BC8\u0B95\u0BCD \u0BA4\u0B9F\u0BCD\u0B9F\u0BBF \u0BAA\u0BC7\u0B9A\u0BB5\u0BC1\u0BAE\u0BCD!",
+  creditBadge: "\u0B95\u0B9F\u0BA9\u0BCD",
+  paymentBadge: "\u0BB5\u0BB0\u0BB5\u0BC1",
+  udhaar: "\u0B95\u0B9F\u0BA9\u0BCD",
+  jama: "\u0BB5\u0BB0\u0BB5\u0BC1",
+  customersCountSorted: "{count} \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BCD \u2022 \u0B85\u0BA4\u0BBF\u0B95 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0BB5\u0BB0\u0BBF\u0B9A\u0BC8",
+  noCustomersYet: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BCD \u0B87\u0BA9\u0BCD\u0BA9\u0BC1\u0BAE\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8",
+  noCustomersDescription: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAE\u0BC1\u0BA4\u0BB2\u0BCD \u0B95\u0B9F\u0BA9\u0BC8 \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0B95.",
+  noCustomerFound: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  noMatchingCustomerQuery: '"{query}" \u0BAA\u0BC6\u0BAF\u0BB0\u0BBF\u0BB2\u0BCD \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8. \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.',
+  noCustomersInFilter: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BB5\u0B9F\u0BBF\u0B95\u0B9F\u0BCD\u0B9F\u0BB2\u0BBF\u0BB2\u0BCD \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8.",
+  firstUdhaarVoice: "\u{1F3A4} \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BAE\u0BC1\u0BA4\u0BB2\u0BCD \u0B95\u0B9F\u0BA9\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0B95",
+  addCustomerButton: "+ \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95",
+  addNewCustomerTitle: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95",
+  addNewCustomerSubtitle: "\u0B95\u0B9F\u0BA9\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BB5\u0BB0\u0BB5\u0BC1 \u0B87\u0BA9\u0BCD\u0BB1\u0BBF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  lastActivity: "\u0B95\u0B9F\u0BC8\u0B9A\u0BBF: {date}",
+  badgeOwes: "\u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
+  badgeSettled: "\u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
+  badgeNew: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF",
+  listenBalance: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95",
+  lastReminderDate: "\u0B95\u0B9F\u0BC8\u0B9A\u0BBF \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD: {date}",
+  outstandingUdhaar: "\u0BA8\u0BBF\u0BB2\u0BC1\u0BB5\u0BC8 \u0B95\u0B9F\u0BA9\u0BCD",
+  allSettled: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
+  amountToReceive: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BBF\u0B9F\u0BAE\u0BBF\u0BB0\u0BC1\u0BA8\u0BCD\u0BA4\u0BC1 \u0BB5\u0BB0 \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BBF\u0BAF\u0BA4\u0BC1",
+  noBalancePending: "\u0BA8\u0BBF\u0BB2\u0BC1\u0BB5\u0BC8 \u0B8F\u0BA4\u0BC1\u0BAE\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  totalCreditLabel: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0B95\u0B9F\u0BA9\u0BCD:",
+  totalPaymentLabel: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BB5\u0BB0\u0BB5\u0BC1:",
+  sendWhatsAppReminder: "WhatsApp \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD",
+  printReceipt: "\u0BB0\u0B9A\u0BC0\u0BA4\u0BC1 \u0B85\u0B9A\u0BCD\u0B9A\u0BBF\u0B9F\u0BC1\u0B95",
+  addUdhaarButton: "+ \u0B95\u0B9F\u0BA9\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95",
+  addPaymentButton: "+ \u0BB5\u0BB0\u0BB5\u0BC1 \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95",
+  timelineEntries: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B95\u0BBE\u0BB2\u0BB5\u0BB0\u0BBF\u0B9A\u0BC8 ({count} \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD)",
+  latestFirst: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF\u0BA4\u0BC1 \u0BAE\u0BC1\u0BA4\u0BB2\u0BBF\u0BB2\u0BCD",
+  noEntriesTitle: "\u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8",
+  noEntriesCustomerDesc: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u0B87\u0BA9\u0BCD\u0BA9\u0BC1\u0BAE\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8.",
+  deleteEntryConfirm: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC8 \u0BA8\u0BBF\u0B9A\u0BCD\u0B9A\u0BAF\u0BAE\u0BBE\u0B95 \u0BA8\u0BC0\u0B95\u0BCD\u0B95 \u0BB5\u0BBF\u0BB0\u0BC1\u0BAE\u0BCD\u0BAA\u0BC1\u0B95\u0BBF\u0BB1\u0BC0\u0BB0\u0BCD\u0B95\u0BB3\u0BBE?",
+  enterValidAmount: "\u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9 \u0BA4\u0BCA\u0B95\u0BC8\u0BAF\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  entryDeletedToast: "\u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0BA8\u0BC0\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  customerNotFoundTitle: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  customerNotFoundDesc: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BBF\u0BB2\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8.",
+  viewCustomersList: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0B9F\u0BCD\u0B9F\u0BBF\u0BAF\u0BB2\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95",
+  customerAlreadyExists: "{name} \u0B8F\u0BB1\u0BCD\u0B95\u0BA9\u0BB5\u0BC7 \u0B89\u0BB3\u0BCD\u0BB3\u0BBE\u0BB0\u0BCD",
+  similarCustomerWarning: "\u0B87\u0BA4\u0BC7 \u0BAA\u0BCB\u0BA9\u0BCD\u0BB1 \u0BAA\u0BC6\u0BAF\u0BB0\u0BBF\u0BB2\u0BCD \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B89\u0BB3\u0BCD\u0BB3\u0BBE\u0BB0\u0BCD. \u0B85\u0BB5\u0BB0\u0BCD\u0B95\u0BB3\u0BBF\u0BA9\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC8\u0BAA\u0BCD \u0BAA\u0BAF\u0BA9\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4 \u0BB5\u0BBF\u0BB0\u0BC1\u0BAE\u0BCD\u0BAA\u0BC1\u0B95\u0BBF\u0BB1\u0BC0\u0BB0\u0BCD\u0B95\u0BB3\u0BBE?",
+  useThisOne: "\u0B87\u0BA4\u0BC8\u0BAA\u0BCD \u0BAA\u0BAF\u0BA9\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  createAnyway: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BA4\u0BBE\u0B95 \u0B89\u0BB0\u0BC1\u0BB5\u0BBE\u0B95\u0BCD\u0B95\u0BC1",
+  customerNameLabel: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BCD",
+  mobileNumberOptional: "\u0B95\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD (\u0BB5\u0BBF\u0BB0\u0BC1\u0BAA\u0BCD\u0BAA\u0BAE\u0BCD)",
+  phoneReminderHelper: "WhatsApp \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAA\u0BCD \u0BAA\u0BAF\u0BA9\u0BC1\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1 (\u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BB0\u0BC1\u0BAE\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD).",
+  saveCustomer: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  saving: "\u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  enterCustomerNameError: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  errorSavingCustomer: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0BAA\u0BCD\u0BAA\u0BA4\u0BBF\u0BB2\u0BCD \u0BAA\u0BBF\u0BB4\u0BC8",
+  dailySummarySubtitle: "\u0BA4\u0BBF\u0BA9\u0B9A\u0BB0\u0BBF \u0BB5\u0B9A\u0BC2\u0BB2\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B95\u0B9F\u0BA9\u0BCD \u0B9A\u0BC1\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BAE\u0BCD",
+  shareSlip: "\u0BB0\u0B9A\u0BC0\u0BA4\u0BC8 \u0BAA\u0B95\u0BBF\u0BB0\u0BB5\u0BC1\u0BAE\u0BCD",
+  copied: "\u0BA8\u0B95\u0BB2\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  dateLabel: "\u0BA4\u0BC7\u0BA4\u0BBF:",
+  creditGivenToday: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC1 \u0B95\u0BCA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4 \u0B95\u0B9F\u0BA9\u0BCD",
+  paymentReceivedToday: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC1 \u0BAA\u0BC6\u0BB1\u0BCD\u0BB1 \u0BB5\u0BB0\u0BB5\u0BC1",
+  netUdhaarIncreased: "\u0BA8\u0BBF\u0B95\u0BB0 \u0B95\u0B9F\u0BA9\u0BCD \u0B85\u0BA4\u0BBF\u0B95\u0BB0\u0BBF\u0BA4\u0BCD\u0BA4\u0BA4\u0BC1",
+  netUdhaarDecreased: "\u0BA8\u0BBF\u0B95\u0BB0 \u0B95\u0B9F\u0BA9\u0BCD \u0B95\u0BC1\u0BB1\u0BC8\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
+  entriesCountLabel: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD",
+  activeCustomersCount: "{count} \u0B9A\u0BC6\u0BAF\u0BB2\u0BBF\u0BB2\u0BCD \u0B89\u0BB3\u0BCD\u0BB3 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BCD",
+  noDataAvailable: "\u0BA4\u0BB0\u0BB5\u0BC1 \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  noDataForDate: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BA4\u0BC7\u0BA4\u0BBF\u0B95\u0BCD\u0B95\u0BC1 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8.",
+  noPendingCustomersAllSettled: "\u0BA8\u0BBF\u0BB2\u0BC1\u0BB5\u0BC8 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8. \u0B8E\u0BB2\u0BCD\u0BB2\u0BBE\u0B95\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD \u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1! \u2713",
+  reviewEntryTitle: "\u0BAA\u0BA4\u0BBF\u0BB5\u0BC8\u0B9A\u0BCD \u0B9A\u0BB0\u0BBF\u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  duplicateEntryWarningTitle: "\u0B87\u0BA4\u0BC7 \u0BAA\u0BCB\u0BA9\u0BCD\u0BB1 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BB1\u0BCD\u0BB1\u0BC1 \u0BAE\u0BC1\u0BA9\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BBE\u0BA9\u0BA4\u0BC1. \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BBE?",
+  duplicateEntryWarningDesc: "{name} \u0B85\u0BB5\u0BB0\u0BCD\u0B95\u0BB3\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u20B9{amount} {type} \u0B95\u0B9F\u0BA8\u0BCD\u0BA4 10 \u0BA8\u0BBF\u0BAE\u0BBF\u0B9F\u0B99\u0BCD\u0B95\u0BB3\u0BBF\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1.",
+  saveAnyway: "\u0B8E\u0BAA\u0BCD\u0BAA\u0B9F\u0BBF\u0BAF\u0BC1\u0BAE\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95",
+  correctByVoice: "\u0B95\u0BC1\u0BB0\u0BB2\u0BBE\u0BB2\u0BCD \u0BA4\u0BBF\u0BB0\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD",
+  listeningTapToStop: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1... (\u0BA8\u0BBF\u0BB1\u0BC1\u0BA4\u0BCD\u0BA4 \u0BA4\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD)",
+  confirmAndSave: "\u0B89\u0BB1\u0BC1\u0BA4\u0BBF\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  voiceSavingCommand: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BB3\u0BC8\u0BAF\u0BBE\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  voiceCancelledCommand: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BB0\u0BA4\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  voiceAmountUpdated: "\u0BA4\u0BCA\u0B95\u0BC8 \u20B9{amount} \u0B86\u0B95 \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  amountInRupees: "\u0BA4\u0BCA\u0B95\u0BC8 (\u20B9 \u0B87\u0BB2\u0BCD)",
+  relativeToday: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC1",
+  relativeYesterday: "\u0BA8\u0BC7\u0BB1\u0BCD\u0BB1\u0BC1",
+  relativeDayBefore: "\u0BAE\u0BC1\u0BA8\u0BCD\u0BA4\u0BBE\u0BA8\u0BBE\u0BB3\u0BCD",
+  pickDate: "\u0BA4\u0BC7\u0BA4\u0BBF\u0BAF\u0BC8\u0BA4\u0BCD \u0BA4\u0BC7\u0BB0\u0BCD\u0BA8\u0BCD\u0BA4\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  notePlaceholder: "\u0B95\u0BC1\u0BB1\u0BBF\u0BAA\u0BCD\u0BAA\u0BC1 (\u0B8E.\u0B95\u0BBE. \u0BAA\u0BBE\u0BB2\u0BCD, \u0B9A\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB0\u0BC8, \u0BAA\u0BB0\u0BC1\u0BAA\u0BCD\u0BAA\u0BC1)",
+  balanceInquiryTitle: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B87\u0BB0\u0BC1\u0BAA\u0BCD\u0BAA\u0BC1 \u0BB5\u0BBF\u0B9A\u0BBE\u0BB0\u0BA3\u0BC8",
+  balancePendingUdhaar: "\u0BA8\u0BBF\u0BB2\u0BC1\u0BB5\u0BC8 \u0B95\u0B9F\u0BA9\u0BCD",
+  advancePayment: "\u0BAE\u0BC1\u0BA9\u0BCD\u0BAA\u0BA3 \u0BB5\u0BB0\u0BB5\u0BC1",
+  speaking: "\u0BAA\u0BC7\u0B9A\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  replayVoice: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95",
+  allClear: "\u0B8E\u0BB2\u0BCD\u0BB2\u0BBE\u0BAE\u0BCD \u0BAE\u0BC1\u0B9F\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1 \u2713",
+  last3Transactions: "\u0B95\u0B9F\u0BC8\u0B9A\u0BBF 3 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD",
+  noPreviousTransactions: "\u0BAE\u0BC1\u0BA8\u0BCD\u0BA4\u0BC8\u0BAF \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B8E\u0BA4\u0BC1\u0BB5\u0BC1\u0BAE\u0BCD \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  viewKhata: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  whichCustomerAskDigits: "\u0B8E\u0BA8\u0BCD\u0BA4 {name}? \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF \u0B8E\u0BA3\u0BCD\u0BA3\u0BBF\u0BA9\u0BCD \u0B95\u0B9F\u0BC8\u0B9A\u0BBF 4 \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BB5\u0BC1\u0BAE\u0BCD.",
+  sameLastDigitsAskMore: "\u0B87\u0BB0\u0BC1\u0BB5\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD \u0B95\u0B9F\u0BC8\u0B9A\u0BBF \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B92\u0BA9\u0BCD\u0BB1\u0BC1\u0BA4\u0BBE\u0BA9\u0BCD. \u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B95\u0B9F\u0BC8\u0B9A\u0BBF {count} \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD.",
+  numberNotFoundRetry: "\u0B8E\u0BA3\u0BCD \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD.",
+  numberNotFoundTapCard: "\u0B8E\u0BA3\u0BCD \u0B95\u0BBF\u0B9F\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B95\u0BBE\u0BB0\u0BCD\u0B9F\u0BC8\u0BA4\u0BCD \u0BA4\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD.",
+  newCustomerAddedToast: "\u0BAA\u0BC1\u0BA4\u0BBF\u0BAF \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BBE\u0BB0\u0BCD: {name}",
+  entrySavedSuccess: "{name} \u0B85\u0BB5\u0BB0\u0BCD\u0B95\u0BB3\u0BBF\u0BA9\u0BCD {type} \u0BB5\u0BC6\u0BB1\u0BCD\u0BB1\u0BBF\u0B95\u0BB0\u0BAE\u0BBE\u0B95\u0BAA\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BBE\u0BA9\u0BA4\u0BC1!",
+  multiEntriesSavedSuccess: "{count} \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0BB5\u0BC6\u0BB1\u0BCD\u0BB1\u0BBF\u0B95\u0BB0\u0BAE\u0BBE\u0B95 \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA9!",
+  didNotUnderstandRepeat: "\u0BAA\u0BC1\u0BB0\u0BBF\u0BAF\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8. \u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAA\u0BC7\u0B9A\u0BB5\u0BC1\u0BAE\u0BCD.",
+  languageChangedToast: "\u0BAE\u0BCA\u0BB4\u0BBF \u0BAE\u0BBE\u0BB1\u0BCD\u0BB1\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1: {lang}",
+  speechLanguageChangedToast: "\u0BAA\u0BC7\u0B9A\u0BCD\u0B9A\u0BC1 \u0BAE\u0BCA\u0BB4\u0BBF: {lang}",
+  offlineModeNoticeTitle: "\u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD \u0BAE\u0BC1\u0BB1\u0BC8",
+  offlineModeNoticeDesc: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 100% \u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BBF\u0BB2\u0BCD \u0BB5\u0BC7\u0BB2\u0BC8 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0BAE\u0BCD. \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u0B87\u0BA3\u0BC8\u0BAF\u0BAE\u0BCD \u0BA4\u0BC7\u0BB5\u0BC8\u0BAA\u0BCD\u0BAA\u0B9F\u0BB2\u0BBE\u0BAE\u0BCD; \u0BA4\u0B9F\u0BCD\u0B9F\u0B9A\u0BCD\u0B9A\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BB5\u0BC1\u0BAE\u0BCD.",
+  networkDisconnected: "\u0BA8\u0BC6\u0B9F\u0BCD\u0BB5\u0BCA\u0BB0\u0BCD\u0B95\u0BCD \u0BA4\u0BC1\u0BA3\u0BCD\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  pinIncorrect: "\u0BA4\u0BB5\u0BB1\u0BBE\u0BA9 \u0BAA\u0BBF\u0BA9\u0BCD! \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAE\u0BC1\u0BAF\u0BB1\u0BCD\u0B9A\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD.",
+  pinLockedMessage: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 AES-256 \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BC1\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1. \u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD:",
+  pinResetConfirm: "\u0B86\u0BAE\u0BCD, \u0BAE\u0BC0\u0B9F\u0BCD\u0B9F\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  totalUdhaar: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0B95\u0B9F\u0BA9\u0BCD",
+  totalJama: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BB5\u0BB0\u0BB5\u0BC1",
+  totalBalance: "\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
+  udhaarAdded: "\u0B95\u0B9F\u0BA9\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  savePhoneToProfileHint: "\u0B92\u0BB0\u0BC1\u0BAE\u0BC1\u0BB1\u0BC8 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BBE\u0BB2\u0BCD \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B9A\u0BC1\u0BAF\u0BB5\u0BBF\u0BB5\u0BB0\u0BA4\u0BCD\u0BA4\u0BBF\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD.",
+  numberClearedSpeakAgain: "\u0B8E\u0BA3\u0BCD \u0B85\u0BB4\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1. \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAA\u0BC7\u0B9A\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0B95\u0BC0\u0BAA\u0BC7\u0B9F\u0BC8\u0BAA\u0BCD \u0BAA\u0BAF\u0BA9\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD.",
+  pendingEntrySavedAfterReg: "\u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAA\u0BCD \u0BAA\u0BBF\u0BB1\u0B95\u0BC1 \u20B9{amount} {type} \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD",
+  recentEntriesReceipt: "\u0B9A\u0BAE\u0BC0\u0BAA\u0BA4\u0BCD\u0BA4\u0BBF\u0BAF \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD:",
+  numeralScriptLabel: "\u0B8E\u0BA3\u0BCD \u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BC1\u0BB0\u0BC1",
+  numeralScriptDesc: "\u0B8E\u0BA3\u0BCD\u0B95\u0BB3\u0BC8 \u0B86\u0B99\u0BCD\u0B95\u0BBF\u0BB2\u0BAE\u0BCD (1, 2, 3) \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BA4\u0BAE\u0BBF\u0BB4\u0BCD \u0B8E\u0BB4\u0BC1\u0BA4\u0BCD\u0BA4\u0BBF\u0BB2\u0BCD \u0B95\u0BBE\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  scriptLatin: "\u0B86\u0B99\u0BCD\u0B95\u0BBF\u0BB2\u0BAE\u0BCD (1, 2, 3)",
+  scriptNative: "\u0BA4\u0BAE\u0BBF\u0BB4\u0BCD (\u0BE7, \u0BE8, \u0BE9)",
+  invalidPhoneError: "\u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0B9A\u0BB0\u0BBF\u0BAF\u0BBE\u0BA9 10-\u0B87\u0BB2\u0B95\u0BCD\u0B95 \u0B87\u0BA8\u0BCD\u0BA4\u0BBF\u0BAF \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD\u0BA3\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD (6-9 \u0B87\u0BB2\u0BCD \u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BC1\u0BAE\u0BCD)",
+  speakNamePrompt: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0BAA\u0BC6\u0BAF\u0BB0\u0BC8\u0BAA\u0BCD \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD...",
+  phoneHelpText: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u0BAA\u0BAF\u0BA9\u0BC1\u0BB3\u0BCD\u0BB3\u0BA4\u0BBE\u0B95 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0BAE\u0BCD (\u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BB0\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB2\u0BBE\u0BAE\u0BCD).",
+  manualEntryTitle: "\u0B95\u0BC8\u0BAE\u0BC1\u0BB1\u0BC8 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1 (\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BBE\u0BAE\u0BB2\u0BCD)",
+  today: "\u0B87\u0BA9\u0BCD\u0BB1\u0BC1",
+  yesterday: "\u0BA8\u0BC7\u0BB1\u0BCD\u0BB1\u0BC1",
+  dayBeforeYesterday: "\u0BAE\u0BC1\u0BA8\u0BCD\u0BA4\u0BBE\u0BA8\u0BBE\u0BB3\u0BCD",
+  baakiOwed: "\u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF",
+  listenReplay: "\u0B95\u0BC7\u0BB3\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  sendReminder: "\u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD \u0B85\u0BA9\u0BC1\u0BAA\u0BCD\u0BAA\u0BC1",
+  active: "\u0B9A\u0BC6\u0BAF\u0BB2\u0BBF\u0BB2\u0BCD",
+  noRecentActivity: "\u0B9A\u0BAE\u0BC0\u0BAA\u0BA4\u0BCD\u0BA4\u0BBF\u0BAF \u0B9A\u0BC6\u0BAF\u0BB2\u0BCD\u0BAA\u0BBE\u0B9F\u0BC1 \u0B87\u0BB2\u0BCD\u0BB2\u0BC8",
+  listeningDigitsPrompt: "\u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BBF\u0BB1\u0BA4\u0BC1... \u0B95\u0B9F\u0BC8\u0B9A\u0BBF 4 \u0B87\u0BB2\u0B95\u0BCD\u0B95\u0B99\u0BCD\u0B95\u0BB3\u0BC8\u0B9A\u0BCD \u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  tapCardOrMic: "\u0B95\u0BBE\u0BB0\u0BCD\u0B9F\u0BC8\u0BA4\u0BCD \u0BA4\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAA\u0BC7\u0B9A \u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BC8\u0BA4\u0BCD \u0BA4\u0BCA\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD",
+  first: "\u0BAE\u0BC1\u0BA4\u0BB2\u0BBF\u0BB2\u0BCD",
+  second: "\u0B87\u0BB0\u0BA3\u0BCD\u0B9F\u0BBE\u0BB5\u0BA4\u0BC1",
+  qrSaveError: "QR \u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BC0\u0B9F\u0BCD\u0B9F\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95 \u0BAE\u0BC1\u0B9F\u0BBF\u0BAF\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8",
+  khataStatementSlip: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B85\u0BB1\u0BBF\u0B95\u0BCD\u0B95\u0BC8 \u0BB0\u0B9A\u0BC0\u0BA4\u0BC1",
+  thankYouShopping: "\u0BB5\u0BBF\u0BAF\u0BBE\u0BAA\u0BBE\u0BB0\u0BA4\u0BCD\u0BA4\u0BBF\u0BB1\u0BCD\u0B95\u0BC1 \u0BA8\u0BA9\u0BCD\u0BB1\u0BBF! \u{1F64F}",
+  receiptSharedSuccess: "\u0BB0\u0B9A\u0BC0\u0BA4\u0BC1 \u0BB5\u0BC6\u0BB1\u0BCD\u0BB1\u0BBF\u0B95\u0BB0\u0BAE\u0BBE\u0B95 \u0BAA\u0B95\u0BBF\u0BB0\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1!",
+  receiptCopiedSuccess: "\u0BB0\u0B9A\u0BC0\u0BA4\u0BC1 \u0B95\u0BBF\u0BB3\u0BBF\u0BAA\u0BCD\u0BAA\u0BCB\u0BB0\u0BCD\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u0BA8\u0B95\u0BB2\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1!",
+  whatsappPhoneNumber: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD \u0B8E\u0BA3\u0BCD",
+  selectTemplateLanguage: "\u0B9F\u0BC6\u0BAE\u0BCD\u0BAA\u0BCD\u0BB3\u0BC7\u0B9F\u0BCD \u0BAE\u0BCA\u0BB4\u0BBF\u0BAF\u0BC8\u0BA4\u0BCD \u0BA4\u0BC7\u0BB0\u0BCD\u0BA8\u0BCD\u0BA4\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  messagePreview: "\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BBF \u0BAE\u0BC1\u0BA9\u0BCD\u0BA9\u0BCB\u0B9F\u0BCD\u0B9F\u0BAE\u0BCD (\u0BA4\u0BBF\u0BB0\u0BC1\u0BA4\u0BCD\u0BA4\u0B95\u0BCD\u0B95\u0BC2\u0B9F\u0BBF\u0BAF\u0BA4\u0BC1)",
+  messageCopiedToast: "\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BBF \u0BA8\u0B95\u0BB2\u0BC6\u0B9F\u0BC1\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1!",
+  offlineSabChalega: "\u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BCD \u2013 \u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1\u0BAE\u0BCD \u0B9A\u0BC6\u0BAF\u0BB2\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD",
+  offlineSafeMessage: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 100% \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0BA9\u0BA4\u0BC1 \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B87\u0BA8\u0BCD\u0BA4 \u0B9A\u0BBE\u0BA4\u0BA9\u0BA4\u0BCD\u0BA4\u0BBF\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD.",
+  offlineMicWarning: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B85\u0BB1\u0BBF\u0BA4\u0BB2\u0BC1\u0B95\u0BCD\u0B95\u0BC1 \u0B87\u0BA3\u0BC8\u0BAF\u0BAE\u0BCD \u0BA4\u0BC7\u0BB5\u0BC8\u0BAA\u0BCD\u0BAA\u0B9F\u0BB2\u0BBE\u0BAE\u0BCD. \u0BAE\u0BC8\u0B95\u0BCD \u0BB5\u0BC7\u0BB2\u0BC8 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BBE\u0BB5\u0BBF\u0B9F\u0BCD\u0B9F\u0BBE\u0BB2\u0BCD, '\u0B9F\u0BC8\u0BAA\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD' \u0BAA\u0BAF\u0BA9\u0BCD\u0BAA\u0B9F\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD.",
+  openTypeInstead: "'\u0B9F\u0BC8\u0BAA\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD' \u0BA4\u0BBF\u0BB1\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  gotIt: "\u0B9A\u0BB0\u0BBF, \u0BAA\u0BC1\u0BB0\u0BBF\u0BA8\u0BCD\u0BA4\u0BA4\u0BC1",
+  pinLockedNotice: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 AES-256 \u0B95\u0BC1\u0BB1\u0BBF\u0BAF\u0BBE\u0B95\u0BCD\u0B95\u0BAE\u0BCD \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BC1\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1. \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BBF\u0BA9\u0BCD\u0BA9\u0BC8 \u0B89\u0BB3\u0BCD\u0BB3\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD:",
+  pinCryptoLockDesc: "\u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BC1\u0BAE\u0BCD \u0B9A\u0BBE\u0BA4\u0BA9\u0BA4\u0BCD\u0BA4\u0BBF\u0BB2\u0BCD Web Crypto \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BA9\u0BCD\u0BB1\u0BA9.",
+  yesReset: "\u0B86\u0BAE\u0BCD, \u0BAE\u0BC0\u0B9F\u0BCD\u0B9F\u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  dailySummarySub: "\u0BA4\u0BBF\u0BA9\u0B9A\u0BB0\u0BBF \u0BB5\u0B9A\u0BC2\u0BB2\u0BCD \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0B95\u0B9F\u0BA9\u0BCD \u0B9A\u0BC1\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BAE\u0BCD",
+  activeCustomersLabel: "\u0B9A\u0BC6\u0BAF\u0BB2\u0BBF\u0BB2\u0BCD \u0B89\u0BB3\u0BCD\u0BB3 \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BCD",
+  noDataAvailableDesc: "\u0B87\u0BA8\u0BCD\u0BA4 \u0BA4\u0BC7\u0BA4\u0BBF\u0B95\u0BCD\u0B95\u0BBE\u0BA9 \u0BAA\u0BA4\u0BBF\u0BB5\u0BC1\u0B95\u0BB3\u0BCD \u0B8E\u0BA4\u0BC1\u0BB5\u0BC1\u0BAE\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8.",
+  noPendingUdhaarAllSettled: "\u0BA8\u0BBF\u0BB2\u0BC1\u0BB5\u0BC8\u0BAF\u0BBF\u0BB2\u0BCD \u0B89\u0BB3\u0BCD\u0BB3 \u0B95\u0B9F\u0BA9\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8. \u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1 \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1\u0B95\u0BB3\u0BC1\u0BAE\u0BCD \u0BA4\u0BC0\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA9! \u2713",
+  zeroBalance: "\u0BAE\u0BC1\u0BB4\u0BC1\u0BB5\u0BA4\u0BC1\u0BAE\u0BCD \u0BA4\u0BC0\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1, \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF \u0B87\u0BB2\u0BCD\u0BB2\u0BC8",
+  khataTimeline: "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B95\u0BBE\u0BB2\u0BB5\u0BB0\u0BBF\u0B9A\u0BC8",
+  saveEntry: "\u0BAA\u0BA4\u0BBF\u0BB5\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  addUdhaar: "+ \u0B95\u0B9F\u0BA9\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95",
+  addPayment: "+ \u0BAA\u0BA3\u0BAE\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95",
+  addEntry: "\u0BAA\u0BA4\u0BBF\u0BB5\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  noteOptional: "\u0B95\u0BC1\u0BB1\u0BBF\u0BAA\u0BCD\u0BAA\u0BC1 (\u0BB5\u0BBF\u0BB0\u0BC1\u0BAA\u0BCD\u0BAA\u0BA4\u0BCD\u0BA4\u0BBF\u0BB1\u0BCD\u0B95\u0BC1\u0BB0\u0BBF\u0BAF\u0BA4\u0BC1)",
+  whatsappReminder: "\u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD",
+  lastReminder: "\u0B95\u0B9F\u0BC8\u0B9A\u0BBF \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD",
+  savingByVoice: "\u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0B9F\u0BCD\u0B9F\u0BB3\u0BC8\u0BAF\u0BBE\u0BB2\u0BCD \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1...",
+  cancelledByVoice: "\u0B95\u0BC1\u0BB0\u0BB2\u0BBE\u0BB2\u0BCD \u0BB0\u0BA4\u0BCD\u0BA4\u0BC1 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BAA\u0BCD\u0BAA\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  noCustomersEmptyState: "\u0B87\u0BA9\u0BCD\u0BA9\u0BC1\u0BAE\u0BCD \u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD\u0B95\u0BB3\u0BCD \u0B87\u0BB2\u0BCD\u0BB2\u0BC8. \u0BAA\u0BC7\u0B9A\u0BC1\u0BB5\u0BA4\u0BA9\u0BCD \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BAE\u0BC1\u0BA4\u0BB2\u0BCD \u0B95\u0B9F\u0BA9\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  addFirstUdhaarVoice: "\u{1F3A4} \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0BAE\u0BC2\u0BB2\u0BAE\u0BCD \u0BAE\u0BC1\u0BA4\u0BB2\u0BCD \u0B95\u0B9F\u0BA9\u0BC8\u0B9A\u0BCD \u0B9A\u0BC7\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  onboardingStep1Title: "1. \u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BC8\u0BA4\u0BCD \u0BA4\u0B9F\u0BCD\u0B9F\u0BBF\u0BAA\u0BCD \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD",
+  onboardingStep1Desc: "\u0B95\u0B9F\u0BC8 \u0B95\u0BB5\u0BC1\u0BA3\u0BCD\u0B9F\u0BB0\u0BBF\u0BB2\u0BCD \u0B95\u0BC8\u0B95\u0BB3\u0BCD \u0BAA\u0BBF\u0BB8\u0BBF\u0BAF\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BA4\u0BBE? \u0BAE\u0BC8\u0B95\u0BCD\u0B95\u0BC8\u0BA4\u0BCD \u0BA4\u0B9F\u0BCD\u0B9F\u0BBF \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAE\u0BCA\u0BB4\u0BBF\u0BAF\u0BBF\u0BB2\u0BCD \u0BAA\u0BC7\u0B9A\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD.",
+  onboardingStep2Title: "2. \u0BA4\u0BBF\u0BB0\u0BC8\u0BAF\u0BBF\u0BB2\u0BCD \u0BAE\u0BC1\u0BA9\u0BCD\u0BA9\u0BCB\u0B9F\u0BCD\u0B9F\u0BA4\u0BCD\u0BA4\u0BC8\u0BAA\u0BCD \u0BAA\u0BBE\u0BB0\u0BCD\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  onboardingStep2Desc: "\u0B9A\u0BC6\u0BAF\u0BB2\u0BBF \u0B89\u0B9F\u0BA9\u0B9F\u0BBF\u0BAF\u0BBE\u0B95 \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BAA\u0BA4\u0BBF\u0BB5\u0BC8\u0B95\u0BCD \u0B95\u0BBE\u0B9F\u0BCD\u0B9F\u0BC1\u0B95\u0BBF\u0BB1\u0BA4\u0BC1. \u0B9A\u0BC7\u0BAE\u0BBF\u0B95\u0BCD\u0B95 \u0BA4\u0B9F\u0BCD\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0B95\u0BC1\u0BB0\u0BB2\u0BBE\u0BB2\u0BCD \u0BA4\u0BBF\u0BB0\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD.",
+  onboardingStep3Title: "3. \u0B89\u0B9F\u0BA9\u0B9F\u0BBF \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0BAE\u0BB1\u0BCD\u0BB1\u0BC1\u0BAE\u0BCD \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD\u0B95\u0BB3\u0BCD",
+  onboardingStep3Desc: "\u0BB5\u0BBE\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC8\u0BAF\u0BBE\u0BB3\u0BB0\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1 \u0B89\u0B9F\u0BA9\u0B9F\u0BBF\u0BAF\u0BBE\u0B95 \u0BAA\u0BC1\u0BA4\u0BC1\u0BAA\u0BCD\u0BAA\u0BBF\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BC1\u0BAE\u0BCD! \u0BB5\u0BBE\u0B9F\u0BCD\u0BB8\u0BCD\u0B85\u0BAA\u0BCD \u0BA8\u0BBF\u0BA9\u0BC8\u0BB5\u0BC2\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD \u0B85\u0BA9\u0BC1\u0BAA\u0BCD\u0BAA\u0BB5\u0BC1\u0BAE\u0BCD \u0B85\u0BB2\u0BCD\u0BB2\u0BA4\u0BC1 \u0BB0\u0B9A\u0BC0\u0BA4\u0BC8 \u0B85\u0B9A\u0BCD\u0B9A\u0BBF\u0B9F\u0BB5\u0BC1\u0BAE\u0BCD.",
+  grantMicAndStart: "\u0BAE\u0BC8\u0B95\u0BCD \u0B85\u0BA9\u0BC1\u0BAE\u0BA4\u0BBF \u0B85\u0BB3\u0BBF\u0BA4\u0BCD\u0BA4\u0BC1 \u0BA4\u0BCA\u0B9F\u0B99\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  installAppTitle: "\u0B9A\u0BC6\u0BAF\u0BB2\u0BBF\u0BAF\u0BC8 \u0BA8\u0BBF\u0BB1\u0BC1\u0BB5\u0BC1\u0B99\u0BCD\u0B95\u0BB3\u0BCD (\u0BAE\u0BC1\u0B95\u0BAA\u0BCD\u0BAA\u0BC1\u0BA4\u0BCD \u0BA4\u0BBF\u0BB0\u0BC8)",
+  installAppSub: "\u0BB5\u0BC7\u0B95\u0BAE\u0BBE\u0BA9\u0BA4\u0BC1 & 100% \u0B86\u0B83\u0BAA\u0BCD\u0BB2\u0BC8\u0BA9\u0BBF\u0BB2\u0BCD \u0BB5\u0BC7\u0BB2\u0BC8 \u0B9A\u0BC6\u0BAF\u0BCD\u0BAF\u0BC1\u0BAE\u0BCD \u2022 1 \u0BA4\u0B9F\u0BCD\u0B9F\u0BB2\u0BBF\u0BB2\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1",
+  install: "\u0BA8\u0BBF\u0BB1\u0BC1\u0BB5\u0BC1",
+  errorBoundaryTitle: "\u0B8F\u0BA4\u0BCB \u0BA4\u0BB5\u0BB1\u0BC1 \u0BA8\u0B9F\u0BA8\u0BCD\u0BA4\u0BC1\u0BB5\u0BBF\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1",
+  errorBoundarySub: "\u0B8F\u0BA4\u0BCB \u0BA4\u0BB5\u0BB1\u0BC1 \u0BA8\u0B9F\u0BA8\u0BCD\u0BA4\u0BC1\u0BB5\u0BBF\u0B9F\u0BCD\u0B9F\u0BA4\u0BC1, \u0B86\u0BA9\u0BBE\u0BB2\u0BCD \u0B95\u0BB5\u0BB2\u0BC8\u0BAA\u0BCD\u0BAA\u0B9F \u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BBE\u0BAE\u0BCD!",
+  errorBoundarySafety: "\u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1\u0BA4\u0BCD \u0BA4\u0BB0\u0BB5\u0BC1 \u0B85\u0BA9\u0BC8\u0BA4\u0BCD\u0BA4\u0BC1\u0BAE\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0BA4\u0BCA\u0BB2\u0BC8\u0BAA\u0BC7\u0B9A\u0BBF\u0BAF\u0BBF\u0BB2\u0BCD \u0BAA\u0BBE\u0BA4\u0BC1\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BBE\u0B95 \u0B89\u0BB3\u0BCD\u0BB3\u0BA4\u0BC1 (IndexedDB). \u0B8E\u0BA4\u0BC1\u0BB5\u0BC1\u0BAE\u0BCD \u0B87\u0BB4\u0B95\u0BCD\u0B95\u0BAA\u0BCD\u0BAA\u0B9F\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8.",
+  retryButton: "\u0BAE\u0BC0\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD \u0BAE\u0BC1\u0BAF\u0BB1\u0BCD\u0B9A\u0BBF\u0B95\u0BCD\u0B95\u0BB5\u0BC1\u0BAE\u0BCD",
+  goHomeButton: "\u0BAE\u0BC1\u0B95\u0BAA\u0BCD\u0BAA\u0BC1\u0B95\u0BCD\u0B95\u0BC1\u0B9A\u0BCD \u0B9A\u0BC6\u0BB2\u0BCD",
+  technicalDetails: "\u0BA4\u0BCA\u0BB4\u0BBF\u0BB2\u0BCD\u0BA8\u0BC1\u0B9F\u0BCD\u0BAA\u0BAA\u0BCD \u0BAA\u0BBF\u0BB4\u0BC8 \u0BB5\u0BBF\u0BB5\u0BB0\u0B99\u0BCD\u0B95\u0BB3\u0BCD"
+};
+
+// src/i18n/locales/te.json
+var te_default = {
+  appName: "Udhaar Sathi (\u0C09\u0C27\u0C3E\u0C30\u0C4D \u0C38\u0C3E\u0C25\u0C40)",
+  tagline: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C3F \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  online: "\u0C06\u0C28\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D",
+  offlineSafe: "\u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D \u0C38\u0C41\u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C24\u0C02 (\u0C32\u0C4B\u0C15\u0C32\u0C4D)",
+  navHome: "\u0C39\u0C4B\u0C2E\u0C4D (\u0C2E\u0C48\u0C15\u0C4D)",
+  navCustomers: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41",
+  navSummary: "\u0C30\u0C4B\u0C1C\u0C41\u0C35\u0C3E\u0C30\u0C40 \u0C32\u0C46\u0C15\u0C4D\u0C15",
+  navSettings: "\u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u200C\u0C32\u0C41",
+  navStyleguide: "\u0C36\u0C48\u0C32\u0C3F \u0C2E\u0C3E\u0C30\u0C4D\u0C17\u0C26\u0C30\u0C4D\u0C36\u0C3F",
+  save: "\u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  cancel: "\u0C30\u0C26\u0C4D\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  delete: "\u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C41",
+  edit: "\u0C38\u0C35\u0C30\u0C3F\u0C02\u0C1A\u0C41",
+  close: "\u0C2E\u0C42\u0C38\u0C3F\u0C35\u0C47\u0C2F\u0C3F",
+  search: "\u0C35\u0C46\u0C24\u0C15\u0C02\u0C21\u0C3F",
+  back: "\u0C35\u0C46\u0C28\u0C41\u0C15\u0C15\u0C41",
+  done: "\u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C2F\u0C3F\u0C02\u0C26\u0C3F",
+  creditGiven: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C07\u0C1A\u0C4D\u0C1A\u0C3F\u0C28\u0C26\u0C3F",
+  paymentReceived: "\u0C21\u0C2C\u0C4D\u0C2C\u0C41 \u0C35\u0C1A\u0C4D\u0C1A\u0C3F\u0C02\u0C26\u0C3F",
+  balanceOwed: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40",
+  netBalance: "\u0C28\u0C3F\u0C15\u0C30 \u0C2C\u0C3E\u0C15\u0C40",
+  todaySummary: "\u0C08\u0C30\u0C4B\u0C1C\u0C41 \u0C32\u0C46\u0C15\u0C4D\u0C15",
+  recentEntries: "\u0C07\u0C1F\u0C40\u0C35\u0C32\u0C3F \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41",
+  noEntries: "\u0C07\u0C02\u0C15\u0C3E \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41",
+  micIdle: "\u0C2E\u0C48\u0C15\u0C4D \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C3F \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
+  micListening: "\u0C35\u0C3F\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C28\u0C41... \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
+  micProcessing: "\u0C32\u0C46\u0C15\u0C4D\u0C15\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  micError: "\u0C38\u0C4D\u0C2A\u0C37\u0C4D\u0C1F\u0C02\u0C17\u0C3E \u0C35\u0C3F\u0C28\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C2A\u0C4D\u0C30\u0C2F\u0C24\u0C4D\u0C28\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
+  typeInstead: "\u0C1F\u0C48\u0C2A\u0C4D \u0C1A\u0C47\u0C38\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  trySpeaking: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C3F \u0C1A\u0C42\u0C21\u0C02\u0C21\u0C3F:",
+  customersTitle: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32 \u0C1C\u0C3E\u0C2C\u0C3F\u0C24\u0C3E",
+  searchCustomerPlaceholder: "\u0C2A\u0C47\u0C30\u0C41 \u0C32\u0C47\u0C26\u0C3E \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C35\u0C46\u0C24\u0C15\u0C02\u0C21\u0C3F...",
+  filterAll: "\u0C05\u0C28\u0C4D\u0C28\u0C40",
+  filterOwes: "\u0C2C\u0C3E\u0C15\u0C40 \u0C09\u0C28\u0C4D\u0C28\u0C35\u0C3E\u0C30\u0C41",
+  filterSettled: "\u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C2F\u0C3F\u0C02\u0C26\u0C3F",
+  addJama: "+ \u0C1C\u0C2E \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  printSlip: "\u0C30\u0C38\u0C40\u0C26\u0C41 \u0C2A\u0C4D\u0C30\u0C3F\u0C02\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  sendWhatsApp: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D",
+  summaryTitle: "\u0C30\u0C4B\u0C1C\u0C41\u0C35\u0C3E\u0C30\u0C40 \u0C38\u0C3E\u0C30\u0C3E\u0C02\u0C36\u0C02",
+  todayUdhaar: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C07\u0C1A\u0C4D\u0C1A\u0C3F\u0C28\u0C26\u0C3F",
+  todayJama: "\u0C21\u0C2C\u0C4D\u0C2C\u0C41 \u0C1C\u0C2E",
+  todayNet: "\u0C28\u0C3F\u0C15\u0C30 \u0C2E\u0C3E\u0C30\u0C4D\u0C2A\u0C41",
+  weeklyTrend: "\u0C17\u0C24 7 \u0C30\u0C4B\u0C1C\u0C41\u0C32 \u0C24\u0C40\u0C30\u0C41",
+  topPending: "\u0C05\u0C24\u0C4D\u0C2F\u0C27\u0C3F\u0C15 \u0C2C\u0C3E\u0C15\u0C40 \u0C09\u0C28\u0C4D\u0C28\u0C35\u0C3E\u0C30\u0C41",
+  settingsTitle: "\u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u200C\u0C32\u0C41",
+  settingsSubtitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C41, \u0C2D\u0C3E\u0C37, \u0C38\u0C4C\u0C02\u0C21\u0C4D\u200C\u0C2C\u0C3E\u0C15\u0C4D\u0C38\u0C4D \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C2C\u0C4D\u0C2F\u0C3E\u0C15\u0C2A\u0C4D",
+  shopNameLabel: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41",
+  shopNamePlaceholder: "\u0C09\u0C26\u0C3E. \u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C15\u0C3F\u0C30\u0C3E\u0C23\u0C3E \u0C38\u0C4D\u0C1F\u0C4B\u0C30\u0C4D",
+  uiLanguageLabel: "\u0C38\u0C4D\u0C15\u0C4D\u0C30\u0C40\u0C28\u0C4D \u0C2D\u0C3E\u0C37",
+  uiLanguageDesc: "\u0C2C\u0C1F\u0C28\u0C4D\u0C32\u0C41 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C38\u0C4D\u0C15\u0C4D\u0C30\u0C40\u0C28\u0C4D \u0C2A\u0C48 \u0C15\u0C28\u0C3F\u0C2A\u0C3F\u0C02\u0C1A\u0C47 \u0C2D\u0C3E\u0C37",
+  speechLanguageLabel: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C47 \u0C2D\u0C3E\u0C37",
+  speechLanguageDesc: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C17\u0C41\u0C30\u0C4D\u0C24\u0C3F\u0C02\u0C2A\u0C41 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C38\u0C4C\u0C02\u0C21\u0C4D\u200C\u0C2C\u0C3E\u0C15\u0C4D\u0C38\u0C4D \u0C15\u0C4B\u0C38\u0C02",
+  speechSpeedLabel: "\u0C2E\u0C3E\u0C1F\u0C32 \u0C35\u0C47\u0C17\u0C02 (Soundbox)",
+  speedSlow: "\u0C28\u0C46\u0C2E\u0C4D\u0C2E\u0C26\u0C3F\u0C17\u0C3E",
+  speedNormal: "\u0C38\u0C3E\u0C27\u0C3E\u0C30\u0C23\u0C02",
+  speedFast: "\u0C35\u0C47\u0C17\u0C02\u0C17\u0C3E",
+  muteRepliesLabel: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C38\u0C2E\u0C3E\u0C27\u0C3E\u0C28\u0C3E\u0C32\u0C41 \u0C2E\u0C4D\u0C2F\u0C42\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  muteRepliesDesc: "\u0C17\u0C02\u0C1F \u0C2E\u0C3E\u0C24\u0C4D\u0C30\u0C2E\u0C47 \u0C2E\u0C4B\u0C17\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F, \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C26\u0C41",
+  themeLabel: "\u0C25\u0C40\u0C2E\u0C4D",
+  themeLight: "\u0C32\u0C48\u0C1F\u0C4D \u0C25\u0C40\u0C2E\u0C4D",
+  themeHighContrast: "\u0C39\u0C48 \u0C15\u0C3E\u0C02\u0C1F\u0C4D\u0C30\u0C3E\u0C38\u0C4D\u0C1F\u0C4D (\u0C21\u0C3E\u0C30\u0C4D\u0C15\u0C4D)",
+  themeDesc: "\u0C0E\u0C02\u0C21\u0C32\u0C4B \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C30\u0C3E\u0C24\u0C4D\u0C30\u0C3F \u0C38\u0C2E\u0C2F\u0C02\u0C32\u0C4B \u0C38\u0C4D\u0C2A\u0C37\u0C4D\u0C1F\u0C02\u0C17\u0C3E \u0C15\u0C28\u0C3F\u0C2A\u0C3F\u0C02\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F",
+  asrEngineLabel: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C07\u0C02\u0C1C\u0C3F\u0C28\u0C4D (ASR)",
+  asrEngineDesc: "\u0C2E\u0C3E\u0C1F\u0C32\u0C28\u0C41 \u0C1F\u0C46\u0C15\u0C4D\u0C38\u0C4D\u0C1F\u0C4D\u200C\u0C17\u0C3E \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C47 \u0C07\u0C02\u0C1C\u0C3F\u0C28\u0C4D",
+  asrBrowser: "\u0C2C\u0C4D\u0C30\u0C4C\u0C1C\u0C30\u0C4D \u0C06\u0C28\u0C4D-\u0C21\u0C3F\u0C35\u0C48\u0C38\u0C4D (\u0C09\u0C1A\u0C3F\u0C24\u0C02, \u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D)",
+  asrBhashini: "\u0C2D\u0C3E\u0C37\u0C3F\u0C23\u0C3F AI (\u0C21\u0C3F\u0C1C\u0C3F\u0C1F\u0C32\u0C4D \u0C07\u0C02\u0C21\u0C3F\u0C2F\u0C3E) [Stubbed]",
+  asrSarvam: "\u0C38\u0C30\u0C4D\u0C35\u0C02 AI (\u0C07\u0C02\u0C21\u0C3F\u0C15\u0C4D \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D) [Stubbed]",
+  exportLedgerLabel: "\u0C16\u0C3E\u0C24\u0C3E \u0C21\u0C47\u0C1F\u0C3E \u0C0E\u0C17\u0C41\u0C2E\u0C24\u0C3F",
+  exportJson: "JSON \u0C32\u0C4B \u0C21\u0C4C\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C21\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  exportCsv: "CSV \u0C32\u0C4B \u0C21\u0C4C\u0C28\u0C4D\u200C\u0C32\u0C4B\u0CA1\u0CCD \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  dangerZoneLabel: "\u0C21\u0C47\u0C02\u0C1C\u0C30\u0C4D \u0C1C\u0C4B\u0C28\u0C4D",
+  clearAllData: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C16\u0C3E\u0C24\u0C3E \u0C21\u0C47\u0C1F\u0C3E\u0C28\u0C41 \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  clearConfirm: "\u0C2E\u0C40\u0C30\u0C41 \u0C16\u0C1A\u0C4D\u0C1A\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C28\u0C41, \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C28\u0C41 \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C3E\u0C32\u0C28\u0C41\u0C15\u0C41\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C3E? \u0C26\u0C40\u0C28\u0C4D\u0C28\u0C3F \u0C24\u0C3F\u0C30\u0C3F\u0C17\u0C3F \u0C2A\u0C4A\u0C02\u0C26\u0C32\u0C47\u0C30\u0C41.",
+  clearSuccess: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C21\u0C47\u0C1F\u0C3E \u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C02\u0C24\u0C02\u0C17\u0C3E \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F!",
+  resetDemo: "\u0C21\u0C46\u0C2E\u0C4B \u0C21\u0C47\u0C1F\u0C3E\u0C28\u0C41 \u0C2A\u0C41\u0C28\u0C30\u0C41\u0C26\u0C4D\u0C27\u0C30\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  resetSuccess: "\u0C21\u0C46\u0C2E\u0C4B \u0C21\u0C47\u0C1F\u0C3E \u0C32\u0C4B\u0C21\u0C4D \u0C05\u0C2F\u0C3F\u0C02\u0C26\u0C3F!",
+  localFirstInfo: "Udhaar Sathi 100% \u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D. \u0C2E\u0C40 \u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C21\u0C47\u0C1F\u0C3E \u0C2E\u0C40 \u0C2B\u0C4B\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C28\u0C47 \u0C38\u0C41\u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C09\u0C02\u0C1F\u0C41\u0C02\u0C26\u0C3F (IndexedDB).",
+  signupWelcomeTitle: "Udhaar Sathi \u0C15\u0C3F \u0C38\u0C4D\u0C35\u0C3E\u0C17\u0C24\u0C02",
+  signupWelcomeSubtitle: "\u0C2D\u0C3E\u0C30\u0C24\u0C40\u0C2F \u0C15\u0C3F\u0C30\u0C3E\u0C23\u0C3E \u0C26\u0C41\u0C15\u0C3E\u0C23\u0C3E\u0C32 \u0C15\u0C4B\u0C38\u0C02 \u0C39\u0C4D\u0C2F\u0C3E\u0C02\u0C21\u0C4D\u0C38\u0C4D-\u0C2B\u0C4D\u0C30\u0C40 \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C32\u0C46\u0C21\u0C4D\u0C1C\u0C30\u0C4D",
+  dataStaysOnPhone: "\u0C2E\u0C40 \u0C21\u0C47\u0C1F\u0C3E \u0C08 \u0C2B\u0C4B\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C28\u0C47 \u0C2D\u0C26\u0C4D\u0C30\u0C02\u0C17\u0C3E \u0C09\u0C02\u0C1F\u0C41\u0C02\u0C26\u0C3F",
+  getStarted: "\u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  stepOf: "\u0C26\u0C36 {current} / {total}",
+  shopNamePrompt: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C0F\u0C2E\u0C3F\u0C1F\u0C3F?",
+  shopNameSpoken: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F",
+  shopNameHelper: "\u0C2E\u0C40 \u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C30\u0C3E\u0C2F\u0C02\u0C21\u0C3F",
+  shopNameError: "\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C38\u0C30\u0C48\u0C28 \u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C47\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C15\u0C28\u0C40\u0C38\u0C02 2 \u0C05\u0C15\u0C4D\u0C37\u0C30\u0C3E\u0C32\u0C41)",
+  ownerNamePrompt: "\u0C2E\u0C40 \u0C2A\u0C47\u0C30\u0C41 \u0C0F\u0C2E\u0C3F\u0C1F\u0C3F?",
+  ownerNameSpoken: "\u0C2E\u0C40 \u0C2A\u0C47\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F",
+  ownerNamePlaceholder: "\u0C09\u0C26\u0C3E. \u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C15\u0C41\u0C2E\u0C3E\u0C30\u0C4D",
+  ownerNameHelper: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2F\u0C1C\u0C2E\u0C3E\u0C28\u0C3F \u0C2A\u0C47\u0C30\u0C41",
+  ownerNameError: "\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C40 \u0C2A\u0C47\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C15\u0C28\u0C40\u0C38\u0C02 2 \u0C05\u0C15\u0C4D\u0C37\u0C30\u0C3E\u0C32\u0C41)",
+  phonePrompt: "\u0C2E\u0C40 \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41",
+  phoneSpoken: "\u0C2E\u0C40 10 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  phonePlaceholder: "\u0C09\u0C26\u0C3E. 9876543210",
+  phoneHelper: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C2C\u0C3E\u0C15\u0C40 \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D\u0C32 \u0C15\u0C4B\u0C38\u0C02 10 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41",
+  phoneError: "6-9 \u0C24\u0C4B \u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C2E\u0C2F\u0C4D\u0C2F\u0C47 10 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2D\u0C3E\u0C30\u0C24\u0C40\u0C2F \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  upiPrompt: "\u0C2E\u0C40 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40",
+  upiSpoken: "\u0C2E\u0C40 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C30\u0C3E\u0C2F\u0C02\u0C21\u0C3F",
+  upiPlaceholder: "\u0C09\u0C26\u0C3E. ramesh@oksbi",
+  upiHelperText: "\u0C2E\u0C40 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40 \u0C2E\u0C3E\u0C24\u0C4D\u0C30\u0C2E\u0C47 \u0C05\u0C35\u0C38\u0C30\u0C02. \u0C2E\u0C47\u0C2E\u0C41 \u0C0E\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C42 \u0C2C\u0C4D\u0C2F\u0C3E\u0C02\u0C15\u0C4D \u0C16\u0C3E\u0C24\u0C3E \u0C38\u0C02\u0C16\u0C4D\u0C2F\u0C28\u0C41 \u0C05\u0C21\u0C17\u0C2E\u0C41.",
+  upiPaste: "\u0C2A\u0C47\u0C38\u0C4D\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  upiReadBack: "\u0C05\u0C15\u0C4D\u0C37\u0C30\u0C3E\u0C32 \u0C35\u0C3E\u0C30\u0C40\u0C17\u0C3E \u0C35\u0C3F\u0C28\u0C02\u0C21\u0C3F",
+  upiReadingBack: "\u0C1A\u0C26\u0C41\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  upiError: "\u0C38\u0C30\u0C48\u0C28 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40\u0C28\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C09\u0C26\u0C3E. name@bank)",
+  pinPrompt: "\u0C38\u0C46\u0C15\u0C4D\u0C2F\u0C42\u0C30\u0C3F\u0C1F\u0C40 \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C10\u0C1A\u0C4D\u0C1B\u0C3F\u0C15\u0C02)",
+  pinSpoken: "4 \u0C28\u0C41\u0C02\u0C21\u0C3F 6 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C38\u0C46\u0C15\u0C4D\u0C2F\u0C42\u0C30\u0C3F\u0C1F\u0C40 \u0C2A\u0C3F\u0C28\u0C4D \u0C0E\u0C02\u0C1A\u0C41\u0C15\u0C4B\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  pinPlaceholder: "4-6 \u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2A\u0C3F\u0C28\u0C4D",
+  pinHelperText: "\u0C21\u0C3F\u0C35\u0C48\u0C38\u0C4D \u0C0E\u0C28\u0C4D\u200C\u0C15\u0C4D\u0C30\u0C3F\u0C2A\u0C4D\u0C37\u0C28\u0C4D\u200C\u0C24\u0C4B \u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E\u0C28\u0C41 \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C41\u0C38\u0C4D\u0C24\u0C41\u0C02\u0C26\u0C3F. \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 \u0C15\u0C42\u0C21\u0C3E \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C38\u0C41\u0C15\u0C4B\u0C35\u0C1A\u0C4D\u0C1A\u0C41.",
+  pinSkip: "\u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C41 \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C3F",
+  pinSkipWarning: "\u0C2A\u0C3F\u0C28\u0C4D \u0C32\u0C47\u0C15\u0C41\u0C02\u0C21\u0C3E \u0C0E\u0C35\u0C30\u0C48\u0C28\u0C3E \u0C08 \u0C2F\u0C3E\u0C2A\u0C4D \u0C24\u0C46\u0C30\u0C3F\u0C1A\u0C3F \u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E\u0C28\u0C41 \u0C1A\u0C42\u0C21\u0C35\u0C1A\u0C4D\u0C1A\u0C41. \u0C2E\u0C40\u0C30\u0C41 \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C0E\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C48\u0C28\u0C3E \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C38\u0C41\u0C15\u0C4B\u0C35\u0C1A\u0C4D\u0C1A\u0C41.",
+  pinSkipConfirm: "\u0C2A\u0C3F\u0C28\u0C4D \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C3F",
+  pinError: "\u0C2A\u0C3F\u0C28\u0C4D 4-6 \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C09\u0C02\u0C21\u0C3E\u0C32\u0C3F \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C38\u0C30\u0C33 \u0C36\u0C4D\u0C30\u0C47\u0C23\u0C3F \u0C15\u0C3E\u0C15\u0C42\u0C21\u0C26\u0C41 (\u0C09\u0C26\u0C3E. 1234, 0000)",
+  reviewTitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D \u0C38\u0C2E\u0C40\u0C15\u0C4D\u0C37\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  reviewSubtitle: "\u0C2E\u0C40 \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C28\u0C41 \u0C28\u0C3F\u0C30\u0C4D\u0C27\u0C3E\u0C30\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F. \u0C35\u0C40\u0C1F\u0C3F\u0C28\u0C3F \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C0E\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C48\u0C28\u0C3E \u0C28\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C35\u0C1A\u0C4D\u0C1A\u0C41.",
+  startAppButton: "Udhaar Sathi \u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  editField: "\u0C38\u0C35\u0C30\u0C3F\u0C02\u0C1A\u0C41",
+  nextStep: "\u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24",
+  prevStep: "\u0C35\u0C46\u0C28\u0C41\u0C15\u0C15\u0C41",
+  settingsProfileTitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D",
+  settingsProfileSubtitle: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C41, \u0C2F\u0C1C\u0C2E\u0C3E\u0C28\u0C3F \u0C38\u0C2E\u0C3E\u0C1A\u0C3E\u0C30\u0C02 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40",
+  confirmUpiChangeTitle: "\u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40\u0C28\u0C3F \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C3E\u0C32\u0C3E?",
+  confirmUpiChangeWarning: "\u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40\u0C28\u0C3F \u0C2E\u0C3E\u0C30\u0C3F\u0C38\u0C4D\u0C24\u0C47 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D\u0C32\u0C15\u0C41 \u0C2A\u0C02\u0C2A\u0C47 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C15\u0C4D\u0C2F\u0C42\u0C06\u0C30\u0C4D \u0C15\u0C4B\u0C21\u0C4D \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C32\u0C3F\u0C02\u0C15\u0C41\u0C32\u0C41 \u0C2E\u0C3E\u0C30\u0C41\u0C24\u0C3E\u0C2F\u0C3F. \u0C2E\u0C40\u0C30\u0C41 \u0C16\u0C1A\u0C4D\u0C1A\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C09\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C3E?",
+  confirmUpiChangeButton: "\u0C05\u0C35\u0C41\u0C28\u0C41, \u0C2F\u0C42\u0C2A\u0C40\u0C10 \u0C10\u0C21\u0C40 \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C02\u0C21\u0C3F",
+  noPinWarningBanner: "\u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E \u0C2A\u0C3F\u0C28\u0C4D\u200C\u0C24\u0C4B \u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41. \u0C21\u0C47\u0C1F\u0C3E\u0C28\u0C41 \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C47 \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F.",
+  setPinNow: "\u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C47 \u0C2A\u0C3F\u0C28\u0C4D \u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  profileUpdatedToast: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D \u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C02\u0C24\u0C02\u0C17\u0C3E \u0C28\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F!",
+  registerCustomerTitle: "\u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C28\u0C2E\u0C4B\u0C26\u0C41",
+  registerCustomerSubtitle: "\u0C0E\u0C28\u0C4D\u200C\u0C15\u0C4D\u0C30\u0C3F\u0C2A\u0C4D\u0C1F\u0C46\u0C21\u0C4D \u0C32\u0C46\u0C21\u0C4D\u0C1C\u0C30\u0C4D\u200C\u0C32\u0C4B \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C28\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  enterCustomerPhone: "\u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41",
+  phoneReadBackQuestion: "{phone}. \u0C38\u0C30\u0C3F\u0C17\u0C4D\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3E?",
+  readBackConfirm: "\u0C05\u0C35\u0C41\u0C28\u0C41, \u0C38\u0C30\u0C3F\u0C17\u0C4D\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3F",
+  readBackWrong: "\u0C15\u0C3E\u0C26\u0C41, \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C02\u0C21\u0C3F",
+  skipPhoneForNow: "\u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C41 \u0C26\u0C3E\u0C1F\u0C35\u0C47\u0C2F\u0C3F",
+  noNumberWarning: "\u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C32\u0C47\u0C15\u0C41\u0C02\u0C21\u0C3E \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F. \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D\u0C32\u0C32\u0C4B \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C05\u0C21\u0C17\u0C2C\u0C21\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F.",
+  duplicatePhoneWarning: "\u0C08 \u0C28\u0C02\u0C2C\u0C30\u0C41 {name} \u0C26\u0C3F. \u0C06 \u0C35\u0C4D\u0C2F\u0C15\u0C4D\u0C24\u0C47\u0C28\u0C3E?",
+  openExistingCustomer: "\u0C05\u0C35\u0C41\u0C28\u0C41, {name} \u0C24\u0C46\u0C30\u0C35\u0C02\u0C21\u0C3F",
+  useAnotherNumber: "\u0C2E\u0C30\u0C4A\u0C15 \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  requireCustomerPhoneLabel: "\u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C24\u0C2A\u0C4D\u0C2A\u0C28\u0C3F\u0C38\u0C30\u0C3F",
+  requireCustomerPhoneDesc: "\u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C38\u0C47\u0C1F\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C41 \u0C2B\u0C4B\u0C28\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C24\u0C2A\u0C4D\u0C2A\u0C28\u0C3F\u0C38\u0C30\u0C3F\u0C17\u0C3E \u0C09\u0C02\u0C21\u0C3E\u0C32\u0C3F",
+  customerRegisteredSpoken: "{name} \u0C1A\u0C47\u0C30\u0C4D\u0C1A\u0C2C\u0C21\u0C4D\u0C21\u0C3E\u0C30\u0C41",
+  customerNewAskPhoneSpoken: "{name} \u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D. \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F",
+  whichCustomerTitle: "\u0C0F {name}?",
+  tellLast4DigitsSubtitle: "\u0C2B\u0C4B\u0C28\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C1A\u0C3F\u0C35\u0C30\u0C3F 4 \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C41\u0C28\u0C41 \u0C24\u0C3E\u0C15\u0C02\u0C21\u0C3F",
+  noNumberSavedChip: "\u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C32\u0C47\u0C26\u0C41",
+  disambiguateRetryToast: "\u0C08 \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C38\u0C30\u0C3F\u0C2A\u0C4B\u0C32\u0C32\u0C47\u0C26\u0C41. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C33\u0C4D\u0C32\u0C40 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C41\u0C28\u0C41 \u0C24\u0C3E\u0C15\u0C02\u0C21\u0C3F.",
+  disambiguateConfirmSpoken: "{name}, \u0C38\u0C30\u0C3F\u0C17\u0C4D\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3F.",
+  autoOpenPaymentRequestLabel: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C05\u0C2D\u0C4D\u0C2F\u0C30\u0C4D\u0C25\u0C28 \u0C1A\u0C42\u0C2A\u0C3F\u0C02\u0C1A\u0C41",
+  autoOpenPaymentRequestDesc: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C38\u0C3F\u0C28 \u0C35\u0C46\u0C02\u0C1F\u0C28\u0C47 UPI QR \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C32\u0C3F\u0C02\u0C15\u0C4D \u0C1A\u0C42\u0C2A\u0C3F\u0C02\u0C1A\u0C41",
+  showMyQr: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 QR",
+  showMyQrDesc: "\u0C15\u0C4C\u0C02\u0C1F\u0C30\u0C4D \u0C35\u0C26\u0C4D\u0C26 \u0C09\u0C28\u0C4D\u0C28 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D\u0C32 \u0C15\u0C4B\u0C38\u0C02 \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 QR",
+  showMyQrTitle: "\u0C37\u0C3E\u0C2A\u0C4D \u0C15\u0C4C\u0C02\u0C1F\u0C30\u0C4D QR",
+  paymentRequestTitle: "\u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C05\u0C2D\u0C4D\u0C2F\u0C30\u0C4D\u0C25\u0C28",
+  paymentRequestSubtitle: "\u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C2A\u0C41 \u0C38\u0C4D\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F QR \u0C32\u0C47\u0C26\u0C3E \u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C32\u0C3F\u0C02\u0C15\u0C4D \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F",
+  sendWhatsAppPayment: "WhatsApp \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F",
+  sendWhatsAppHint: "WhatsApp \u0C24\u0C46\u0C30\u0C41\u0C1A\u0C41\u0C15\u0C41\u0C02\u0C1F\u0C41\u0C02\u0C26\u0C3F, \u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 Send \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F",
+  shareQr: "QR \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F",
+  downloadQr: "QR \u0C21\u0C4C\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C21\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  laterDismiss: "\u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24",
+  noPhoneAddNumber: "\u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  noPhoneWarning: "\u0C08 \u0C15\u0C38\u0C4D\u0C1F\u0C2E\u0C30\u0C4D \u0C2B\u0C4B\u0C28\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C41 \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C32\u0C47\u0C26\u0C41",
+  noUpiIdWarning: "\u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D\u200C\u0C32\u0C4B UPI ID \u0C32\u0C47\u0C26\u0C41. \u0C38\u0C46\u0C1F\u0C4D\u0C1F\u0C3F\u0C02\u0C17\u0C4D\u0C38\u0C4D\u200C\u0C32\u0C4B \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
+  setupUpiNow: "UPI ID \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  whatsappOfflineHint: "WhatsApp \u0C15\u0C4B\u0C38\u0C02 \u0C07\u0C02\u0C1F\u0C30\u0C4D\u0C28\u0C46\u0C1F\u0C4D \u0C05\u0C35\u0C38\u0C30\u0C02",
+  qrSavedToast: "QR \u0C15\u0C4B\u0C21\u0C4D \u0C38\u0C3F\u0C26\u0C4D\u0C27\u0C02\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3F",
+  receiptQrTitle: "UPI \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C38\u0C4D\u0C15\u0C3E\u0C28\u0C4D \u0C1A\u0C47\u0C38\u0C3F \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  chooseLanguage: "\u0C2D\u0C3E\u0C37\u0C28\u0C41 \u0C0E\u0C02\u0C1A\u0C41\u0C15\u0C4B\u0C02\u0C21\u0C3F",
+  language: "\u0C2D\u0C3E\u0C37",
+  speechLanguage: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C2D\u0C3E\u0C37",
+  entries: "\u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C32\u0C41",
+  entriesCount: "{count} \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C32\u0C41",
+  clear: "\u0C24\u0C40\u0C38\u0C3F\u0C35\u0C47\u0C2F\u0C3F",
+  reset: "\u0C30\u0C40\u0C38\u0C46\u0C1F\u0C4D",
+  viewAll: "\u0C05\u0C28\u0C4D\u0C28\u0C40 \u0C1A\u0C42\u0C21\u0C02\u0C21\u0C3F \u2192",
+  loading: "\u0C32\u0C4B\u0C21\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  loadingCustomers: "\u0C16\u0C3E\u0C24\u0C3E \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C41 \u0C32\u0C4B\u0C21\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C2F\u0C3F...",
+  loadingSummary: "\u0C30\u0C4B\u0C1C\u0C41\u0C35\u0C3E\u0C30\u0C40 \u0C38\u0C3E\u0C30\u0C3E\u0C02\u0C36\u0C02 \u0C32\u0C4B\u0C21\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  securingLedger: "\u0C16\u0C3E\u0C24\u0C3E \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C2C\u0C21\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  micPromptSpeak: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
+  micPromptListening: "\u0C35\u0C3F\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C2E\u0C41...",
+  micPromptProcessing: "\u0C2A\u0C4D\u0C30\u0C3E\u0C38\u0C46\u0C38\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  micPromptRetry: "\u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C2A\u0C4D\u0C30\u0C2F\u0C24\u0C4D\u0C28\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  micCaptionIdle: "\u0C12\u0C15\u0C38\u0C3E\u0C30\u0C3F \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C3F \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
+  micCaptionListening: "\u0C38\u0C4D\u0C2A\u0C37\u0C4D\u0C1F\u0C02\u0C17\u0C3E \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F \u2022 \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C1F\u0C02 \u0C06\u0C2A\u0C17\u0C3E\u0C28\u0C47 \u0C06\u0C17\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F",
+  micCaptionProcessing: "\u0C32\u0C46\u0C15\u0C4D\u0C15\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  micErrorFallbackNote: "\u0C2E\u0C48\u0C15\u0C4D \u0C2A\u0C28\u0C3F\u0C1A\u0C47\u0C2F\u0C15\u0C2A\u0C4B\u0C24\u0C47, \u0C1F\u0C48\u0C2A\u0C4D \u0C1A\u0C47\u0C38\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F.",
+  listeningSpeakYourLanguage: "\u0C35\u0C3F\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C2E\u0C41... \u0C2E\u0C40 \u0C2D\u0C3E\u0C37\u0C32\u0C4B \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
+  streamingSpeech: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C35\u0C3F\u0C28\u0C2C\u0C21\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  processingSpeech: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C2A\u0C4D\u0C30\u0C3E\u0C38\u0C46\u0C38\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  heardVoice: "\u0C35\u0C3F\u0C28\u0C2C\u0C21\u0C3F\u0C28 \u0C2E\u0C3E\u0C1F\u0C32\u0C41",
+  quickDemoPhrases: "\u0C24\u0C4D\u0C35\u0C30\u0C3F\u0C24 \u0C09\u0C26\u0C3E\u0C39\u0C30\u0C23\u0C32\u0C41",
+  tapToTest: "\u0C2A\u0C30\u0C40\u0C15\u0C4D\u0C37\u0C3F\u0C02\u0C1A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F",
+  hintPhrase1: "\u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C15\u0C41 500 \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C07\u0C1A\u0C4D\u0C1A\u0C3E\u0C28\u0C41",
+  hintPhrase2: "\u0C30\u0C2E\u0C47\u0C37\u0C4D 340 \u0C05\u0C2A\u0C4D\u0C2A\u0C41, \u0C28\u0C3F\u0C28\u0C4D\u0C28 200 \u0C07\u0C1A\u0C4D\u0C1A\u0C3E\u0C30\u0C41",
+  hintPhrase3: "\u0C30\u0C2E\u0C47\u0C37\u0C4D \u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C0E\u0C02\u0C24?",
+  creditGivenTodaySub: "\u0C08\u0C30\u0C4B\u0C1C\u0C41 \u0C07\u0C1A\u0C4D\u0C1A\u0C3F\u0C28 \u0C05\u0C2A\u0C4D\u0C2A\u0C41",
+  paymentReceivedTodaySub: "\u0C08\u0C30\u0C4B\u0C1C\u0C41 \u0C05\u0C02\u0C26\u0C3F\u0C28 \u0C1C\u0C2E",
+  marketPending: "\u0C30\u0C3E\u0C35\u0C32\u0C38\u0C3F\u0C28 \u0C2C\u0C3E\u0C15\u0C40",
+  last5Entries: "\u0C1A\u0C3F\u0C35\u0C30\u0C3F 5 \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C32\u0C41",
+  noEntriesYetPrompt: "\u0C07\u0C02\u0C15\u0C3E \u0C0E\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C32\u0C46\u0C15\u0C4D\u0C15 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C15\u0C3E\u0C32\u0C47\u0C26\u0C41. \u0C2E\u0C48\u0C15\u0C4D \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C3F \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F!",
+  creditBadge: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41",
+  paymentBadge: "\u0C1C\u0C2E",
+  udhaar: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41",
+  jama: "\u0C1C\u0C2E",
+  customersCountSorted: "{count} \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41 \u2022 \u0C05\u0C24\u0C4D\u0C2F\u0C27\u0C3F\u0C15 \u0C2C\u0C3E\u0C15\u0C40 \u0C2A\u0C4D\u0C30\u0C15\u0C3E\u0C30\u0C02",
+  noCustomersYet: "\u0C07\u0C02\u0C15\u0C3E \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41 \u0C32\u0C47\u0C30\u0C41",
+  noCustomersDescription: "\u0C07\u0C02\u0C15\u0C3E \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41 \u0C32\u0C47\u0C30\u0C41. \u0C2E\u0C4A\u0C26\u0C1F\u0C3F \u0C05\u0C2A\u0C4D\u0C2A\u0C41\u0C28\u0C41 \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F.",
+  noCustomerFound: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C15\u0C28\u0C41\u0C17\u0C4A\u0C28\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41",
+  noMatchingCustomerQuery: '"{query}" \u0C2A\u0C47\u0C30\u0C41\u0C24\u0C4B \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C32\u0C47\u0C30\u0C41. \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F.',
+  noCustomersInFilter: "\u0C08 \u0C2B\u0C3F\u0C32\u0C4D\u0C1F\u0C30\u0C4D \u0C32\u0C4B \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41 \u0C32\u0C47\u0C30\u0C41.",
+  firstUdhaarVoice: "\u{1F3A4} \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C2E\u0C4A\u0C26\u0C1F\u0C3F \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  addCustomerButton: "+ \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C28\u0C3F \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  addNewCustomerTitle: "\u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C28\u0C3F \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  addNewCustomerSubtitle: "\u0C0E\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C32\u0C47\u0C26\u0C3E \u0C1C\u0C2E \u0C32\u0C47\u0C15\u0C41\u0C02\u0C21\u0C3E \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C28\u0C3F \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  lastActivity: "\u0C1A\u0C3F\u0C35\u0C30\u0C3F\u0C26\u0C3F: {date}",
+  badgeOwes: "\u0C2C\u0C3E\u0C15\u0C40",
+  badgeSettled: "\u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C2F\u0C3F\u0C02\u0C26\u0C3F",
+  badgeNew: "\u0C15\u0C4A\u0C24\u0C4D\u0C24",
+  listenBalance: "\u0C35\u0C3F\u0C28\u0C02\u0C21\u0C3F",
+  lastReminderDate: "\u0C1A\u0C3F\u0C35\u0C30\u0C3F \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D: {date}",
+  outstandingUdhaar: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40 \u0C05\u0C2A\u0C4D\u0C2A\u0C41",
+  allSettled: "\u0C05\u0C02\u0C24\u0C3E \u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C2F\u0C3F\u0C02\u0C26\u0C3F",
+  amountToReceive: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C28\u0C41\u0C02\u0C21\u0C3F \u0C30\u0C3E\u0C35\u0C32\u0C38\u0C3F\u0C28\u0C26\u0C3F",
+  noBalancePending: "\u0C0E\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C2C\u0C3E\u0C15\u0C40 \u0C32\u0C47\u0C26\u0C41",
+  totalCreditLabel: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C05\u0C2A\u0C4D\u0C2A\u0C41:",
+  totalPaymentLabel: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C1C\u0C2E:",
+  sendWhatsAppReminder: "WhatsApp \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D",
+  printReceipt: "\u0C30\u0C38\u0C40\u0C26\u0C41 \u0C2A\u0C4D\u0C30\u0C3F\u0C02\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  addUdhaarButton: "+ \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  addPaymentButton: "+ \u0C1C\u0C2E \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  timelineEntries: "\u0C16\u0C3E\u0C24\u0C3E \u0C1A\u0C30\u0C3F\u0C24\u0C4D\u0C30 ({count} \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C32\u0C41)",
+  latestFirst: "\u0C24\u0C3E\u0C1C\u0C3E\u0C35\u0C3F \u0C2E\u0C41\u0C02\u0C26\u0C41\u0C17\u0C3E",
+  noEntriesTitle: "\u0C0E\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C32\u0C46\u0C15\u0C4D\u0C15\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41",
+  noEntriesCustomerDesc: "\u0C08 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C28\u0C3F\u0C15\u0C3F \u0C07\u0C02\u0C15\u0C3E \u0C0E\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41.",
+  deleteEntryConfirm: "\u0C2E\u0C40\u0C30\u0C41 \u0C16\u0C1A\u0C4D\u0C1A\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C08 \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C28\u0C3F \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C3E\u0C32\u0C28\u0C41\u0C15\u0C41\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C3E?",
+  enterValidAmount: "\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C38\u0C30\u0C48\u0C28 \u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C3E\u0C28\u0C4D\u0C28\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  entryDeletedToast: "\u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40 \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F",
+  customerNotFoundTitle: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C15\u0C28\u0C41\u0C17\u0C4A\u0C28\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41",
+  customerNotFoundDesc: "\u0C08 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C32\u0C46\u0C21\u0C4D\u0C1C\u0C30\u0C4D \u0C32\u0C4B \u0C32\u0C47\u0C30\u0C41.",
+  viewCustomersList: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32 \u0C1C\u0C3E\u0C2C\u0C3F\u0C24\u0C3E \u0C1A\u0C42\u0C21\u0C02\u0C21\u0C3F",
+  customerAlreadyExists: "{name} \u0C07\u0C2A\u0C4D\u0C2A\u0C1F\u0C3F\u0C15\u0C47 \u0C09\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C41",
+  similarCustomerWarning: "\u0C07\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C2A\u0C47\u0C30\u0C41\u0C24\u0C4B \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C07\u0C2A\u0C4D\u0C2A\u0C1F\u0C3F\u0C15\u0C47 \u0C09\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C41. \u0C2E\u0C40\u0C30\u0C41 \u0C35\u0C3E\u0C30\u0C3F \u0C16\u0C3E\u0C24\u0C3E\u0C28\u0C47 \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C3F\u0C02\u0C1A\u0C3E\u0C32\u0C28\u0C41\u0C15\u0C41\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C30\u0C3E?",
+  useThisOne: "\u0C26\u0C40\u0C28\u0C4D\u0C28\u0C3F \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  createAnyway: "\u0C15\u0C4A\u0C24\u0C4D\u0C24\u0C26\u0C3F \u0C38\u0C43\u0C37\u0C4D\u0C1F\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  customerNameLabel: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C2A\u0C47\u0C30\u0C41",
+  mobileNumberOptional: "\u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C4D (\u0C10\u0C1A\u0C4D\u0C1B\u0C3F\u0C15\u0C02)",
+  phoneReminderHelper: "WhatsApp \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D\u0C32 \u0C15\u0C4A\u0C30\u0C15\u0C41 \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C15\u0C30\u0C02 (\u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 \u0C15\u0C42\u0C21\u0C3E \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C35\u0C1A\u0C4D\u0C1A\u0C41).",
+  saveCustomer: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C28\u0C3F \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  saving: "\u0C38\u0C47\u0C35\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  enterCustomerNameError: "\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C2A\u0C47\u0C30\u0C41 \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  errorSavingCustomer: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C28\u0C3F \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C21\u0C02\u0C32\u0C4B \u0C32\u0C4B\u0C2A\u0C02",
+  dailySummarySubtitle: "\u0C30\u0C4B\u0C1C\u0C41\u0C35\u0C3E\u0C30\u0C40 \u0C35\u0C38\u0C42\u0C33\u0C4D\u0C32\u0C41 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C05\u0C2A\u0C4D\u0C2A\u0C41\u0C32 \u0C38\u0C3E\u0C30\u0C3E\u0C02\u0C36\u0C02",
+  shareSlip: "\u0C38\u0C4D\u0C32\u0C3F\u0C2A\u0C4D \u0C2A\u0C02\u0C1A\u0C41\u0C15\u0C4B\u0C02\u0C21\u0C3F",
+  copied: "\u0C15\u0C3E\u0C2A\u0C40 \u0C05\u0C2F\u0C3F\u0C02\u0C26\u0C3F",
+  dateLabel: "\u0C24\u0C47\u0C26\u0C40:",
+  creditGivenToday: "\u0C08\u0C30\u0C4B\u0C1C\u0C41 \u0C07\u0C1A\u0C4D\u0C1A\u0C3F\u0C28 \u0C05\u0C2A\u0C4D\u0C2A\u0C41",
+  paymentReceivedToday: "\u0C08\u0C30\u0C4B\u0C1C\u0C41 \u0C05\u0C02\u0C26\u0C3F\u0C28 \u0C1C\u0C2E",
+  netUdhaarIncreased: "\u0C28\u0C3F\u0C15\u0C30 \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C2A\u0C46\u0C30\u0C3F\u0C17\u0C3F\u0C02\u0C26\u0C3F",
+  netUdhaarDecreased: "\u0C28\u0C3F\u0C15\u0C30 \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C24\u0C17\u0C4D\u0C17\u0C3F\u0C02\u0C26\u0C3F",
+  entriesCountLabel: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C32\u0C41",
+  activeCustomersCount: "{count} \u0C15\u0C4D\u0C30\u0C3F\u0C2F\u0C3E\u0C36\u0C40\u0C32 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41",
+  noDataAvailable: "\u0C21\u0C47\u0C1F\u0C3E \u0C05\u0C02\u0C26\u0C41\u0C2C\u0C3E\u0C1F\u0C41\u0C32\u0C4B \u0C32\u0C47\u0C26\u0C41",
+  noDataForDate: "\u0C08 \u0C24\u0C47\u0C26\u0C40\u0C15\u0C3F \u0C0E\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41.",
+  noPendingCustomersAllSettled: "\u0C2C\u0C3E\u0C15\u0C40 \u0C09\u0C28\u0C4D\u0C28 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41 \u0C32\u0C47\u0C30\u0C41. \u0C05\u0C02\u0C24\u0C3E \u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C2F\u0C3F\u0C02\u0C26\u0C3F! \u2713",
+  reviewEntryTitle: "\u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C28\u0C3F \u0C38\u0C2E\u0C40\u0C15\u0C4D\u0C37\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  duplicateEntryWarningTitle: "\u0C07\u0C32\u0C3E\u0C02\u0C1F\u0C3F \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40 \u0C07\u0C2A\u0C4D\u0C2A\u0C41\u0C21\u0C47 \u0C28\u0C2E\u0C4B\u0C26\u0C2F\u0C3F\u0C02\u0C26\u0C3F. \u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C3E\u0C32\u0C3E?",
+  duplicateEntryWarningDesc: "{name} \u0C15\u0C4A\u0C30\u0C15\u0C41 \u20B9{amount} {type} \u0C17\u0C24 10 \u0C28\u0C3F\u0C2E\u0C3F\u0C37\u0C3E\u0C32\u0C4D\u0C32\u0C4B \u0C28\u0C2E\u0C4B\u0C26\u0C2F\u0C3F\u0C02\u0C26\u0C3F.",
+  saveAnyway: "\u0C0F\u0C26\u0C3F \u0C0F\u0C2E\u0C48\u0C28\u0C3E \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  correctByVoice: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C24\u0C4B \u0C38\u0C30\u0C3F\u0C26\u0C3F\u0C26\u0C4D\u0C26\u0C02\u0C21\u0C3F",
+  listeningTapToStop: "\u0C35\u0C3F\u0C02\u0C1F\u0C41\u0C28\u0C4D\u0C28\u0C3E\u0C2E\u0C41... (\u0C06\u0C2A\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F)",
+  confirmAndSave: "\u0C27\u0C43\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C3F \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  voiceSavingCommand: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C15\u0C2E\u0C3E\u0C02\u0C21\u0C4D \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C38\u0C47\u0C35\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  voiceCancelledCommand: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C30\u0C26\u0C4D\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F",
+  voiceAmountUpdated: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u20B9{amount} \u0C17\u0C3E \u0C28\u0C35\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F",
+  amountInRupees: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 (\u20B9 \u0C32\u0C32\u0C4B)",
+  relativeToday: "\u0C08\u0C30\u0C4B\u0C1C\u0C41",
+  relativeYesterday: "\u0C28\u0C3F\u0C28\u0C4D\u0C28",
+  relativeDayBefore: "\u0C2E\u0C4A\u0C28\u0C4D\u0C28",
+  pickDate: "\u0C24\u0C47\u0C26\u0C40 \u0C0E\u0C02\u0C1A\u0C41\u0C15\u0C4B\u0C02\u0C21\u0C3F",
+  notePlaceholder: "\u0C35\u0C3F\u0C35\u0C30\u0C23 (\u0C09\u0C26\u0C3E. \u0C2A\u0C3E\u0C32\u0C41, \u0C1A\u0C15\u0C4D\u0C15\u0C46\u0C30, \u0C2A\u0C2A\u0C4D\u0C2A\u0C41)",
+  balanceInquiryTitle: "\u0C16\u0C3E\u0C24\u0C3E \u0C28\u0C3F\u0C32\u0C4D\u0C35 \u0C35\u0C3F\u0C1A\u0C3E\u0C30\u0C23",
+  balancePendingUdhaar: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40 \u0C05\u0C2A\u0C4D\u0C2A\u0C41",
+  advancePayment: "\u0C05\u0C21\u0C4D\u0C35\u0C3E\u0C28\u0C4D\u0C38\u0C4D \u0C1C\u0C2E",
+  speaking: "\u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  replayVoice: "\u0C35\u0C3F\u0C28\u0C02\u0C21\u0C3F",
+  allClear: "\u0C05\u0C02\u0C24\u0C3E \u0C15\u0C4D\u0C32\u0C3F\u0C2F\u0C30\u0C4D \u2713",
+  last3Transactions: "\u0C1A\u0C3F\u0C35\u0C30\u0C3F 3 \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41",
+  noPreviousTransactions: "\u0C17\u0C24 \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41 \u0C0F\u0C35\u0C40 \u0C15\u0C28\u0C41\u0C17\u0C4A\u0C28\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41",
+  viewKhata: "\u0C16\u0C3E\u0C24\u0C3E \u0C1A\u0C42\u0C21\u0C02\u0C21\u0C3F",
+  whichCustomerAskDigits: "\u0C0F {name}? \u0C2B\u0C4B\u0C28\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C1A\u0C3F\u0C35\u0C30\u0C3F 4 \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F.",
+  sameLastDigitsAskMore: "\u0C07\u0C26\u0C4D\u0C26\u0C30\u0C3F\u0C15\u0C40 \u0C1A\u0C3F\u0C35\u0C30\u0C3F \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C12\u0C15\u0C47\u0C32\u0C3E \u0C09\u0C28\u0C4D\u0C28\u0C3E\u0C2F\u0C3F. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C1A\u0C3F\u0C35\u0C30\u0C3F {count} \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F.",
+  numberNotFoundRetry: "\u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C15\u0C28\u0C41\u0C17\u0C4A\u0C28\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F.",
+  numberNotFoundTapCard: "\u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C15\u0C28\u0C41\u0C17\u0C4A\u0C28\u0C2C\u0C21\u0C32\u0C47\u0C26\u0C41. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C4D \u0C2A\u0C48 \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F.",
+  newCustomerAddedToast: "\u0C15\u0C4A\u0C24\u0C4D\u0C24 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C4D\u0C21\u0C3E\u0C30\u0C41: {name}",
+  entrySavedSuccess: "{name} \u0C2F\u0C4A\u0C15\u0C4D\u0C15 {type} \u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C02\u0C24\u0C02\u0C17\u0C3E \u0C28\u0C2E\u0C4B\u0C26\u0C2F\u0C3F\u0C02\u0C26\u0C3F!",
+  multiEntriesSavedSuccess: "{count} \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C32\u0C41 \u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C02\u0C24\u0C02\u0C17\u0C3E \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C4D\u0C21\u0C3E\u0C2F\u0C3F!",
+  didNotUnderstandRepeat: "\u0C05\u0C30\u0C4D\u0C25\u0C02 \u0C15\u0C3E\u0C32\u0C47\u0C26\u0C41. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F.",
+  languageChangedToast: "\u0C2D\u0C3E\u0C37 \u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F: {lang}",
+  speechLanguageChangedToast: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C2D\u0C3E\u0C37: {lang}",
+  offlineModeNoticeTitle: "\u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D \u0C2E\u0C4B\u0C21\u0C4D",
+  offlineModeNoticeDesc: "\u0C16\u0C3E\u0C24\u0C3E 100% \u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D\u200C\u0C32\u0C4B \u0C2A\u0C28\u0C3F\u0C1A\u0C47\u0C38\u0C4D\u0C24\u0C41\u0C02\u0C26\u0C3F. \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C15\u0C4B\u0C38\u0C02 \u0C07\u0C02\u0C1F\u0C30\u0C4D\u0C28\u0C46\u0C1F\u0C4D \u0C05\u0C35\u0C38\u0C30\u0C02 \u0C15\u0C3E\u0C35\u0C1A\u0C4D\u0C1A\u0C41; \u0C1F\u0C48\u0C2A\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F.",
+  networkDisconnected: "\u0C28\u0C46\u0C1F\u0C4D\u200C\u0C35\u0C30\u0C4D\u0C15\u0C4D \u0C15\u0C28\u0C46\u0C15\u0C4D\u0C37\u0C28\u0C4D \u0C32\u0C47\u0C26\u0C41",
+  pinIncorrect: "\u0C24\u0C2A\u0C4D\u0C2A\u0C41 \u0C2A\u0C3F\u0C28\u0C4D! \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C33\u0C4D\u0C32\u0C40 \u0C2A\u0C4D\u0C30\u0C2F\u0C24\u0C4D\u0C28\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
+  pinLockedMessage: "\u0C2E\u0C40 \u0C32\u0C46\u0C21\u0C4D\u0C1C\u0C30\u0C4D AES-256 \u0C24\u0C4B \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C40 \u0C2A\u0C3F\u0C28\u0C4D \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F:",
+  pinResetConfirm: "\u0C05\u0C35\u0C41\u0C28\u0C41, \u0C30\u0C40\u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  totalUdhaar: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C05\u0C2A\u0C4D\u0C2A\u0C41",
+  totalJama: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C1C\u0C2E",
+  totalBalance: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40",
+  udhaarAdded: "\u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F",
+  savePhoneToProfileHint: "\u0C12\u0C15\u0C4D\u0C15\u0C38\u0C3E\u0C30\u0C3F \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C38\u0C4D\u0C24\u0C47 \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C2A\u0C4D\u0C30\u0C4A\u0C2B\u0C48\u0C32\u0C4D \u0C32\u0C4B \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C2C\u0C21\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F.",
+  numberClearedSpeakAgain: "\u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C24\u0C4A\u0C32\u0C17\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F. \u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C15\u0C40\u0C2A\u0C4D\u0C2F\u0C3E\u0C21\u0C4D \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
+  pendingEntrySavedAfterReg: "\u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C24\u0C30\u0C4D\u0C35\u0C3E\u0C24 \u20B9{amount} {type} \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F",
+  recentEntriesReceipt: "\u0C07\u0C1F\u0C40\u0C35\u0C32\u0C3F \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C32\u0C41:",
+  numeralScriptLabel: "\u0C38\u0C02\u0C16\u0C4D\u0C2F \u0C32\u0C3F\u0C2A\u0C3F",
+  numeralScriptDesc: "\u0C38\u0C02\u0C16\u0C4D\u0C2F\u0C32\u0C28\u0C41 \u0C07\u0C02\u0C17\u0C4D\u0C32\u0C40\u0C37\u0C4D (1, 2, 3) \u0C32\u0C47\u0C26\u0C3E \u0C24\u0C46\u0C32\u0C41\u0C17\u0C41 \u0C32\u0C3F\u0C2A\u0C3F\u0C32\u0C4B \u0C1A\u0C42\u0C2A\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  scriptLatin: "\u0C07\u0C02\u0C17\u0C4D\u0C32\u0C40\u0C37\u0C4D (1, 2, 3)",
+  scriptNative: "\u0C24\u0C46\u0C32\u0C41\u0C17\u0C41 (\u0C67, \u0C68, \u0C69)",
+  invalidPhoneError: "\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C41\u0C2C\u0C3E\u0C1F\u0C41 \u0C05\u0C2F\u0C4D\u0C2F\u0C47 10-\u0C05\u0C02\u0C15\u0C46\u0C32 \u0C2D\u0C3E\u0C30\u0C24\u0C40\u0C2F \u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D \u0C28\u0C02\u0C2C\u0C30\u0C4D \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (6-9 \u0C24\u0C4B \u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C02)",
+  speakNamePrompt: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C2A\u0C47\u0C30\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F...",
+  phoneHelpText: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D \u0C15\u0C4B\u0C38\u0C02 \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C2A\u0C21\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F (\u0C24\u0C30\u0C41\u0C35\u0C3E\u0C24 \u0C15\u0C42\u0C21\u0C3E \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C35\u0C1A\u0C4D\u0C1A\u0C41).",
+  manualEntryTitle: "\u0C2E\u0C3E\u0C28\u0C4D\u0C2F\u0C41\u0C35\u0C32\u0C4D \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40 (\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C32\u0C47\u0C15\u0C41\u0C02\u0C21\u0C3E)",
+  today: "\u0C08\u0C30\u0C4B\u0C1C\u0C41",
+  yesterday: "\u0C28\u0C3F\u0C28\u0C4D\u0C28",
+  dayBeforeYesterday: "\u0C2E\u0C4A\u0C28\u0C4D\u0C28",
+  baakiOwed: "\u0C2C\u0C3E\u0C15\u0C40",
+  listenReplay: "\u0C35\u0C3F\u0C28\u0C02\u0C21\u0C3F",
+  sendReminder: "\u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F",
+  active: "\u0C2F\u0C3E\u0C15\u0C4D\u0C1F\u0C3F\u0C35\u0C4D",
+  noRecentActivity: "\u0C07\u0C1F\u0C40\u0C35\u0C32\u0C3F \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41",
+  listeningDigitsPrompt: "\u0C35\u0C3F\u0C02\u0C1F\u0C4B\u0C02\u0C26\u0C3F... \u0C1A\u0C3F\u0C35\u0C30\u0C3F 4 \u0C05\u0C02\u0C15\u0C46\u0C32\u0C41 \u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F",
+  tapCardOrMic: "\u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C4D \u0C2A\u0C48 \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C2E\u0C33\u0C4D\u0C32\u0C40 \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C1F\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C2E\u0C48\u0C15\u0C4D \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F",
+  first: "\u0C2E\u0C4A\u0C26\u0C1F\u0C3F\u0C26\u0C3F",
+  second: "\u0C30\u0C46\u0C02\u0C21\u0C35\u0C26\u0C3F",
+  qrSaveError: "QR \u0C15\u0C4B\u0C21\u0C4D \u0C38\u0C47\u0C35\u0C4D \u0C15\u0C3E\u0C32\u0C47\u0C26\u0C41",
+  khataStatementSlip: "\u0C16\u0C3E\u0C24\u0C3E \u0C38\u0C4D\u0C1F\u0C47\u0C1F\u0C4D\u200C\u0C2E\u0C46\u0C02\u0C1F\u0C4D \u0C30\u0C36\u0C40\u0C26\u0C41",
+  thankYouShopping: "\u0C35\u0C4D\u0C2F\u0C3E\u0C2A\u0C3E\u0C30\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C27\u0CA8\u0CCD\u0CAF\u0C35\u0C3E\u0C26\u0C3E\u0C32\u0C41! \u{1F64F}",
+  receiptSharedSuccess: "\u0C30\u0C36\u0C40\u0C26\u0C41 \u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C02\u0C24\u0C02\u0C17\u0C3E \u0C37\u0C47\u0C30\u0C4D \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F!",
+  receiptCopiedSuccess: "\u0C30\u0C36\u0C40\u0C26\u0C41 \u0C15\u0C4D\u0C32\u0C3F\u0C2A\u0C4D\u200C\u0C2C\u0C4B\u0C30\u0C4D\u0C21\u0C4D\u200C\u0C15\u0C3F \u0C15\u0C3E\u0C2A\u0C40 \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F!",
+  whatsappPhoneNumber: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C2E\u0C4A\u0C2C\u0C48\u0CB2\u0CCD \u0C28\u0C02\u0C2C\u0C30\u0C4D",
+  selectTemplateLanguage: "\u0C1F\u0C46\u0C02\u0C2A\u0C4D\u0C32\u0C47\u0C1F\u0C4D \u0C2D\u0C3E\u0C37\u0C28\u0C41 \u0C0E\u0C02\u0C1A\u0C41\u0C15\u0C4B\u0C02\u0C21\u0C3F",
+  messagePreview: "\u0C38\u0C02\u0C26\u0C47\u0C36 \u0C2A\u0C30\u0C3F\u0C26\u0C43\u0C36\u0C4D\u0C2F\u0C02 (\u0C2E\u0C3E\u0C30\u0C4D\u0C1A\u0C35\u0C1A\u0C4D\u0C1A\u0C41)",
+  messageCopiedToast: "\u0C38\u0C02\u0C26\u0C47\u0C36\u0C02 \u0C15\u0C3E\u0C2A\u0C40 \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F!",
+  offlineSabChalega: "\u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D \u2013 \u0C05\u0C28\u0C4D\u0C28\u0C40 \u0C2A\u0C28\u0C3F\u0C1A\u0C47\u0C38\u0C4D\u0C24\u0C3E\u0C2F\u0C3F",
+  offlineSafeMessage: "\u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E 100% \u0C38\u0C41\u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C24\u0C02 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C08 \u0C2B\u0C4B\u0C28\u0C4D\u200C\u0C32\u0C4B\u0C28\u0C47 \u0C2D\u0C26\u0C4D\u0C30\u0C2A\u0C30\u0C1A\u0C2C\u0C21\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F.",
+  offlineMicWarning: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C30\u0C3F\u0C15\u0C17\u0C4D\u0C28\u0C3F\u0C37\u0C28\u0C4D \u0C15\u0C4B\u0C38\u0C02 \u0C07\u0C02\u0C1F\u0C30\u0C4D\u0C28\u0C46\u0C1F\u0C4D \u0C05\u0C35\u0C38\u0C30\u0C02 \u0C15\u0C3E\u0C35\u0C1A\u0C4D\u0C1A\u0C41. \u0C2E\u0C48\u0C15\u0C4D \u0C2A\u0C28\u0C3F \u0C1A\u0C47\u0C2F\u0C15\u0C2A\u0C4B\u0C24\u0C47, '\u0C1F\u0C48\u0C2A\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F' \u0C09\u0C2A\u0C2F\u0C4B\u0C17\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
+  openTypeInstead: "'\u0C1F\u0C48\u0C2A\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F' \u0C24\u0C46\u0C30\u0C35\u0C02\u0C21\u0C3F",
+  gotIt: "\u0C38\u0C30\u0C47, \u0C05\u0C30\u0C4D\u0C25\u0C2E\u0C48\u0C02\u0C26\u0C3F",
+  pinLockedNotice: "\u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0C3E AES-256 \u0C17\u0C41\u0C2A\u0C4D\u0C24\u0C40\u0C15\u0C30\u0C3F\u0C02\u0C1A\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F. \u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C2E\u0C40 \u0C2A\u0C3F\u0C28\u0C4D \u0C28\u0C2E\u0C4B\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F:",
+  pinCryptoLockDesc: "\u0C05\u0C28\u0C4D\u0C28\u0C3F \u0C30\u0C3F\u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C41\u0C32\u0C41 \u0C35\u0C46\u0C2C\u0C4D \u0C15\u0C4D\u0C30\u0C3F\u0C2A\u0C4D\u0C1F\u0C4B (AES-256 GCM) \u0C24\u0C4B \u0C38\u0C41\u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C09\u0C28\u0C4D\u0C28\u0C3E\u0C2F\u0C3F.",
+  yesReset: "\u0C05\u0C35\u0C41\u0C28\u0C41, \u0C30\u0C40\u0C38\u0C46\u0C1F\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  dailySummarySub: "\u0C30\u0C4B\u0C1C\u0C41\u0C35\u0C3E\u0C30\u0C40 \u0C35\u0C38\u0C42\u0C32\u0C41 \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C38\u0C3E\u0C30\u0C3E\u0C02\u0C36\u0C02",
+  activeCustomersLabel: "\u0C2F\u0C3E\u0C15\u0C4D\u0C1F\u0C3F\u0C35\u0C4D \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41",
+  noDataAvailableDesc: "\u0C08 \u0C24\u0C47\u0C26\u0C40\u0C15\u0C3F \u0C0E\u0C1F\u0C41\u0C35\u0C02\u0C1F\u0C3F \u0C32\u0C3E\u0C35\u0C3E\u0C26\u0C47\u0C35\u0C40\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41.",
+  noPendingUdhaarAllSettled: "\u0C2A\u0C46\u0C02\u0C21\u0C3F\u0C02\u0C17\u0C4D \u0C05\u0C2A\u0C4D\u0C2A\u0C41\u0C32\u0C41 \u0C32\u0C47\u0C35\u0C41. \u0C05\u0C28\u0C4D\u0C28\u0C3F \u0C16\u0C3E\u0C24\u0C3E\u0C32\u0C41 \u0C15\u0C4D\u0C32\u0C3F\u0C2F\u0C30\u0C4D \u0C05\u0C2F\u0C4D\u0C2F\u0C3E\u0C2F\u0C3F! \u2713",
+  zeroBalance: "\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C15\u0C4D\u0C32\u0C3F\u0C2F\u0C30\u0C4D, \u0C2C\u0C3E\u0C15\u0C40 \u0C32\u0C47\u0C26\u0C41",
+  khataTimeline: "\u0C16\u0C3E\u0C24\u0C3E \u0C15\u0C3E\u0C32\u0C15\u0C4D\u0C30\u0C2E\u0C02",
+  saveEntry: "\u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C28\u0C3F \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F",
+  addUdhaar: "+ \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C41",
+  addPayment: "+ \u0C1C\u0C2E \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C41",
+  addEntry: "\u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C28\u0C3F \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  noteOptional: "\u0C17\u0C2E\u0C28\u0C3F\u0C15 (\u0C10\u0C1A\u0C4D\u0C1B\u0C3F\u0C15\u0C02)",
+  whatsappReminder: "\u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D",
+  lastReminder: "\u0C1A\u0C3F\u0C35\u0C30\u0C3F \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D",
+  savingByVoice: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C06\u0C26\u0C47\u0C36\u0C02\u0C24\u0C4B \u0C38\u0C47\u0C35\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C4B\u0C02\u0C26\u0C3F...",
+  cancelledByVoice: "\u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C30\u0C26\u0C4D\u0C26\u0C41 \u0C1A\u0C47\u0C2F\u0C2C\u0C21\u0C3F\u0C02\u0C26\u0C3F",
+  noCustomersEmptyState: "\u0C07\u0C02\u0C15\u0C3E \u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41\u0C32\u0C41 \u0C32\u0C47\u0C30\u0C41. \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C1F\u0C02 \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C2E\u0C4A\u0C26\u0C1F\u0C3F \u0C05\u0C2A\u0C4D\u0C2A\u0C41\u0C28\u0C41 \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  addFirstUdhaarVoice: "\u{1F3A4} \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D \u0C26\u0C4D\u0C35\u0C3E\u0C30\u0C3E \u0C2E\u0C4A\u0C26\u0C1F\u0C3F \u0C05\u0C2A\u0C4D\u0C2A\u0C41 \u0C1C\u0C4B\u0C21\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  onboardingStep1Title: "1. \u0C2E\u0C48\u0C15\u0C4D \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C3F \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F",
+  onboardingStep1Desc: "\u0C26\u0C41\u0C15\u0C3E\u0C23\u0C02 \u0C15\u0C4C\u0C02\u0C1F\u0C30\u0C4D\u200C\u0C32\u0C4B \u0C1A\u0C47\u0C24\u0C41\u0C32\u0C41 \u0C2C\u0C3F\u0C1C\u0C40\u0C17\u0C3E \u0C09\u0C28\u0C4D\u0C28\u0C3E\u0C2F\u0C3E? \u0C2E\u0C48\u0C15\u0C4D \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C3F \u0C2E\u0C40 \u0C2D\u0C3E\u0C37\u0C32\u0C4B \u0C2E\u0C3E\u0C1F\u0C4D\u0C32\u0C3E\u0C21\u0C02\u0C21\u0C3F.",
+  onboardingStep2Title: "2. \u0C38\u0C4D\u0C15\u0C4D\u0C30\u0C40\u0C28\u0C4D \u0C2A\u0C48 \u0C2A\u0C4D\u0C30\u0C3F\u0C35\u0C4D\u0C2F\u0C42 \u0C1A\u0C42\u0C21\u0C02\u0C21\u0C3F",
+  onboardingStep2Desc: "\u0C2F\u0C3E\u0C2A\u0C4D \u0C35\u0C46\u0C02\u0C1F\u0C28\u0C47 \u0C2E\u0C40 \u0C0E\u0C02\u0C1F\u0C4D\u0C30\u0C40\u0C28\u0C3F \u0C1A\u0C42\u0C2A\u0C3F\u0C38\u0C4D\u0C24\u0C41\u0C02\u0C26\u0C3F. \u0C38\u0C47\u0C35\u0C4D \u0C1A\u0C47\u0C2F\u0C21\u0C3E\u0C28\u0C3F\u0C15\u0C3F \u0C28\u0C4A\u0C15\u0C4D\u0C15\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C35\u0C3E\u0C2F\u0C3F\u0C38\u0C4D\u200C\u0C24\u0C4B \u0C38\u0C30\u0C3F\u0C26\u0C3F\u0C26\u0C4D\u0C26\u0C02\u0C21\u0C3F.",
+  onboardingStep3Title: "3. \u0C24\u0C15\u0C4D\u0C37\u0C23 \u0C16\u0C3E\u0C24\u0C3E \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D\u0C32\u0C41",
+  onboardingStep3Desc: "\u0C16\u0C3E\u0C24\u0C3E\u0C26\u0C3E\u0C30\u0C41 \u0C32\u0C46\u0C21\u0C4D\u0C1C\u0C30\u0C4D \u0C35\u0C46\u0C02\u0C1F\u0C28\u0C47 \u0C05\u0C2A\u0C4D\u200C\u0C21\u0C47\u0C1F\u0C4D \u0C05\u0C35\u0C41\u0C24\u0C41\u0C02\u0C26\u0C3F! \u0C35\u0C3E\u0C1F\u0C4D\u0C38\u0C3E\u0C2A\u0C4D \u0C30\u0C3F\u0C2E\u0C48\u0C02\u0C21\u0C30\u0C4D \u0C2A\u0C02\u0C2A\u0C02\u0C21\u0C3F \u0C32\u0C47\u0C26\u0C3E \u0C30\u0C36\u0C40\u0C26\u0C41 \u0C2E\u0C41\u0C26\u0C4D\u0C30\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.",
+  grantMicAndStart: "\u0C2E\u0C48\u0C15\u0C4D \u0C05\u0C28\u0C41\u0C2E\u0C24\u0C3F \u0C07\u0C35\u0C4D\u0C35\u0C02\u0C21\u0C3F \u0C2E\u0C30\u0C3F\u0C2F\u0C41 \u0C2A\u0C4D\u0C30\u0C3E\u0C30\u0C02\u0C2D\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  installAppTitle: "\u0C2F\u0C3E\u0C2A\u0C4D \u0C07\u0C28\u0C4D\u200C\u0C38\u0C4D\u0C1F\u0C3E\u0C32\u0C4D \u0C1A\u0C47\u0C2F\u0C02\u0C21\u0C3F (\u0C39\u0C4B\u0C2E\u0C4D \u0C38\u0C4D\u0C15\u0C4D\u0C30\u0C40\u0C28\u0C4D)",
+  installAppSub: "\u0C35\u0C47\u0C17\u0C35\u0C02\u0C24\u0C2E\u0C48\u0C28\u0C26\u0C3F & 100% \u0C06\u0C2B\u0C4D\u200C\u0C32\u0C48\u0C28\u0C4D\u200C\u0C32\u0C4B \u0C2A\u0C28\u0C3F\u0C1A\u0C47\u0C38\u0C4D\u0C24\u0C41\u0C02\u0C26\u0C3F \u2022 1 \u0C1F\u0C4D\u0C2F\u0C3E\u0C2A\u0C4D\u200C\u0C32\u0C4B \u0C16\u0C3E\u0C24\u0C3E",
+  install: "\u0C07\u0C28\u0C4D\u200C\u0C38\u0C4D\u0C1F\u0C3E\u0C32\u0C4D",
+  errorBoundaryTitle: "\u0C0F\u0C26\u0C4B \u0C24\u0C2A\u0C4D\u0C2A\u0C41 \u0C1C\u0C30\u0C3F\u0C17\u0C3F\u0C02\u0C26\u0C3F",
+  errorBoundarySub: "\u0C0F\u0C26\u0C4B \u0C24\u0C2A\u0C4D\u0C2A\u0C41 \u0C1C\u0C30\u0C3F\u0C17\u0C3F\u0C02\u0C26\u0C3F, \u0C15\u0C3E\u0C28\u0C40 \u0C1A\u0C3F\u0C02\u0C24\u0C3F\u0C02\u0C1A\u0C15\u0C02\u0C21\u0C3F!",
+  errorBoundarySafety: "\u0C2E\u0C40 \u0C16\u0C3E\u0C24\u0BBE \u0C21\u0C47\u0C1F\u0C3E \u0C05\u0C02\u0C24\u0C3E \u0C2E\u0C40 \u0C2B\u0C4B\u0C28\u0C4D\u200C\u0C32\u0C4B \u0C2A\u0C42\u0C30\u0C4D\u0C24\u0C3F\u0C17\u0C3E \u0C38\u0C41\u0C30\u0C15\u0C4D\u0C37\u0C3F\u0C24\u0C02\u0C17\u0C3E \u0C09\u0C02\u0C26\u0C3F (IndexedDB). \u0C0F\u0C26\u0C40 \u0C2A\u0C4B\u0C32\u0C47\u0C26\u0C41.",
+  retryButton: "\u0C2E\u0C33\u0C4D\u0C33\u0C40 \u0C2A\u0C4D\u0C30\u0C2F\u0C24\u0C4D\u0C28\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F",
+  goHomeButton: "\u0C39\u0C4B\u0C2E\u0C4D\u200C\u0C15\u0C41 \u0C35\u0C46\u0C33\u0C4D\u0C32\u0C02\u0C21\u0C3F",
+  technicalDetails: "\u0C38\u0C3E\u0C02\u0C15\u0C47\u0C24\u0C3F\u0C15 \u0C32\u0C4B\u0C2A\u0C02 \u0C35\u0C3F\u0C35\u0C30\u0C3E\u0C32\u0C41"
+};
+
+// src/i18n/locales/hinglish.json
+var hinglish_default = {
+  appName: "Udhaar Sathi",
+  tagline: "Bol kar udhaar darj karein",
+  online: "Online",
+  offlineSafe: "Offline Safe (Lokal)",
+  navHome: "Home (Mic)",
+  navCustomers: "Grahak Khata",
+  navSummary: "Dainik Hisaab",
+  navSettings: "Settings",
+  navStyleguide: "Styleguide",
+  save: "Save Karein",
+  cancel: "Radd Karein",
+  delete: "Delete Karein",
+  edit: "Badlein",
+  close: "Band Karein",
+  search: "Khojein",
+  back: "Wapas",
+  done: "Ho Gaya",
+  creditGiven: "Udhaar Diya",
+  paymentReceived: "Jama Mila",
+  balanceOwed: "Kul Baaki",
+  netBalance: "Net Hisaab",
+  todaySummary: "Aaj Ka Hisaab",
+  recentEntries: "Haal Ke Len-Den",
+  noEntries: "Abhi koi entry darj nahi hai",
+  micIdle: "Mic daba kar bolein",
+  micListening: "Sun raha hoon... Boliye",
+  micProcessing: "Hisaab samajh raha hoon...",
+  micError: "Aawaz saaf nahi aayi. Kripya phir se bolein.",
+  typeInstead: "Type instead (Bina mic)",
+  trySpeaking: "Bolkar dekhein:",
+  customersTitle: "Grahak Khata",
+  searchCustomerPlaceholder: "Naam ya phone number khojein...",
+  filterAll: "Sabhi",
+  filterOwes: "Baaki Wale",
+  filterSettled: "Chukta",
+  addJama: "+ Jama Jodein",
+  printSlip: "Slip Print Karein",
+  sendWhatsApp: "WhatsApp Reminder",
+  summaryTitle: "Dainik Hisaab",
+  todayUdhaar: "Udhaar Diya",
+  todayJama: "Jama Mila",
+  todayNet: "Net Badlav",
+  weeklyTrend: "Pichhle 7 Dino Ka Trend",
+  topPending: "Sabse Zyada Baaki Wale",
+  settingsTitle: "Settings",
+  settingsSubtitle: "Dukan ka naam, bhasha, soundbox aur backup",
+  shopNameLabel: "Dukan Ka Naam",
+  shopNamePlaceholder: "e.g. Ramesh Kirana Store",
+  uiLanguageLabel: "Screen ki Bhasha (UI)",
+  uiLanguageDesc: "Button aur screens par dikhne wali bhasha",
+  speechLanguageLabel: "Bolne ki Bhasha",
+  speechLanguageDesc: "Mic sunne aur soundbox awaz ke liye",
+  speechSpeedLabel: "Soundbox Bolne ki Raftaar",
+  speedSlow: "Dheere",
+  speedNormal: "Normal",
+  speedFast: "Tez",
+  muteRepliesLabel: "Soundbox Awaz Mute Karein",
+  muteRepliesDesc: "Sirf ghanti bajegi, hisaab bolkar nahi batayega",
+  themeLabel: "App Theme",
+  themeLight: "Light Theme",
+  themeHighContrast: "High Contrast (Dark)",
+  themeDesc: "Dhoop me ya raat me saaf dikhne ke liye",
+  asrEngineLabel: "Speech Engine (ASR)",
+  asrEngineDesc: "Awaz ko samajhne wala engine",
+  asrBrowser: "Browser On-Device (Free, Offline, Instant)",
+  asrBhashini: "Bhashini AI (Digital India Speech) [Stubbed]",
+  asrSarvam: "Sarvam AI (Saaras Indic Speech) [Stubbed]",
+  exportLedgerLabel: "Khata Export Karein",
+  exportJson: "Export Ledger (JSON)",
+  exportCsv: "Export Ledger (CSV / Excel)",
+  dangerZoneLabel: "Khatarnak: Data Clear",
+  clearAllData: "Saara Khata Data Clear Karein",
+  clearConfirm: "Kya aap sach me saara khata data delete karna chahte hain? Yeh wapas nahi aayega.",
+  clearSuccess: "Saara data safaltapoorvak mita diya gaya!",
+  resetDemo: "Sample Demo Khata Load Karein",
+  resetSuccess: "Demo data restore ho gaya!",
+  localFirstInfo: "Udhaar Sathi 100% offline-first hai. Aapka saara hisaab aapke phone me surakshit (IndexedDB) rehta hai.",
+  signupWelcomeTitle: "Udhaar Sathi me Swagat Hai",
+  signupWelcomeSubtitle: "Indian Kirana stores ke liye hands-free voice ledger",
+  dataStaysOnPhone: "Aapka data isi phone par safe rehta hai",
+  getStarted: "Shuru Karein",
+  stepOf: "Step {current} of {total}",
+  shopNamePrompt: "Dukaan ka naam bataiye",
+  shopNameSpoken: "Dukaan ka naam bataiye",
+  shopNameHelper: "Apni dukaan ka naam bole ya type karein",
+  shopNameError: "Kripya sahi dukaan ka naam daalein (kam se kam 2 akshar)",
+  ownerNamePrompt: "Apna naam bataiye",
+  ownerNameSpoken: "Apna naam bataiye",
+  ownerNamePlaceholder: "e.g. Ramesh Kumar",
+  ownerNameHelper: "Dukaandar ka naam",
+  ownerNameError: "Kripya apna naam daalein (kam se kam 2 akshar)",
+  phonePrompt: "Apna mobile number daalein",
+  phoneSpoken: "Apna 10 digit mobile number daliye",
+  phonePlaceholder: "e.g. 9876543210",
+  phoneHelper: "WhatsApp aur reminder ke liye 10-digit mobile number",
+  phoneError: "6-9 se shuru hone wala 10-digit Indian mobile number daalein",
+  upiPrompt: "Apna UPI ID daalein",
+  upiSpoken: "Apna UPI ID boliye ya likhiye",
+  upiPlaceholder: "e.g. ramesh@oksbi",
+  upiHelperText: "Only your UPI ID is needed. Hum kabhi bank account number nahi maangte.",
+  upiPaste: "Paste Karein",
+  upiReadBack: "Letter-by-letter sunein",
+  upiReadingBack: "Bol rahe hain...",
+  upiError: "Valid UPI ID daalein (e.g. name@bank)",
+  pinPrompt: "Security PIN banayein (Optional)",
+  pinSpoken: "Chaar se che digit ka PIN chuniye ya skip karein",
+  pinPlaceholder: "4-6 digit PIN",
+  pinHelperText: "Phone me data ko encrypt karke surakshit karta hai. Settings me baad me bhi laga sakte hain.",
+  pinSkip: "Abhi Skip Karein",
+  pinSkipWarning: "PIN ke bina koi bhi aapka khata dekh sakta hai. Aap Settings me kabhi bhi PIN laga sakte hain.",
+  pinSkipConfirm: "Skip PIN",
+  pinError: "PIN 4-6 digit ka hona chahiye aur simple nahi hona chahiye (e.g. 1234, 0000)",
+  reviewTitle: "Shop Profile Check Karein",
+  reviewSubtitle: "Apni details confirm karein. Inhe Settings me kabhi bhi badal sakte hain.",
+  startAppButton: "Udhaar Sathi Shuru Karein",
+  editField: "Badlein",
+  nextStep: "Aage",
+  prevStep: "Peeche",
+  settingsProfileTitle: "Shop Profile",
+  settingsProfileSubtitle: "Dukaan details, owner name aur payment UPI ID",
+  confirmUpiChangeTitle: "UPI ID Badalna Chahte Hain?",
+  confirmUpiChangeWarning: "UPI ID badalne par customer ko bheje jaane wale payment QR code aur links badal jayenge. Kya aap sure hain?",
+  confirmUpiChangeButton: "Haan, UPI ID Badlein",
+  noPinWarningBanner: "Aapka ledger PIN se locked nahi hai. Data safe rakhne ke liye abhi PIN lagayein.",
+  setPinNow: "Abhi PIN Lagayein",
+  profileUpdatedToast: "Shop profile safalta se update ho gaya!",
+  registerCustomerTitle: "Naya Customer Jodein",
+  registerCustomerSubtitle: "Khate me save karne ke liye details bharein",
+  enterCustomerPhone: "Customer Mobile Number",
+  phoneReadBackQuestion: "{phone}. Sahi hai?",
+  readBackConfirm: "Haan, Sahi Hai",
+  readBackWrong: "Nahi, Badlo",
+  skipPhoneForNow: "Abhi Skip Karein",
+  noNumberWarning: "Bina number ke save kiya gaya. Reminder me number maanga jayega.",
+  duplicatePhoneWarning: "Yeh number {name} ka hai. Wahi customer hai?",
+  openExistingCustomer: "Haan, {name} ko kholein",
+  useAnotherNumber: "Dusra number daalein",
+  requireCustomerPhoneLabel: "Mobile Number Zaroori Karein",
+  requireCustomerPhoneDesc: "Naye grahak ke liye phone number mandatory rakhein",
+  customerRegisteredSpoken: "{name} ko add kar diya",
+  customerNewAskPhoneSpoken: "{name} naya hai. Number bataiye",
+  whichCustomerTitle: "Kaun sa {name}?",
+  tellLast4DigitsSubtitle: "Number ke aakhri 4 ank bataiye ya card tap karein",
+  noNumberSavedChip: "No number saved",
+  disambiguateRetryToast: "Ye number nahi mila. Kripya phir se bolein ya card tap karein.",
+  disambiguateConfirmSpoken: "{name}, theek hai.",
+  autoOpenPaymentRequestLabel: "Auto-open payment request after udhaar",
+  autoOpenPaymentRequestDesc: "Udhaar likhte hi UPI QR aur WhatsApp link saamne layein",
+  showMyQr: "Dukaan QR",
+  showMyQrDesc: "Counter par khade grahak ke liye payment QR",
+  showMyQrTitle: "Shop Counter QR",
+  paymentRequestTitle: "Payment Request",
+  paymentRequestSubtitle: "Payment lene ke liye QR share karein ya WhatsApp link bhejein",
+  sendWhatsAppPayment: "WhatsApp bhejein",
+  sendWhatsAppHint: "WhatsApp khulega, fir Send dabayein",
+  shareQr: "QR share karein",
+  downloadQr: "QR download karein",
+  laterDismiss: "Baad mein",
+  noPhoneAddNumber: "Number jodein",
+  noPhoneWarning: "Is customer ka phone number saved nahi hai",
+  noUpiIdWarning: "Profile mein UPI ID set nahi hai. QR payments ke liye Settings mein dalein.",
+  setupUpiNow: "UPI ID dalein",
+  whatsappOfflineHint: "WhatsApp ke liye internet zaroori hai",
+  qrSavedToast: "QR code taiyaar hai",
+  receiptQrTitle: "Scan & Pay via UPI",
+  chooseLanguage: "Bhasha Chunein",
+  language: "Bhasha",
+  speechLanguage: "Bolne ki Bhasha",
+  entries: "entries",
+  entriesCount: "{count} hisaab entries",
+  clear: "Clear",
+  reset: "Reset",
+  viewAll: "Sabhi Dekhein \u2192",
+  loading: "Loading...",
+  loadingCustomers: "Loading Grahak Khata...",
+  loadingSummary: "Loading Hisaab Summary...",
+  securingLedger: "Securing Khata...",
+  micPromptSpeak: "BOLIYE",
+  micPromptListening: "SUN RAHE HAIN...",
+  micPromptProcessing: "SAMJH RAHE HAIN...",
+  micPromptRetry: "RETRY KAREIN",
+  micCaptionIdle: "Ek tap karein aur bolein",
+  micCaptionListening: "Shanti se bolein \u2022 Auto-stops on silence",
+  micCaptionProcessing: "Hisaab calculate ho raha hai...",
+  micErrorFallbackNote: "Mic kaam nahi kar raha to likh kar hisaab darj karein.",
+  listeningSpeakYourLanguage: "Sun rahe hain... Apni bhasha me bolein",
+  streamingSpeech: "Streaming Speech...",
+  processingSpeech: "Processing Speech...",
+  heardVoice: "Heard Voice",
+  quickDemoPhrases: "Quick Demo / Example Phrases",
+  tapToTest: "Tap karke test karein",
+  hintPhrase1: "Ramesh ko 500 udhaar diya",
+  hintPhrase2: "Ramesh ka 340 udhaar, kal 200 diya tha",
+  hintPhrase3: "Ramesh ka total?",
+  creditGivenTodaySub: "Aaj diya gaya udhaar",
+  paymentReceivedTodaySub: "Aaj jama hui rashi",
+  marketPending: "Bazaar Baaki",
+  last5Entries: "Last 5 entries",
+  noEntriesYetPrompt: "Abhi koi hisaab darj nahi hai. Mic daba kar bolein!",
+  creditBadge: "Udhaar",
+  paymentBadge: "Jama",
+  udhaar: "Udhaar",
+  jama: "Jama",
+  customersCountSorted: "{count} grahak registered \u2022 Sorted by highest balance",
+  noCustomersYet: "Abhi koi customer nahi",
+  noCustomersDescription: "Abhi koi customer nahi. Pehla udhaar bolkar jodein.",
+  noCustomerFound: "Koi Grahak Nahi Mila",
+  noMatchingCustomerQuery: '"{query}" ke hisaab se koi grahak nahi hai. Bolkar entry karein.',
+  noCustomersInFilter: "Is filter me koi grahak nahi hai.",
+  firstUdhaarVoice: "\u{1F3A4} Pehla Udhaar Bolkar Jodein",
+  addCustomerButton: "+ Add customer",
+  addNewCustomerTitle: "Naya Grahak Jodein",
+  addNewCustomerSubtitle: "Bina hisaab ke naya customer add karein",
+  lastActivity: "Last: {date}",
+  badgeOwes: "BAAKI",
+  badgeSettled: "CHUKTA",
+  badgeNew: "New",
+  listenBalance: "Sunien",
+  lastReminderDate: "Aakhri reminder: {date}",
+  outstandingUdhaar: "Kul Baaki Udhaar",
+  allSettled: "Hisaab Chukta",
+  amountToReceive: "Grahak se lena hai",
+  noBalancePending: "Koi baaki nahi hai",
+  totalCreditLabel: "Kul Udhaar:",
+  totalPaymentLabel: "Kul Jama:",
+  sendWhatsAppReminder: "WhatsApp Reminder",
+  printReceipt: "Print Slip",
+  addUdhaarButton: "+ Add Udhaar",
+  addPaymentButton: "+ Add Jama",
+  timelineEntries: "Hisaab Timeline ({count} entries)",
+  latestFirst: "Latest first",
+  noEntriesTitle: "Koi Hisaab Nahi Hai",
+  noEntriesCustomerDesc: "Is grahak ke liye abhi koi entry darj nahi hui hai.",
+  deleteEntryConfirm: "Kya aap is entry ko hatana chahte hain?",
+  enterValidAmount: "Rakam sahi darj karein",
+  entryDeletedToast: "Entry hata di gayi",
+  customerNotFoundTitle: "Grahak Nahi Mila",
+  customerNotFoundDesc: "Yeh grahak khate mein nahi hai.",
+  viewCustomersList: "Grahak Soochi Dekhein",
+  customerAlreadyExists: "{name} already exists",
+  similarCustomerWarning: "Is naam se milta-julta customer pehle se darj hai. Kya aap inhi ka khata use karna chahte hain?",
+  useThisOne: "Use this one",
+  createAnyway: "Create anyway",
+  customerNameLabel: "Grahak Ka Naam",
+  mobileNumberOptional: "Mobile Number (Optional)",
+  phoneReminderHelper: "WhatsApp reminder ke liye upyogi (baad me bhi jod sakte hain).",
+  saveCustomer: "Save Customer",
+  saving: "Saving...",
+  enterCustomerNameError: "Kripya grahak ka naam darj karein",
+  errorSavingCustomer: "Grahak save karne me samasya aayi",
+  dailySummarySubtitle: "Daily Collection & Udhaar Summary",
+  shareSlip: "Share Slip",
+  copied: "Copied",
+  dateLabel: "Tarikh:",
+  creditGivenToday: "Credit given today",
+  paymentReceivedToday: "Payment received today",
+  netUdhaarIncreased: "Net Udhaar bada",
+  netUdhaarDecreased: "Net Udhaar ghata",
+  entriesCountLabel: "Total Entries",
+  activeCustomersCount: "{count} active grahak",
+  noDataAvailable: "Data Uplabdh Nahi Hai",
+  noDataForDate: "Is tarikh ke liye hisaab uplabdh nahi hai.",
+  noPendingCustomersAllSettled: "Koi pending udhaar nahi hai. Sab hisaab chukta hai! \u2713",
+  reviewEntryTitle: "Review Entry",
+  duplicateEntryWarningTitle: "Aisa entry abhi hi hua tha. Phir se save karein?",
+  duplicateEntryWarningDesc: "{name} ke liye \u20B9{amount} {type} pichle 10 min me save hua tha.",
+  saveAnyway: "Save Anyway",
+  correctByVoice: "Voice se sudharein",
+  listeningTapToStop: "Sun rahe hain... (Tap to stop)",
+  confirmAndSave: "Confirm & Save",
+  voiceSavingCommand: "Saving by voice command...",
+  voiceCancelledCommand: "Cancelled by voice",
+  voiceAmountUpdated: "Amount updated to \u20B9{amount}",
+  amountInRupees: "Rakam (\u20B9 me)",
+  relativeToday: "Aaj",
+  relativeYesterday: "Kal",
+  relativeDayBefore: "Parso",
+  pickDate: "Pick date",
+  notePlaceholder: "Note (e.g. Doodh, Cheeni, Dal)",
+  balanceInquiryTitle: "Khata Balance Inquiry",
+  balancePendingUdhaar: "Kul Baaki Udhaar",
+  advancePayment: "Advance Jama",
+  speaking: "Bol rahe hain...",
+  replayVoice: "Sunien",
+  allClear: "Sab clear hai \u2713",
+  last3Transactions: "Last 3 Transactions",
+  noPreviousTransactions: "Koi pichla hisaab nahi mila",
+  viewKhata: "View Khata",
+  whichCustomerAskDigits: "Kaun sa {name}? Number ke aakhri chaar ank bataiye.",
+  sameLastDigitsAskMore: "Dono ke aakhri ank same hain. Kripya aakhri {count} ank bataiye.",
+  numberNotFoundRetry: "Ye number nahi mila, phir se bataiye.",
+  numberNotFoundTapCard: "Ye number nahi mila. Card par tap karein.",
+  newCustomerAddedToast: "New customer added: {name}",
+  entrySavedSuccess: "{name} ka {type} safalta se darj hua!",
+  multiEntriesSavedSuccess: "{count} hisaab entries safalta se save ho gayi!",
+  didNotUnderstandRepeat: "Hisaab samajh nahi aaya. Kripya dobara bolein.",
+  languageChangedToast: "Bhasha badal gayi: {lang}",
+  speechLanguageChangedToast: "Speech language: {lang}",
+  offlineModeNoticeTitle: "Offline Mode",
+  offlineModeNoticeDesc: "Khata 100% offline chalta hai. Voice internet maang sakta hai; typing use karein.",
+  networkDisconnected: "Network disconnected",
+  pinIncorrect: "Galat PIN! Dubara koshish karein.",
+  pinLockedMessage: "Aapka khata AES-256 encrypted hai. Kripya apna PIN enter karein:",
+  pinResetConfirm: "Haan, Reset Karein",
+  totalUdhaar: "Kul Udhaar",
+  totalJama: "Kul Jama",
+  totalBalance: "Kul Baaki",
+  udhaarAdded: "Udhaar Added",
+  savePhoneToProfileHint: "Ek baar darj karein, yeh customer profile me save ho jayega.",
+  numberClearedSpeakAgain: "Number clear ho gaya. Dobara bolein ya keypad use karein.",
+  pendingEntrySavedAfterReg: "Registration ke baad \u20B9{amount} {type} save ho jayega",
+  recentEntriesReceipt: "Pichhle Hisaab:",
+  numeralScriptLabel: "Number Script",
+  numeralScriptDesc: "Numbers Latin (1, 2, 3) ya regional script me dikhayein",
+  scriptLatin: "English (1, 2, 3)",
+  scriptNative: "Native Script",
+  invalidPhoneError: "10-digit sahi Indian mobile number darj karein (6-9 se shuru)",
+  speakNamePrompt: "Grahak ka naam boliye...",
+  phoneHelpText: "WhatsApp reminder ke liye upyogi (baad me bhi jod sakte hain).",
+  manualEntryTitle: "Manual Entry (Bina Aawaz)",
+  today: "Aaj",
+  yesterday: "Kal",
+  dayBeforeYesterday: "Parso",
+  baakiOwed: "baaki",
+  listenReplay: "Sunien",
+  sendReminder: "Reminder Bhejein",
+  active: "Active",
+  noRecentActivity: "Koi haliya activity nahi",
+  listeningDigitsPrompt: "Sun rahe hain... aakhri 4 ank bolein",
+  tapCardOrMic: "Card tap karein ya mic dabakar dobara bolein",
+  first: "Pehla",
+  second: "Doosra",
+  qrSaveError: "QR save nahi ho paya",
+  khataStatementSlip: "KHATA STATEMENT SLIP",
+  thankYouShopping: "Vyapar ke liye dhanyawad! \u{1F64F}",
+  receiptSharedSuccess: "Receipt share ho gayi!",
+  receiptCopiedSuccess: "Receipt clipboard me copy ho gaya!",
+  whatsappPhoneNumber: "WhatsApp Phone Number",
+  selectTemplateLanguage: "Template Language Chunein",
+  messagePreview: "Message Preview (Editable)",
+  messageCopiedToast: "Message text copy ho gaya!",
+  offlineSabChalega: "Offline \u2013 Sab Chalega",
+  offlineSafeMessage: "Aapka pura khata 100% safe hai aur phone me hi save hota rahega.",
+  offlineMicWarning: "Voice recognition ke liye internet lag sakta hai. Mic na chale toh 'Type instead' use karein.",
+  openTypeInstead: "'Type Instead' Kholein",
+  gotIt: "Theek Hai, Samajh Gaya",
+  pinLockedNotice: "Aapka khata AES-256 encrypted hai. Kripya apna PIN enter karein:",
+  pinCryptoLockDesc: "Saara hisaab on-device Web Crypto (AES-256 GCM) se lock hai.",
+  yesReset: "Haan, Reset Karein",
+  dailySummarySub: "Daily Collection & Udhaar Summary",
+  activeCustomersLabel: "grahak active",
+  noDataAvailableDesc: "Is tarikh ke liye hisaab uplabdh nahi hai.",
+  noPendingUdhaarAllSettled: "Koi pending udhaar nahi hai. Sab hisaab chukta hai! \u2713",
+  zeroBalance: "Hisaab chukta, zero balance",
+  khataTimeline: "Hisaab Timeline",
+  saveEntry: "Entry Save Karein",
+  addUdhaar: "+ Add Udhaar",
+  addPayment: "+ Add Jama",
+  addEntry: "Entry Jodein",
+  noteOptional: "Note (Optional)",
+  whatsappReminder: "WhatsApp",
+  lastReminder: "Aakhri reminder",
+  savingByVoice: "Voice command se save ho raha hai...",
+  cancelledByVoice: "Voice se cancel kiya gaya",
+  noCustomersEmptyState: "Abhi koi customer nahi. Pehla udhaar bolkar jodein",
+  addFirstUdhaarVoice: "\u{1F3A4} Pehla Udhaar Bolkar Jodein",
+  onboardingStep1Title: "1. Bas Mic Dabakar Boliye",
+  onboardingStep1Desc: "Dukan par haath busy hain? Bas mic dabaiye aur apni bhasha me boliye.",
+  onboardingStep2Title: "2. Screen Par Preview Dekhein",
+  onboardingStep2Desc: "App turant entry ka preview dikhayega. Save karne ke liye tap karein ya bolkar sudharein.",
+  onboardingStep3Title: "3. Instant Khata & Reminders",
+  onboardingStep3Desc: "Customer khata turant update hota hai! WhatsApp reminder bhejein ya receipt print karein.",
+  grantMicAndStart: "Mic Permission Dein & Shuru Karein",
+  installAppTitle: "App Install Karein (Home Screen)",
+  installAppSub: "Fast & 100% offline chalega \u2022 1 tap me khata",
+  install: "Install",
+  errorBoundaryTitle: "Kuch Gadbad Hui",
+  errorBoundarySub: "Kuch gadbad hui, lekin chinta na karein!",
+  errorBoundarySafety: "Aapka saara khata data aapke phone me bilkul surakshit (IndexedDB) hai. Kuch khoya nahi hai.",
+  retryButton: "Dobara Koshish Karein",
+  goHomeButton: "Home Par Jayein",
+  technicalDetails: "Technical Error Details"
+};
+
+// src/i18n/translations.ts
+var dictionaries = {
+  en: en_default,
+  hi: hi_default,
+  kn: kn_default,
+  ta: ta_default,
+  te: te_default,
+  hinglish: hinglish_default
+};
+var translations = new Proxy(
+  {
+    spokenCreditSaved: (name, amount, lang) => {
+      switch (lang) {
+        case "hi":
+        case "hinglish":
+          return `${name} ko ${amount} rupaye udhaar likha gaya`;
+        case "kn":
+          return `${name} avarige ${amount} roopayi saala bariyalaagide`;
+        case "ta":
+          return `${name} ukku ${amount} roobai kadan ezhudhappattadhu`;
+        case "te":
+          return `${name} ku ${amount} roopayalu appu raayabadindi`;
+        case "en":
+        default:
+          return `Recorded ${amount} rupees credit for ${name}`;
+      }
+    },
+    spokenPaymentSaved: (name, amount, lang) => {
+      switch (lang) {
+        case "hi":
+        case "hinglish":
+          return `${name} se ${amount} rupaye jama prapt hue`;
+        case "kn":
+          return `${name} avarinda ${amount} roopayi hana bandide`;
+        case "ta":
+          return `${name} idamirundhu ${amount} roobai panam vandhadhu`;
+        case "te":
+          return `${name} nundi ${amount} roopayalu jama ayyindi`;
+        case "en":
+        default:
+          return `Received ${amount} rupees payment from ${name}`;
+      }
+    },
+    spokenBalanceOwed: (name, amount, lang) => {
+      switch (lang) {
+        case "hi":
+        case "hinglish":
+          return `${name} ka kul baaki ${amount} rupaye hai`;
+        case "kn":
+          return `${name} avara ottu baaki ${amount} roopayi ide`;
+        case "ta":
+          return `${name} in mottha baakki ${amount} roobai`;
+        case "te":
+          return `${name} yokka mottham baakee ${amount} roopayalu`;
+        case "en":
+        default:
+          return `${name} has a pending balance of ${amount} rupees`;
+      }
+    },
+    // WhatsApp reminder templates
+    reminderMessage: (name, amount, shopName = "Kirana Store", lang, entries) => {
+      return buildReminderMessage({
+        customerName: name,
+        amount,
+        shopName,
+        lang,
+        entries
+      });
+    }
+  },
+  {
+    get: (target, prop) => {
+      if (prop in target) return target[prop];
+      return {
+        en: dictionaries.en[prop] || "",
+        hi: dictionaries.hi[prop] || "",
+        kn: dictionaries.kn[prop] || "",
+        ta: dictionaries.ta[prop] || "",
+        te: dictionaries.te[prop] || "",
+        hinglish: dictionaries.hinglish[prop] || ""
+      };
+    }
+  }
+);
+
 // scripts/testParser.ts
-console.log("--- RUNNING VOICE KHATA PRD TEST SUITE --- \n");
+console.log("--- RUNNING UDHAAR SATHI PRD TEST SUITE --- \n");
 var passedCount = 0;
 var totalCount = 0;
 function assertTest(description, condition, details) {
@@ -9733,8 +9685,8 @@ async function runLedgerServiceTests() {
   );
   const chartDays = await service.getLast7DaysSummary();
   assertTest(
-    "getLast7DaysSummary: returns 7 days data with Aaj & Kal labels",
-    Array.isArray(chartDays) && chartDays.length === 7 && chartDays[6].dayLabel === "Aaj" && chartDays[5].dayLabel === "Kal",
+    "getLast7DaysSummary: returns 7 days data with Today/Aaj & Yesterday/Kal labels",
+    Array.isArray(chartDays) && chartDays.length === 7 && (chartDays[6].dayLabel === "Aaj" || chartDays[6].dayLabel === "Today") && (chartDays[5].dayLabel === "Kal" || chartDays[5].dayLabel === "Yesterday"),
     chartDays.map((d) => ({ day: d.dayLabel, credit: d.credit, payment: d.payment }))
   );
   const topPending = await service.getTopPendingCustomers(5);
@@ -9766,8 +9718,8 @@ async function runLedgerServiceTests() {
   );
   const receiptSlip = service.generateReceiptText(recentTx.entry, rameshMatches[0], "Sri Lakshmi Kirana");
   assertTest(
-    "generateReceiptText: produces thermal printable receipt slip with shop name and totals",
-    receiptSlip.includes("SRI LAKSHMI KIRANA") && receiptSlip.includes("RECEIPT SLIP") && receiptSlip.includes("750"),
+    "generateReceiptText: produces clean receipt with shop name and totals",
+    receiptSlip.toLowerCase().includes("sri lakshmi kirana") && receiptSlip.includes("750") && receiptSlip.toLowerCase().includes("total"),
     receiptSlip
   );
   const langKeys = ["en", "hi", "kn", "ta", "te", "hinglish"];
@@ -9783,7 +9735,7 @@ async function runLedgerServiceTests() {
   const csvData = await service.exportCSV();
   assertTest(
     "exportCSV: outputs valid CSV with transactions and customers headers",
-    csvData.includes("# VOICE KHATA TRANSACTIONS") && csvData.includes("Transaction ID,Date,Customer ID,Customer Name") && csvData.includes("# CUSTOMERS SUMMARY"),
+    csvData.includes("# UDHAAR SATHI TRANSACTIONS") && csvData.includes("Transaction ID,Date,Customer ID,Customer Name") && csvData.includes("# CUSTOMERS SUMMARY"),
     csvData.substring(0, 200)
   );
   await service.clearAllData();

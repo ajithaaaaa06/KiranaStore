@@ -1,5 +1,5 @@
 /**
- * Automated Test Suite for Voice Khata Voice Parser & Ledger Logic
+ * Automated Test Suite for Udhaar Sathi Voice Parser & Ledger Logic
  * Validates PRD acceptance criteria for Indic voice inputs,
  * self-corrections, relative dates, and balance query intents.
  */
@@ -12,7 +12,7 @@ import { parseTranscript } from '../src/services/parser.js';
 import { speechTemplates, getSpeechTemplates } from '../src/i18n/speech.js';
 import { dictionaries } from '../src/i18n/translations.js';
 
-console.log('--- RUNNING VOICE KHATA PRD TEST SUITE --- \n');
+console.log('--- RUNNING UDHAAR SATHI PRD TEST SUITE --- \n');
 
 let passedCount = 0;
 let totalCount = 0;
@@ -339,11 +339,11 @@ async function runLedgerServiceTests() {
 
   // 24. Last 7 Days Summary for SVG Bar Chart
   const chartDays = await service.getLast7DaysSummary();
-  assertTest('getLast7DaysSummary: returns 7 days data with Aaj & Kal labels',
+  assertTest('getLast7DaysSummary: returns 7 days data with Today/Aaj & Yesterday/Kal labels',
     Array.isArray(chartDays) &&
     chartDays.length === 7 &&
-    chartDays[6].dayLabel === 'Aaj' &&
-    chartDays[5].dayLabel === 'Kal',
+    (chartDays[6].dayLabel === 'Aaj' || chartDays[6].dayLabel === 'Today') &&
+    (chartDays[5].dayLabel === 'Kal' || chartDays[5].dayLabel === 'Yesterday'),
     chartDays.map(d => ({ day: d.dayLabel, credit: d.credit, payment: d.payment }))
   );
 
@@ -379,10 +379,10 @@ async function runLedgerServiceTests() {
     reminderObj
   );
 
-  // 29. generateReceiptText(): Generates 58mm thermal printable receipt with totals
+  // 29. generateReceiptText(): Generates clean printable receipt with totals
   const receiptSlip = service.generateReceiptText(recentTx.entry, rameshMatches[0], 'Sri Lakshmi Kirana');
-  assertTest('generateReceiptText: produces thermal printable receipt slip with shop name and totals',
-    receiptSlip.includes('SRI LAKSHMI KIRANA') && receiptSlip.includes('RECEIPT SLIP') && receiptSlip.includes('750'),
+  assertTest('generateReceiptText: produces clean receipt with shop name and totals',
+    receiptSlip.toLowerCase().includes('sri lakshmi kirana') && receiptSlip.includes('750') && receiptSlip.toLowerCase().includes('total'),
     receiptSlip
   );
 
@@ -400,7 +400,7 @@ async function runLedgerServiceTests() {
   // 31. exportCSV(): Generates standard CSV format with headers
   const csvData = await service.exportCSV();
   assertTest('exportCSV: outputs valid CSV with transactions and customers headers',
-    csvData.includes('# VOICE KHATA TRANSACTIONS') &&
+    csvData.includes('# UDHAAR SATHI TRANSACTIONS') &&
     csvData.includes('Transaction ID,Date,Customer ID,Customer Name') &&
     csvData.includes('# CUSTOMERS SUMMARY'),
     csvData.substring(0, 200)

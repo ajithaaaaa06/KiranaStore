@@ -1,5 +1,5 @@
 /**
- * Vitest Test Suite for Voice Khata Parser Service (/services/parser.ts)
+ * Vitest Test Suite for Udhaar Sathi Parser Service (/services/parser.ts)
  * 
  * Tests PRD acceptance criteria for:
  * 1. Indic credit keywords across 5 languages + romanised

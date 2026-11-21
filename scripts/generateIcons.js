@@ -1,5 +1,5 @@
 /**
- * Zero-dependency PNG and SVG icon generator for Voice Khata PWA
+ * Zero-dependency PNG and SVG icon generator for Udhaar Sathi PWA
  * Uses Node.js built-in zlib and crc32 calculation to generate 100% standard PNG files.
  */
 

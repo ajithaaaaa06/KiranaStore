@@ -1,4 +1,4 @@
-# Voice Khata (आवाज़ खाता) — 60-Second Pitch & Screenshots Checklist 📊📸
+# Udhaar Sathi (उधार साथी) — 60-Second Pitch & Screenshots Checklist 📊📸
 
 ---
 
@@ -14,15 +14,15 @@
 > Yet over 15% of informal credit is lost or disputed every single month simply because recording it is too friction-heavy."*
 
 ### [0:30 – 0:45] The Solution
-> *"Voice Khata turns any low-end smartphone into a hands-free intelligent ledger. 
+> *"Udhaar Sathi turns any low-end smartphone into a hands-free intelligent ledger. 
 > You speak one sentence in your native tongue: *'Ramesh ko paanch sau udhaar diya'* or in Kannada *'Ramesh eradu nooru saala'*. 
 > Our 100% offline, zero-dependency Indic parser understands irregular phrases like 'dedh sau', handles multi-part sentences, and lets you self-correct by simply saying *'nahi, 430'*. 
 > It rings an iconic Paytm-style audio confirmation in under two seconds."*
 
 ### [0:45 – 1:00] Defensibility & The Close
-> *"Unlike cloud-heavy alternatives, Voice Khata operates 100% offline in airplane mode. Every record is encrypted on-device with military-grade AES-256. Zero server storage cost for us, zero privacy risk for the shopkeeper. 
+> *"Unlike cloud-heavy alternatives, Udhaar Sathi operates 100% offline in airplane mode. Every record is encrypted on-device with military-grade AES-256. Zero server storage cost for us, zero privacy risk for the shopkeeper. 
 > No downloads, no passwords—just speak and save. 
-> **Voice Khata: Dukaan ka hisaab, bas ek aawaaz mein.** Thank you!"*
+> **Udhaar Sathi: Dukaan ka hisaab, bas ek aawaaz mein.** Thank you!"*
 
 ---
 
@@ -30,9 +30,9 @@
 
 | Slide # | Slide Title | Key Visual & Core Takeaway |
 | :--- | :--- | :--- |
-| **Slide 1** | **The Counter Reality** | Split photo: Flour-stained hands scribbling on cardboard vs. modern smartphone with Voice Khata 96px mic. |
+| **Slide 1** | **The Counter Reality** | Split photo: Flour-stained hands scribbling on cardboard vs. modern smartphone with Udhaar Sathi 96px mic. |
 | **Slide 2** | **Market Context** | Single big stat card: **[INSERT FIGURE, e.g., 13,000,000+]** Kirana stores nationwide *(Source: [YOUR SOURCE])* powering $800B+ retail. High credit volume, 0% typing tolerance. |
-| **Slide 3** | **Voice Khata** | The 1-sentence workflow: Spoken Input $\to$ Indic NLP $\to$ 2-Tap Save $\to$ Soundbox Audio Confirmation. |
+| **Slide 3** | **Udhaar Sathi** | The 1-sentence workflow: Spoken Input $\to$ Indic NLP $\to$ 2-Tap Save $\to$ Soundbox Audio Confirmation. |
 | **Slide 4** | **Under The Hood** | 100% Offline PWA architecture, rule-based Indic NLP, on-device AES-GCM 256 encryption, zero cloud tracking. |
 | **Slide 5** | **Unit Economics & Moat** | Zero server bandwidth/storage cost (runs client-side); high retention through Soundbox audio familiarity + WhatsApp collection reminders. |
 | **Slide 6** | **Live Demonstration** | Live phone screen mirror showing: Spoken entry $\to$ Voice correction $\to$ Balance query $\to$ Airplane mode test. |
@@ -93,4 +93,4 @@ Capture these screenshots in Google Chrome DevTools Device Mode (or on a physica
 
 - [ ] **12. PWA Standalone App Banner (`12_pwa_standalone.png`)**:
   - *Viewport*: 412×915
-  - *Content*: Voice Khata running in standalone window mode without browser navigation bar.
+  - *Content*: Udhaar Sathi running in standalone window mode without browser navigation bar.

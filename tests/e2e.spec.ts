@@ -69,7 +69,7 @@ async function setupMocks(page: any) {
   });
 }
 
-test.describe('Voice Khata E2E Acceptance Suite (360x640 Viewport)', () => {
+test.describe('Udhaar Sathi E2E Acceptance Suite (360x640 Viewport)', () => {
   test.beforeEach(async ({ page }) => {
     await setupMocks(page);
     await page.setViewportSize({ width: 360, height: 640 });

@@ -26,12 +26,14 @@ interface I18nContextType {
 
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
-export const LANGUAGE_STORAGE_KEY = 'voice_khata_lang';
-export const SPEECH_LANG_STORAGE_KEY = 'voice_khata_speech_lang';
+export const LANGUAGE_STORAGE_KEY = 'udhaar_sathi_lang';
+export const LEGACY_LANGUAGE_STORAGE_KEY = 'voice_khata_lang';
+export const SPEECH_LANG_STORAGE_KEY = 'udhaar_sathi_speech_lang';
+export const LEGACY_SPEECH_LANG_STORAGE_KEY = 'voice_khata_speech_lang';
 
 export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<LanguageCode>(() => {
-    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY) as LanguageCode;
+    const saved = (localStorage.getItem(LANGUAGE_STORAGE_KEY) || localStorage.getItem(LEGACY_LANGUAGE_STORAGE_KEY)) as LanguageCode;
     if (saved && SUPPORTED_LANGUAGES.some((l) => l.code === saved)) {
       return saved;
     }
@@ -39,11 +41,11 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
 
   const [speechLanguage, setSpeechLanguageState] = useState<LanguageCode>(() => {
-    const savedSpeech = localStorage.getItem(SPEECH_LANG_STORAGE_KEY) as LanguageCode;
+    const savedSpeech = (localStorage.getItem(SPEECH_LANG_STORAGE_KEY) || localStorage.getItem(LEGACY_SPEECH_LANG_STORAGE_KEY)) as LanguageCode;
     if (savedSpeech && SUPPORTED_LANGUAGES.some((l) => l.code === savedSpeech)) {
       return savedSpeech;
     }
-    const savedUI = localStorage.getItem(LANGUAGE_STORAGE_KEY) as LanguageCode;
+    const savedUI = (localStorage.getItem(LANGUAGE_STORAGE_KEY) || localStorage.getItem(LEGACY_LANGUAGE_STORAGE_KEY)) as LanguageCode;
     if (savedUI && SUPPORTED_LANGUAGES.some((l) => l.code === savedUI)) {
       return savedUI;
     }
@@ -53,40 +55,47 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const setLanguage = useCallback((lang: LanguageCode) => {
     setLanguageState(lang);
     localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    localStorage.setItem(LEGACY_LANGUAGE_STORAGE_KEY, lang);
 
     // Default speech language to UI language if not explicitly separated
-    const hasCustomSpeech = localStorage.getItem('vk_has_custom_speech_lang') === 'true';
+    const hasCustomSpeech = localStorage.getItem('vk_has_custom_speech_lang') === 'true' || localStorage.getItem('us_has_custom_speech_lang') === 'true';
     if (!hasCustomSpeech) {
       setSpeechLanguageState(lang);
       localStorage.setItem(SPEECH_LANG_STORAGE_KEY, lang);
+      localStorage.setItem(LEGACY_SPEECH_LANG_STORAGE_KEY, lang);
     }
 
     // Sync with settings store if present
     try {
-      const stored = localStorage.getItem('voice_khata_settings');
+      const stored = localStorage.getItem('udhaar_sathi_settings') || localStorage.getItem('voice_khata_settings');
       if (stored) {
         const s = JSON.parse(stored);
         s.uiLanguage = lang;
         if (!hasCustomSpeech) s.speechLanguage = lang;
+        localStorage.setItem('udhaar_sathi_settings', JSON.stringify(s));
         localStorage.setItem('voice_khata_settings', JSON.stringify(s));
       }
     } catch {}
 
     if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
       window.dispatchEvent(new CustomEvent('vk_language_changed', { detail: lang }));
+      window.dispatchEvent(new CustomEvent('us_language_changed', { detail: lang }));
     }
   }, []);
 
   const setSpeechLanguage = useCallback((lang: LanguageCode) => {
     setSpeechLanguageState(lang);
     localStorage.setItem(SPEECH_LANG_STORAGE_KEY, lang);
+    localStorage.setItem(LEGACY_SPEECH_LANG_STORAGE_KEY, lang);
+    localStorage.setItem('us_has_custom_speech_lang', 'true');
     localStorage.setItem('vk_has_custom_speech_lang', 'true');
 
     try {
-      const stored = localStorage.getItem('voice_khata_settings');
+      const stored = localStorage.getItem('udhaar_sathi_settings') || localStorage.getItem('voice_khata_settings');
       if (stored) {
         const s = JSON.parse(stored);
         s.speechLanguage = lang;
+        localStorage.setItem('udhaar_sathi_settings', JSON.stringify(s));
         localStorage.setItem('voice_khata_settings', JSON.stringify(s));
       }
     } catch {}

@@ -1,5 +1,5 @@
 /**
- * Voice Khata PIN Lock Screen
+ * Udhaar Sathi PIN Lock Screen
  * 
  * Displayed on app startup if a 4-6 digit security PIN is configured.
  * Features:
@@ -101,7 +101,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock, onResetA
           <Lock className="w-8 h-8" />
         </div>
         <h1 className="text-2xl font-black tracking-tight text-white">
-          Voice Khata Locked 🔒
+          Udhaar Sathi Locked 🔒
         </h1>
         <p className="text-xs font-semibold text-slate-400 mt-1">
           {t('pinLockedNotice')}
