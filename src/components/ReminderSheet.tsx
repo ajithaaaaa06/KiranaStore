@@ -17,44 +17,27 @@ import {
   CheckCircle,
   Copy,
   MessageCircle,
+  Clock,
 } from 'lucide-react';
-import { Customer, LanguageCode } from '../services/types';
+import { Customer, LedgerEntry, LanguageCode } from '../services/types';
 import { ledgerService } from '../services/ledgerService';
-import { formatRupees } from '../lib/format';
+import { formatRupees, formatFullRelativeDate } from '../lib/format';
 import { useI18n } from '../i18n/I18nContext';
 import { useToast } from './ui/Toast';
+import { translations } from '../i18n/translations';
 
 export interface ReminderSheetProps {
   customer: Customer;
+  entries?: LedgerEntry[];
   shopName?: string;
   isOpen: boolean;
   onClose: () => void;
   onCustomerUpdated?: (updated: Customer) => void;
 }
 
-// Polite reminder templates across all 5 languages + Hinglish
-const REMINDER_TEMPLATES: Record<LanguageCode, (name: string, amt: string, shop: string) => string> = {
-  hi: (name, amt, shop) =>
-    `नमस्ते ${name} जी,\n${shop} से आपका कुल बकाया हिसाब ₹${amt} है।\nकृपया सुविधानुसार भुगतान कर दें।\nधन्यवाद! 🙏`,
-
-  hinglish: (name, amt, shop) =>
-    `Namaste ${name} ji,\n${shop} se aapka kul baaki hisaab ₹${amt} hai.\nKripya suvidhanusar bhej dein.\nDhanyawad! 🙏`,
-
-  en: (name, amt, shop) =>
-    `Hello ${name},\nGentle reminder from ${shop}: your pending balance is ₹${amt}.\nPlease settle at your convenience.\nThank you! 🙏`,
-
-  kn: (name, amt, shop) =>
-    `ನಮಸ್ಕಾರ ${name} ಅವರೇ,\n${shop} ನಲ್ಲಿ ನಿಮ್ಮ ಒಟ್ಟು ಬಾಕಿ ₹${amt} ರೂಪಾಯಿ ಇದೆ.\nದಯವಿಟ್ಟು ಅನುಕೂಲವಾದಾಗ ಪಾವತಿಸಿ.\nಧನ್ಯವಾದಗಳು! 🙏`,
-
-  ta: (name, amt, shop) =>
-    `வணக்கம் ${name} அவர்களே,\n${shop} கடையில் உங்கள் பாக்கி தொகை ₹${amt}.\nதயவுசெய்து விரைவில் செலுத்தவும்.\nநன்றி! 🙏`,
-
-  te: (name, amt, shop) =>
-    `నమస్కారం ${name} గారు,\n${shop} లో మీ మొత్తం బాకీ ₹${amt}.\nదయచేసి వీలైనంత త్వరగా చెల్లించండి.\nధన్యవాదాలు! 🙏`,
-};
-
 export const ReminderSheet: React.FC<ReminderSheetProps> = ({
   customer,
+  entries: propEntries,
   shopName = 'Kirana Store',
   isOpen,
   onClose,
@@ -67,13 +50,34 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
   const [phoneNumber, setPhoneNumber] = useState(customer.phone || '');
   const [messageText, setMessageText] = useState('');
   const [copied, setCopied] = useState(false);
+  const [loadedEntries, setLoadedEntries] = useState<LedgerEntry[]>(propEntries || []);
 
-  // Generate reminder template on mount or language change
+  // Update entries when prop changes or fetch from ledger on open
+  useEffect(() => {
+    if (propEntries && propEntries.length > 0) {
+      setLoadedEntries(propEntries);
+    } else if (isOpen && customer.id) {
+      ledgerService.getCustomerEntries(customer.id).then((e) => {
+        if (e && e.length > 0) {
+          setLoadedEntries(e);
+        }
+      });
+    }
+  }, [isOpen, customer.id, propEntries]);
+
+  // Generate reminder template on mount, language change, or entries loaded
   useEffect(() => {
     const formattedBalance = customer.balance.toLocaleString('en-IN');
-    const generator = REMINDER_TEMPLATES[selectedLang] || REMINDER_TEMPLATES.hinglish;
-    setMessageText(generator(customer.name, formattedBalance, shopName));
-  }, [selectedLang, customer.name, customer.balance, shopName]);
+    setMessageText(
+      translations.reminderMessage(
+        customer.name,
+        formattedBalance,
+        shopName,
+        selectedLang,
+        loadedEntries
+      )
+    );
+  }, [selectedLang, customer.name, customer.balance, shopName, loadedEntries]);
 
   if (!isOpen) return null;
 
@@ -97,18 +101,18 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
       return;
     }
 
-    // If phone number is newly entered or changed, save to customer record
-    if (cleanedDigits !== cleanPhone(customer.phone || '')) {
-      try {
-        const raw10 = cleanedDigits.slice(-10);
-        const updated = await ledgerService.updateCustomer(customer.id, { phone: raw10 });
-        if (onCustomerUpdated) {
-          onCustomerUpdated(updated);
-        }
-        showToast('Phone number grahak profile me save ho gaya!', { type: 'success' });
-      } catch {
-        // ignore
+    // Save phone and update lastRemindedAt on customer profile
+    try {
+      const raw10 = cleanedDigits.slice(-10);
+      const updated = await ledgerService.updateCustomer(customer.id, {
+        phone: raw10,
+        lastRemindedAt: new Date().toISOString(),
+      });
+      if (onCustomerUpdated) {
+        onCustomerUpdated(updated);
       }
+    } catch {
+      // ignore
     }
 
     const encoded = encodeURIComponent(messageText);
@@ -148,7 +152,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
                 id="reminder-sheet-title"
                 className="text-xs font-black uppercase tracking-wider text-slate-400 block"
               >
-                WhatsApp Payment Reminder
+                WhatsApp Reminder
               </span>
               <h3 className="text-base font-black text-white">{customer.name}</h3>
             </div>
@@ -164,8 +168,16 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
         </div>
 
         {/* Customer Balance Banner */}
-        <div className="p-3 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-between mb-3.5">
-          <span className="text-xs font-bold text-slate-400">Total Udhaar Baaki:</span>
+        <div className="p-3 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-between mb-3">
+          <div>
+            <span className="text-xs font-bold text-slate-400 block">Total Udhaar Baaki:</span>
+            {customer.lastRemindedAt && (
+              <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1 mt-0.5">
+                <Clock className="w-3 h-3" />
+                Aakhri reminder: {formatFullRelativeDate(customer.lastRemindedAt, { lang: selectedLang })}
+              </span>
+            )}
+          </div>
           <span className="text-xl font-black text-amber-400">
             {formatRupees(customer.balance)}
           </span>

@@ -2728,7 +2728,72 @@ var translations = {
     }
   },
   // WhatsApp reminder templates
-  reminderMessage: (name, amount, shopName = "Kirana Store", lang) => {
+  reminderMessage: (name, amount, shopName = "Kirana Store", lang, entries) => {
+    let entriesBlock = "";
+    if (entries && entries.length > 0) {
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      entriesBlock = sorted.map((e) => {
+        const d = new Date(e.date);
+        const day = d.getDate();
+        const month = monthNames[d.getMonth()] || "Nov";
+        const typeStr = e.type === "credit" ? "udhaar" : "paid";
+        return `${day} ${month}: \u20B9${e.amount.toLocaleString("en-IN")} ${typeStr}`;
+      }).join("\n");
+    }
+    if (entriesBlock) {
+      switch (lang) {
+        case "hi":
+          return `\u0928\u092E\u0938\u094D\u0924\u0947 ${name} \u091C\u0940,
+${shopName} \u0938\u0947 \u0906\u092A\u0915\u093E \u0939\u093F\u0938\u093E\u092C:
+${entriesBlock}
+--------------------
+\u0915\u0941\u0932 \u092C\u093E\u0915\u0940 \u0939\u093F\u0938\u093E\u092C: \u20B9${amount}
+\u0915\u0943\u092A\u092F\u093E \u0938\u0941\u0935\u093F\u0927\u093E\u0928\u0941\u0938\u093E\u0930 \u092D\u0941\u0917\u0924\u093E\u0928 \u0915\u0930 \u0926\u0947\u0902\u0964
+\u0927\u0928\u094D\u092F\u0935\u093E\u0926! \u{1F64F}`;
+        case "kn":
+          return `\u0CA8\u0CAE\u0CB8\u0CCD\u0C95\u0CBE\u0CB0 ${name} \u0C85\u0CB5\u0CB0\u0CC7,
+${shopName} \u0CA8\u0CBF\u0C82\u0CA6 \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CB2\u0CC6\u0C95\u0CCD\u0C95:
+${entriesBlock}
+--------------------
+\u0C92\u0C9F\u0CCD\u0C9F\u0CC1 \u0CAC\u0CBE\u0C95\u0CBF: \u20B9${amount}
+\u0CA6\u0CAF\u0CB5\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1 \u0C85\u0CA8\u0CC1\u0C95\u0CC2\u0CB2\u0CB5\u0CBE\u0CA6\u0CBE\u0C97 \u0CAA\u0CBE\u0CB5\u0CA4\u0CBF\u0CB8\u0CBF.
+\u0CA7\u0CA8\u0CCD\u0CAF\u0CB5\u0CBE\u0CA6\u0C97\u0CB3\u0CC1! \u{1F64F}`;
+        case "ta":
+          return `\u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD ${name},
+${shopName} \u0B95\u0B9F\u0BC8\u0BAF\u0BBF\u0BB2\u0BCD \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1:
+${entriesBlock}
+--------------------
+\u0BAE\u0BCA\u0BA4\u0BCD\u0BA4 \u0BAA\u0BBE\u0B95\u0BCD\u0B95\u0BBF: \u20B9${amount}
+\u0BA4\u0BAF\u0BB5\u0BC1\u0B9A\u0BC6\u0BAF\u0BCD\u0BA4\u0BC1 \u0BB5\u0BBF\u0BB0\u0BC8\u0BB5\u0BBF\u0BB2\u0BCD \u0B9A\u0BC6\u0BB2\u0BC1\u0BA4\u0BCD\u0BA4\u0BB5\u0BC1\u0BAE\u0BCD.
+\u0BA8\u0BA9\u0BCD\u0BB1\u0BBF! \u{1F64F}`;
+        case "te":
+          return `\u0C28\u0C2E\u0C38\u0C4D\u0C15\u0C3E\u0C30\u0C02 ${name} \u0C17\u0C3E\u0C30\u0C41,
+${shopName} \u0C32\u0C4B \u0C2E\u0C40 \u0C32\u0C46\u0C15\u0C4D\u0C15:
+${entriesBlock}
+--------------------
+\u0C2E\u0C4A\u0C24\u0C4D\u0C24\u0C02 \u0C2C\u0C3E\u0C15\u0C40: \u20B9${amount}
+\u0C26\u0C2F\u0C1A\u0C47\u0C38\u0C3F \u0C35\u0C40\u0C32\u0C48\u0C28\u0C02\u0C24 \u0C24\u0C4D\u0C35\u0C30\u0C17\u0C3E \u0C1A\u0C46\u0C32\u0C4D\u0C32\u0C3F\u0C02\u0C1A\u0C02\u0C21\u0C3F.
+\u0C27\u0C28\u0C4D\u0C2F\u0C35\u0C3E\u0C26\u0C3E\u0C32\u0C41! \u{1F64F}`;
+        case "en":
+          return `Hello ${name},
+Account statement from ${shopName}:
+${entriesBlock}
+--------------------
+Total pending balance: \u20B9${amount}
+Please settle at your convenience.
+Thank you! \u{1F64F}`;
+        case "hinglish":
+        default:
+          return `Namaste ${name} ji,
+${shopName} se aapka hisaab:
+${entriesBlock}
+--------------------
+Kul baaki hisaab: \u20B9${amount}
+Kripya suvidhanusar bhej dein.
+Dhanyawad! \u{1F64F}`;
+      }
+    }
     switch (lang) {
       case "hi":
         return `\u0928\u092E\u0938\u094D\u0924\u0947 ${name} \u091C\u0940, \u0906\u092A\u0915\u0947 \u0915\u093F\u0930\u093E\u0928\u093E \u0916\u093E\u0924\u0947 \u0915\u093E \u092C\u093E\u0915\u0940 \u20B9${amount} \u0939\u0948\u0964 \u0915\u0943\u092A\u092F\u093E \u0938\u0941\u0935\u093F\u0927\u093E\u0928\u0941\u0938\u093E\u0930 \u091A\u0941\u0915\u093E \u0926\u0947\u0902\u0964 \u0927\u0928\u094D\u092F\u0935\u093E\u0926 - ${shopName}`;
@@ -5969,7 +6034,8 @@ async function encryptCustomerEntity(customer) {
     name: customer.name,
     phone: customer.phone ? cleanPhoneNumber(customer.phone) : "",
     notes: customer.notes || "",
-    phoneVerified: customer.phoneVerified ?? false
+    phoneVerified: customer.phoneVerified ?? false,
+    lastRemindedAt: customer.lastRemindedAt
   };
   const { encryptedPayload, iv } = await cryptoService.encryptObject(sensitiveData);
   return {
@@ -5995,6 +6061,7 @@ async function decryptCustomerEntity(record, calculatedBalance = {
     phone: sensitive.phone ? cleanPhoneNumber(sensitive.phone) : void 0,
     phoneVerified: sensitive.phoneVerified ?? false,
     notes: sensitive.notes,
+    lastRemindedAt: sensitive.lastRemindedAt,
     createdAt: record.createdAt,
     lastTransactionDate: record.lastTransactionDate,
     totalCredit: calculatedBalance.totalCredit,
@@ -6887,14 +6954,14 @@ var RealLedgerService = class {
       activeCustomersCount: s.activeCustomers
     };
   }
-  generateWhatsAppReminder(customer, lang, shopName = "Kirana Store") {
+  generateWhatsAppReminder(customer, lang, shopName = "Kirana Store", entries) {
     const amountStr = customer.balance.toLocaleString("en-IN");
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang);
+    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
     const phone = cleanPhoneNumber(customer.phone);
     const url = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
     return { text, url };
   }
-  generateReceiptText(entry, customer, shopName = "Kirana Store", upiId) {
+  generateReceiptText(entry, customer, shopName = "Kirana Store") {
     const cust = customer || { name: "Customer", phone: "", balance: 0, totalCredit: 0, totalPayment: 0, id: "" };
     const isCredit = entry?.type === "credit";
     const typeLabel = isCredit ? "UDHAAR (CREDIT GIVEN)" : "JAMA (PAYMENT RECEIVED)";
@@ -6914,10 +6981,7 @@ Amount: \u20B9${amt}
 ${entry?.note ? `Note: ${entry.note}` : ""}
 ----------------------------------------
 Current Total Balance Owed: \u20B9${cust.balance?.toLocaleString("en-IN") || "0"}
-${upiId ? `----------------------------------------
-Scan & Pay via UPI:
-UPI ID: ${upiId}
-` : ""}========================================
+========================================
    Thank you for shopping with us!
    Powered by Voice Khata PWA
 ========================================
@@ -7311,14 +7375,14 @@ var InMemoryLedgerService = class {
     await this.init();
     return this.customers.filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, limit);
   }
-  generateWhatsAppReminder(customer, lang, shopName = "Kirana Store") {
+  generateWhatsAppReminder(customer, lang, shopName = "Kirana Store", entries) {
     const amountStr = customer.balance.toLocaleString("en-IN");
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang);
+    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
     const phone = cleanPhoneNumber(customer.phone);
     const url = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
     return { text, url };
   }
-  generateReceiptText(entry, customer, shopName = "Kirana Store", upiId) {
+  generateReceiptText(entry, customer, shopName = "Kirana Store") {
     const cust = customer || { name: "Customer", phone: "", balance: 0, totalCredit: 0, totalPayment: 0, id: "" };
     const isCredit = entry?.type === "credit";
     const typeLabel = isCredit ? "UDHAAR (CREDIT GIVEN)" : "JAMA (PAYMENT RECEIVED)";
@@ -7338,10 +7402,7 @@ Amount: \u20B9${amt}
 ${entry?.note ? `Note: ${entry.note}` : ""}
 ----------------------------------------
 Current Total Balance Owed: \u20B9${cust.balance?.toLocaleString("en-IN") || "0"}
-${upiId ? `----------------------------------------
-Scan & Pay via UPI:
-UPI ID: ${upiId}
-` : ""}========================================
+========================================
    Thank you for shopping with us!
    Powered by Voice Khata PWA
 ========================================

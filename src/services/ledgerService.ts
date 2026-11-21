@@ -964,10 +964,11 @@ export class RealLedgerService implements ILedgerService {
   public generateWhatsAppReminder(
     customer: Customer,
     lang: LanguageCode,
-    shopName: string = 'Kirana Store'
+    shopName: string = 'Kirana Store',
+    entries?: LedgerEntry[]
   ): { text: string; url: string } {
     const amountStr = customer.balance.toLocaleString('en-IN');
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang);
+    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
     const phone = cleanPhoneNumber(customer.phone);
     const url = phone
       ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`
@@ -975,7 +976,7 @@ export class RealLedgerService implements ILedgerService {
     return { text, url };
   }
 
-  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store', upiId?: string): string {
+  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store'): string {
     const cust = customer || { name: 'Customer', phone: '', balance: 0, totalCredit: 0, totalPayment: 0, id: '' };
     const isCredit = entry?.type === 'credit';
     const typeLabel = isCredit ? 'UDHAAR (CREDIT GIVEN)' : 'JAMA (PAYMENT RECEIVED)';
@@ -996,7 +997,7 @@ Amount: ₹${amt}
 ${entry?.note ? `Note: ${entry.note}` : ''}
 ----------------------------------------
 Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
-${upiId ? `----------------------------------------\nScan & Pay via UPI:\nUPI ID: ${upiId}\n` : ''}========================================
+========================================
    Thank you for shopping with us!
    Powered by Voice Khata PWA
 ========================================
@@ -1507,10 +1508,11 @@ export class InMemoryLedgerService implements ILedgerService {
   public generateWhatsAppReminder(
     customer: Customer,
     lang: LanguageCode,
-    shopName: string = 'Kirana Store'
+    shopName: string = 'Kirana Store',
+    entries?: LedgerEntry[]
   ): { text: string; url: string } {
     const amountStr = customer.balance.toLocaleString('en-IN');
-    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang);
+    const text = translations.reminderMessage(customer.name, amountStr, shopName, lang, entries);
     const phone = cleanPhoneNumber(customer.phone);
     const url = phone
       ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`
@@ -1518,7 +1520,7 @@ export class InMemoryLedgerService implements ILedgerService {
     return { text, url };
   }
 
-  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store', upiId?: string): string {
+  public generateReceiptText(entry?: LedgerEntry, customer?: Customer, shopName: string = 'Kirana Store'): string {
     const cust = customer || { name: 'Customer', phone: '', balance: 0, totalCredit: 0, totalPayment: 0, id: '' };
     const isCredit = entry?.type === 'credit';
     const typeLabel = isCredit ? 'UDHAAR (CREDIT GIVEN)' : 'JAMA (PAYMENT RECEIVED)';
@@ -1539,7 +1541,7 @@ Amount: ₹${amt}
 ${entry?.note ? `Note: ${entry.note}` : ''}
 ----------------------------------------
 Current Total Balance Owed: ₹${cust.balance?.toLocaleString('en-IN') || '0'}
-${upiId ? `----------------------------------------\nScan & Pay via UPI:\nUPI ID: ${upiId}\n` : ''}========================================
+========================================
    Thank you for shopping with us!
    Powered by Voice Khata PWA
 ========================================
@@ -1585,3 +1587,4 @@ ${upiId ? `----------------------------------------\nScan & Pay via UPI:\nUPI ID
 
 // Export singleton instance of RealLedgerService as default ledgerService
 export const ledgerService: RealLedgerService = new RealLedgerService();
+export { InMemoryLedgerService as MockLedgerService };

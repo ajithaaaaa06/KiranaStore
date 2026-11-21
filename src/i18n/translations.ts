@@ -4,7 +4,7 @@
  * Built with lightweight zero-dependency JSON dictionaries.
  */
 
-import { LanguageCode, LanguageOption } from '../services/types';
+import { LanguageCode, LanguageOption, LedgerEntry } from '../services/types';
 import en from './locales/en.json';
 import hi from './locales/hi.json';
 import kn from './locales/kn.json';
@@ -227,7 +227,46 @@ export const translations = {
     }
   },
   // WhatsApp reminder templates
-  reminderMessage: (name: string, amount: string, shopName: string = 'Kirana Store', lang: LanguageCode) => {
+  reminderMessage: (
+    name: string,
+    amount: string,
+    shopName: string = 'Kirana Store',
+    lang: LanguageCode,
+    entries?: LedgerEntry[]
+  ) => {
+    let entriesBlock = '';
+    if (entries && entries.length > 0) {
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      entriesBlock = sorted
+        .map((e) => {
+          const d = new Date(e.date);
+          const day = d.getDate();
+          const month = monthNames[d.getMonth()] || 'Nov';
+          const typeStr = e.type === 'credit' ? 'udhaar' : 'paid';
+          return `${day} ${month}: ₹${e.amount.toLocaleString('en-IN')} ${typeStr}`;
+        })
+        .join('\n');
+    }
+
+    if (entriesBlock) {
+      switch (lang) {
+        case 'hi':
+          return `नमस्ते ${name} जी,\n${shopName} से आपका हिसाब:\n${entriesBlock}\n--------------------\nकुल बाकी हिसाब: ₹${amount}\nकृपया सुविधानुसार भुगतान कर दें।\nधन्यवाद! 🙏`;
+        case 'kn':
+          return `ನಮಸ್ಕಾರ ${name} ಅವರೇ,\n${shopName} ನಿಂದ ನಿಮ್ಮ ಲೆಕ್ಕ:\n${entriesBlock}\n--------------------\nಒಟ್ಟು ಬಾಕಿ: ₹${amount}\nದಯವಿಟ್ಟು ಅನುಕೂಲವಾದಾಗ ಪಾವತಿಸಿ.\nಧನ್ಯವಾದಗಳು! 🙏`;
+        case 'ta':
+          return `வணக்கம் ${name},\n${shopName} கடையில் உங்கள் கணக்கு:\n${entriesBlock}\n--------------------\nமொத்த பாக்கி: ₹${amount}\nதயவுசெய்து விரைவில் செலுத்தவும்.\nநன்றி! 🙏`;
+        case 'te':
+          return `నమస్కారం ${name} గారు,\n${shopName} లో మీ లెక్క:\n${entriesBlock}\n--------------------\nమొత్తం బాకీ: ₹${amount}\nదయచేసి వీలైనంత త్వరగా చెల్లించండి.\nధన్యవాదాలు! 🙏`;
+        case 'en':
+          return `Hello ${name},\nAccount statement from ${shopName}:\n${entriesBlock}\n--------------------\nTotal pending balance: ₹${amount}\nPlease settle at your convenience.\nThank you! 🙏`;
+        case 'hinglish':
+        default:
+          return `Namaste ${name} ji,\n${shopName} se aapka hisaab:\n${entriesBlock}\n--------------------\nKul baaki hisaab: ₹${amount}\nKripya suvidhanusar bhej dein.\nDhanyawad! 🙏`;
+      }
+    }
+
     switch (lang) {
       case 'hi':
         return `नमस्ते ${name} जी, आपके किराना खाते का बाकी ₹${amount} है। कृपया सुविधानुसार चुका दें। धन्यवाद - ${shopName}`;

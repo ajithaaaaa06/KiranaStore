@@ -26,6 +26,7 @@ export async function encryptCustomerEntity(customer: Customer): Promise<Encrypt
     phone: customer.phone ? cleanPhoneNumber(customer.phone) : '',
     notes: customer.notes || '',
     phoneVerified: customer.phoneVerified ?? false,
+    lastRemindedAt: customer.lastRemindedAt,
   };
 
   const { encryptedPayload, iv } = await cryptoService.encryptObject(sensitiveData);
@@ -55,6 +56,7 @@ export async function decryptCustomerEntity(
     phone: string;
     notes?: string;
     phoneVerified?: boolean;
+    lastRemindedAt?: string;
   }>({
     encryptedPayload: record.encryptedPayload,
     iv: record.iv,
@@ -66,6 +68,7 @@ export async function decryptCustomerEntity(
     phone: sensitive.phone ? cleanPhoneNumber(sensitive.phone) : undefined,
     phoneVerified: sensitive.phoneVerified ?? false,
     notes: sensitive.notes,
+    lastRemindedAt: sensitive.lastRemindedAt,
     createdAt: record.createdAt,
     lastTransactionDate: record.lastTransactionDate,
     totalCredit: calculatedBalance.totalCredit,

@@ -27,6 +27,7 @@ export interface Customer {
   lastTransactionDate?: string; // ISO string
   createdAt?: string;     // ISO string
   notes?: string;
+  lastRemindedAt?: string; // ISO string of when WhatsApp reminder was last sent
 }
 
 export type EntrySource = 'voice' | 'manual' | 'upi';
@@ -233,4 +234,13 @@ export interface ILedgerService {
 
   clearAllData?(): Promise<void>;
   seedPitchDemoData?(): Promise<void>;
+
+  generateWhatsAppReminder?(
+    customer: Customer,
+    lang: LanguageCode,
+    shopName?: string,
+    entries?: LedgerEntry[]
+  ): { text: string; url: string };
+
+  generateReceiptText?(entry?: LedgerEntry, customer?: Customer, shopName?: string): string;
 }
