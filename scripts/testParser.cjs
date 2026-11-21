@@ -6379,11 +6379,9 @@ var RealLedgerService = class {
     }
     const custCount = await db.count("customers");
     if (custCount === 0) {
-      const isDemo = typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("demo") === "1" || localStorage.getItem("vk_demo_mode") === "true");
+      const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
       if (isDemo) {
         await seedPitchDemoDataToDB();
-      } else {
-        await this.seedInitialData();
       }
     }
     this.isInitialized = true;
@@ -6590,9 +6588,16 @@ var RealLedgerService = class {
   async findOrCreateCustomer(name, phone) {
     await this.init();
     const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error("Customer name cannot be empty");
+    }
     const all = await this.getCustomers();
     const existing = all.find((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing;
+    const matchResult = findCustomers(trimmed, all);
+    if (matchResult.action === "auto_select" && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
+      return matchResult.selectedCustomer;
+    }
     const newCust = {
       id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: trimmed,
@@ -7053,8 +7058,13 @@ var InMemoryLedgerService = class {
   }
   async init() {
     if (this.isInitialized) return;
-    this.customers = JSON.parse(JSON.stringify(INITIAL_CUSTOMERS));
-    this.entries = JSON.parse(JSON.stringify(INITIAL_ENTRIES));
+    const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
+    if (isDemo) {
+      await this.seedPitchDemoData();
+    } else {
+      this.customers = [];
+      this.entries = [];
+    }
     this.isInitialized = true;
   }
   async seedInitialData() {
@@ -7217,9 +7227,16 @@ var InMemoryLedgerService = class {
   async findOrCreateCustomer(name, phone) {
     await this.init();
     const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error("Customer name cannot be empty");
+    }
     const all = await this.getCustomers();
     const existing = all.find((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing;
+    const matchResult = findCustomers(trimmed, all);
+    if (matchResult.action === "auto_select" && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
+      return matchResult.selectedCustomer;
+    }
     const newCustomer = {
       id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: trimmed,

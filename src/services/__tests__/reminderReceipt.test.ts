@@ -6,8 +6,9 @@ import { translations } from '../../i18n/translations';
 describe('WhatsApp Reminder and Receipt Flow (Plain text, Read-only)', () => {
   let mockService: MockLedgerService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockService = new MockLedgerService();
+    await mockService.seedInitialData();
   });
 
   describe('1. Reminder Message Formatting (Entry Breakdown & Plain Text)', () => {
@@ -215,29 +216,31 @@ describe('WhatsApp Reminder and Receipt Flow (Plain text, Read-only)', () => {
 
     it('works with RealLedgerService in-memory DB and preserves lastRemindedAt across decrypt/encrypt', async () => {
       await ledgerService.init();
-      const customers = await ledgerService.getCustomers();
-      if (customers.length > 0) {
-        const cust = customers[0];
-        const entriesBefore = await ledgerService.getCustomerEntries(cust.id);
-        const entriesCountBefore = entriesBefore.length;
-        const balanceBefore = cust.balance;
-
-        const sentAt = new Date().toISOString();
-        const updated = await ledgerService.updateCustomer(cust.id, {
-          lastRemindedAt: sentAt,
-        });
-
-        expect(updated.lastRemindedAt).toBe(sentAt);
-
-        // Fetch back from DB to verify encrypted roundtrip
-        const fetched = await ledgerService.getCustomerById(cust.id);
-        expect(fetched?.lastRemindedAt).toBe(sentAt);
-
-        // Verify entries count and balance remain strictly untouched
-        const entriesAfter = await ledgerService.getCustomerEntries(cust.id);
-        expect(entriesAfter.length).toBe(entriesCountBefore);
-        expect(fetched?.balance).toBe(balanceBefore);
+      let customers = await ledgerService.getCustomers();
+      if (customers.length === 0) {
+        await ledgerService.addCustomer({ name: 'Ramesh Test', phone: '9845012345' });
+        customers = await ledgerService.getCustomers();
       }
+      const cust = customers[0];
+      const entriesBefore = await ledgerService.getCustomerEntries(cust.id);
+      const entriesCountBefore = entriesBefore.length;
+      const balanceBefore = cust.balance;
+
+      const sentAt = new Date().toISOString();
+      const updated = await ledgerService.updateCustomer(cust.id, {
+        lastRemindedAt: sentAt,
+      });
+
+      expect(updated.lastRemindedAt).toBe(sentAt);
+
+      // Fetch back from DB to verify encrypted roundtrip
+      const fetched = await ledgerService.getCustomerById(cust.id);
+      expect(fetched?.lastRemindedAt).toBe(sentAt);
+
+      // Verify entries count and balance remain strictly untouched
+      const entriesAfter = await ledgerService.getCustomerEntries(cust.id);
+      expect(entriesAfter.length).toBe(entriesCountBefore);
+      expect(fetched?.balance).toBe(balanceBefore);
     });
   });
 });

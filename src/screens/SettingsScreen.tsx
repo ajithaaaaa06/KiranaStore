@@ -68,6 +68,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
   const { settings, updateSetting, resetSettings } = useSettings();
   const { speakBalance, isSpeaking } = useSpeak();
   const { showToast } = useToast();
+  const isDemoMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1';
 
   // Local profile & editing states
   const [profile, setProfile] = useState<ShopProfile | null>(null);
@@ -942,36 +943,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
         </div>
       </div>
 
-      {/* 8. Pitch Demo Mode (?demo=1) */}
-      <div className="bg-white dark:bg-slate-900 border border-teal-500/40 rounded-3xl p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <Sparkles className="w-5 h-5 text-amber-500" />
+      {/* 8. Pitch Demo Mode (Only visible in hidden ?demo=1 mode) */}
+      {isDemoMode && (
+        <div className="bg-white dark:bg-slate-900 border border-teal-500/40 rounded-3xl p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <span className="text-sm font-black text-slate-900 dark:text-white block">
+                  Pitch Demo Mode (?demo=1)
+                </span>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  12 Grahak • 62 Entries • 14 Din Ka Hisaab
+                </span>
+              </div>
             </div>
-            <div>
-              <span className="text-sm font-black text-slate-900 dark:text-white block">
-                Pitch Demo Mode (?demo=1)
-              </span>
-              <span className="text-[11px] font-semibold text-slate-400">
-                12 Grahak • 62 Entries • 14 Din Ka Hisaab
-              </span>
-            </div>
+            <span className="px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-[10px] font-black border border-teal-500/30">
+              PITCH READY
+            </span>
           </div>
-          <span className="px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-[10px] font-black border border-teal-500/30">
-            PITCH READY
-          </span>
-        </div>
 
-        <button
-          type="button"
-          onClick={handleLoadPitchDemo}
-          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white font-black text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md min-h-[52px]"
-        >
-          <Sparkles className="w-4 h-4 text-amber-300" />
-          <span>Seed Pitch Demo Dataset (12 Grahak, 62 Entries)</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={handleLoadPitchDemo}
+            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white font-black text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md min-h-[52px]"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Seed Pitch Demo Dataset (12 Grahak, 62 Entries)</span>
+          </button>
+        </div>
+      )}
 
       {/* 9. Data Security & PIN Lock (Web Crypto AES-256 GCM) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-3">
@@ -1109,15 +1112,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
             <span>{t('clearAllData')}</span>
           </button>
 
-          {/* Restore sample demo data */}
-          <button
-            type="button"
-            onClick={handleRestoreDemoData}
-            className="w-full flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all min-h-[50px] active:scale-95"
-          >
-            <RefreshCw className="w-4 h-4 text-amber-500" />
-            <span>{t('resetDemo')}</span>
-          </button>
+          {/* Restore sample demo data (hidden behind ?demo=1) */}
+          {isDemoMode && (
+            <button
+              type="button"
+              onClick={handleRestoreDemoData}
+              className="w-full flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all min-h-[50px] active:scale-95"
+            >
+              <RefreshCw className="w-4 h-4 text-amber-500" />
+              <span>{t('resetDemo')}</span>
+            </button>
+          )}
         </div>
       </div>
 

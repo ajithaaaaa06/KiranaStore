@@ -17,7 +17,7 @@ import { Search, ChevronRight, User, Users, Clock } from 'lucide-react';
 import { Customer } from '../services/types';
 import { ledgerService } from '../services/ledgerService';
 import { formatRelativeDate } from '../lib/format';
-import { Chip, Amount, EmptyState, Skeleton } from '../components/ui';
+import { Chip, Amount, EmptyState, Skeleton, Button } from '../components/ui';
 import { useI18n } from '../i18n/I18nContext';
 
 export const CustomersScreen: React.FC = () => {
@@ -157,11 +157,20 @@ export const CustomersScreen: React.FC = () => {
           // EMPTY STATE
           <EmptyState
             icon={<User className="w-8 h-8" />}
-            title="Koi Grahak Nahi Mila"
+            title={customers.length === 0 ? "Abhi koi customer nahi" : "Koi Grahak Nahi Mila"}
             description={
-              searchQuery
+              customers.length === 0
+                ? "Abhi koi customer nahi. Pehla udhaar bolkar jodein"
+                : searchQuery
                 ? `"${searchQuery}" ke hisaab se koi grahak darj nahi hai. Bolkar entry karein.`
                 : 'Is filter me abhi koi grahak nahi hai.'
+            }
+            action={
+              customers.length === 0 ? (
+                <Button variant="primary" size="lg" onClick={() => navigate('/')}>
+                  🎤 Pehla Udhaar Bolkar Jodein
+                </Button>
+              ) : undefined
             }
           />
         ) : (

@@ -26,19 +26,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenLanguagePicker }) => {
   const { soundEnabled, toggleSound, playPaymentChime } = useSoundbox();
   const { showToast } = useToast();
 
-  // Detect Demo Mode (?demo=1 in URL or stored in localStorage)
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
+  // Detect Demo Mode (strictly hidden behind ?demo=1 in URL)
+  const [isDemoMode] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('demo') === '1') {
-      localStorage.setItem('vk_demo_mode', 'true');
-      return true;
-    }
-    if (urlParams.get('demo') === '0') {
-      localStorage.removeItem('vk_demo_mode');
-      return false;
-    }
-    return localStorage.getItem('vk_demo_mode') === 'true';
+    return urlParams.get('demo') === '1';
   });
 
   const [isResettingDemo, setIsResettingDemo] = useState(false);

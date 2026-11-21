@@ -232,19 +232,15 @@ export class RealLedgerService implements ILedgerService {
       cryptoService.setActiveKey(freshKey);
     }
 
-    // 2. Check if database is empty; if so, populate initial or pitch demo data
+    // 2. Check if database is empty; if so, populate pitch demo data ONLY if explicitly in ?demo=1 mode
     const custCount = await db.count('customers');
     if (custCount === 0) {
-      const isDemo = typeof window !== 'undefined' && (
-        new URLSearchParams(window.location.search).get('demo') === '1' ||
-        localStorage.getItem('vk_demo_mode') === 'true'
-      );
+      const isDemo = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1';
 
       if (isDemo) {
         await seedPitchDemoDataToDB();
-      } else {
-        await this.seedInitialData();
       }
+      // On first run and in production, customer list must be empty. No pre-seeded demo data!
     }
 
     this.isInitialized = true;
@@ -497,9 +493,19 @@ export class RealLedgerService implements ILedgerService {
   public async findOrCreateCustomer(name: string, phone?: string): Promise<Customer> {
     await this.init();
     const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Customer name cannot be empty');
+    }
     const all = await this.getCustomers();
+    // 1. Direct exact or case-insensitive match
     const existing = all.find((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing;
+
+    // 2. High-confidence auto_select match (exact transliteration or identical phonetic name)
+    const matchResult = findMatchingCustomers(trimmed, all);
+    if (matchResult.action === 'auto_select' && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
+      return matchResult.selectedCustomer;
+    }
 
     const newCust: Customer = {
       id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -1085,8 +1091,13 @@ export class InMemoryLedgerService implements ILedgerService {
 
   public async init(): Promise<void> {
     if (this.isInitialized) return;
-    this.customers = JSON.parse(JSON.stringify(INITIAL_CUSTOMERS));
-    this.entries = JSON.parse(JSON.stringify(INITIAL_ENTRIES));
+    const isDemo = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1';
+    if (isDemo) {
+      await this.seedPitchDemoData();
+    } else {
+      this.customers = [];
+      this.entries = [];
+    }
     this.isInitialized = true;
   }
 
@@ -1303,9 +1314,19 @@ export class InMemoryLedgerService implements ILedgerService {
   public async findOrCreateCustomer(name: string, phone?: string): Promise<Customer> {
     await this.init();
     const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Customer name cannot be empty');
+    }
     const all = await this.getCustomers();
+    // 1. Direct exact or case-insensitive match
     const existing = all.find((c) => c.name.trim().toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing;
+
+    // 2. High-confidence auto_select match (exact transliteration or identical phonetic name)
+    const matchResult = findMatchingCustomers(trimmed, all);
+    if (matchResult.action === 'auto_select' && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
+      return matchResult.selectedCustomer;
+    }
 
     const newCustomer: Customer = {
       id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
