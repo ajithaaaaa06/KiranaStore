@@ -479,7 +479,7 @@ export const ShopkeeperSignupModal: React.FC<ShopkeeperSignupModalProps> = ({ is
               {/* 5 Indic Language Chips */}
               <div className="w-full space-y-2">
                 <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Select Language / भाषा चुनें
+                  {t('chooseLanguage')}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {indicChips.map((chip) => {

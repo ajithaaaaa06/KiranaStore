@@ -40,7 +40,7 @@ import { useSettings } from '../hooks/useSettings';
 export const CustomerDetailScreen: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { language } = useI18n();
+  const { language, t } = useI18n();
   const { settings } = useSettings();
   const { speakBalance, speakConfirmation } = useSpeak();
   const { showToast } = useToast();
@@ -81,7 +81,7 @@ export const CustomerDetailScreen: React.FC = () => {
     if (!customer || !paymentAmount) return;
     const val = parseFloat(paymentAmount);
     if (isNaN(val) || val <= 0) {
-      showToast('Rakam (Amount) sahi darj karein', { type: 'warning' });
+      showToast(t('enterValidAmount'), { type: 'warning' });
       return;
     }
 
@@ -99,7 +99,7 @@ export const CustomerDetailScreen: React.FC = () => {
     );
 
     speakConfirmation(customer.name, val, paymentType, language);
-    showToast(`${customer.name}: ₹${val} ${paymentType === 'payment' ? 'jama' : 'udhaar'} darj!`, {
+    showToast(`${customer.name}: ₹${val} ${paymentType === 'payment' ? t('payment') : t('credit')} - ${t('entrySavedSuccess')}`, {
       type: 'success',
     });
 
@@ -111,9 +111,9 @@ export const CustomerDetailScreen: React.FC = () => {
 
   // Handle Delete Entry
   const handleDeleteEntry = async (entryId: string) => {
-    if (confirm('Kya aap is entry ko hatana chahte hain?')) {
+    if (confirm(t('deleteEntryConfirm'))) {
       await ledgerService.deleteEntry(entryId);
-      showToast('Entry hata di gayi', { type: 'info' });
+      showToast(t('entryDeletedToast'), { type: 'info' });
       await loadCustomerData();
     }
   };
@@ -153,11 +153,11 @@ export const CustomerDetailScreen: React.FC = () => {
       <div className="pb-32 pt-6 px-3.5 max-w-md mx-auto w-full">
         <EmptyState
           icon={<Wallet className="w-8 h-8" />}
-          title="Grahak Nahi Mila"
-          description="Yeh grahak khate mein uplabdh nahi hai."
+          title={t('customerNotFoundTitle')}
+          description={t('customerNotFoundDesc')}
           action={
             <Button variant="primary" size="lg" onClick={() => navigate('/customers')}>
-              Grahak Soochi Dekhein
+              {t('viewCustomersList')}
             </Button>
           }
         />
@@ -191,7 +191,7 @@ export const CustomerDetailScreen: React.FC = () => {
             {customer.lastRemindedAt && (
               <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
                 <MessageCircle className="w-3 h-3" />
-                <span>Aakhri reminder: {formatFullRelativeDate(customer.lastRemindedAt, { lang: language })}</span>
+                <span>{t('lastReminder')}: {formatFullRelativeDate(customer.lastRemindedAt, { lang: language })}</span>
               </p>
             )}
           </div>
@@ -204,7 +204,7 @@ export const CustomerDetailScreen: React.FC = () => {
           title="Speak balance aloud"
         >
           <Mic className="w-4 h-4 text-amber-500" />
-          <span>Sunien</span>
+          <span>{t('listenBalance')}</span>
         </button>
       </div>
 
@@ -221,7 +221,7 @@ export const CustomerDetailScreen: React.FC = () => {
             hasPending ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
           }`}
         >
-          {hasPending ? 'Kul Baaki (Outstanding Udhaar)' : 'Hisaab Chukta (All Settled)'}
+          {hasPending ? t('outstandingUdhaar') : t('allSettled')}
         </span>
 
         {/* Giant Balance Amount Component */}
@@ -239,18 +239,18 @@ export const CustomerDetailScreen: React.FC = () => {
             hasPending ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-300'
           }`}
         >
-          {hasPending ? 'Grahak se lena hai' : 'Koi baaki nahi hai'}
+          {hasPending ? t('amountToReceive') : t('zeroBalance')}
         </p>
 
         {/* Breakdown of Credit vs Payment */}
         <div className="flex items-center justify-center gap-4 text-xs font-bold text-slate-600 dark:text-slate-300 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">Kul Udhaar:</span>
+            <span className="text-slate-400">{t('totalCreditLabel')}</span>
             <Amount value={customer.totalCredit} type="credit" size="sm" />
           </div>
           <span>•</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">Kul Jama:</span>
+            <span className="text-slate-400">{t('totalPaymentLabel')}</span>
             <Amount value={customer.totalPayment} type="payment" size="sm" />
           </div>
         </div>
@@ -258,7 +258,7 @@ export const CustomerDetailScreen: React.FC = () => {
         {customer.lastRemindedAt && (
           <div className="mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             <MessageCircle className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Aakhri reminder:</span>
+            <span>{t('lastReminder')}:</span>
             <span className="text-emerald-600 dark:text-emerald-400 font-bold">
               {formatFullRelativeDate(customer.lastRemindedAt, { lang: language })}
             </span>
@@ -279,7 +279,7 @@ export const CustomerDetailScreen: React.FC = () => {
           }`}
         >
           <Send className="w-5 h-5 mb-1" />
-          <span>WhatsApp</span>
+          <span>{t('whatsappReminder')}</span>
         </button>
 
         {/* Print / Copy Receipt */}
@@ -288,7 +288,7 @@ export const CustomerDetailScreen: React.FC = () => {
           className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 font-black text-xs text-slate-700 dark:text-slate-200 transition-all min-h-[56px] shadow-sm active:scale-95"
         >
           <Printer className="w-5 h-5 mb-1 text-blue-500" />
-          <span>Print Slip</span>
+          <span>{t('printReceipt')}</span>
         </button>
 
         {/* Add Payment Button (Pre-filled for this customer) */}
@@ -300,7 +300,7 @@ export const CustomerDetailScreen: React.FC = () => {
           className="flex flex-col items-center justify-center p-3 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white border border-teal-600 font-black text-xs transition-all min-h-[56px] shadow-md active:scale-95"
         >
           <Plus className="w-5 h-5 mb-1" />
-          <span>Add Jama</span>
+          <span>{t('addPayment')}</span>
         </button>
       </div>
 
@@ -309,16 +309,16 @@ export const CustomerDetailScreen: React.FC = () => {
         <div className="flex items-center justify-between px-1">
           <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <Clock className="w-4 h-4 text-teal-500" />
-            Hisaab Timeline ({entries.length} entries)
+            {t('khataTimeline')} ({entries.length} {t('entries')})
           </span>
-          <span className="text-[11px] font-semibold text-slate-400">Latest first</span>
+          <span className="text-[11px] font-semibold text-slate-400">{t('latestFirst')}</span>
         </div>
 
         {entries.length === 0 ? (
           <EmptyState
             icon={<Calendar className="w-8 h-8" />}
-            title="Koi Hisaab Nahi Hai"
-            description="Is grahak ke liye abhi koi entry darj nahi hui hai."
+            title={t('noEntriesYet')}
+            description={t('noEntriesCustomerDesc')}
             action={
               <div className="flex items-center justify-center gap-3 w-full max-w-xs mx-auto">
                 <Button
@@ -330,7 +330,7 @@ export const CustomerDetailScreen: React.FC = () => {
                   }}
                   className="flex-1 min-h-[48px]"
                 >
-                  + Add udhaar
+                  {t('addUdhaar')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -341,7 +341,7 @@ export const CustomerDetailScreen: React.FC = () => {
                   }}
                   className="flex-1 min-h-[48px]"
                 >
-                  + Add payment
+                  {t('addPayment')}
                 </Button>
               </div>
             }
@@ -388,7 +388,7 @@ export const CustomerDetailScreen: React.FC = () => {
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-black text-slate-900 dark:text-white">
-                                {isCredit ? 'Udhaar Diya' : 'Jama Mila'}
+                                {isCredit ? t('creditGiven') : t('paymentReceived')}
                               </span>
                               <span className="text-[11px] font-semibold text-slate-400">
                                 {formatTime(entry.date)}
@@ -397,7 +397,7 @@ export const CustomerDetailScreen: React.FC = () => {
 
                             {entry.note && (
                               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                Note: {entry.note}
+                                {t('noteOptional')}: {entry.note}
                               </p>
                             )}
                           </div>
@@ -434,7 +434,7 @@ export const CustomerDetailScreen: React.FC = () => {
       <BottomSheet
         isOpen={isPaymentSheetOpen}
         onClose={() => setIsPaymentSheetOpen(false)}
-        title={`${customer.name} - Entry Jodein`}
+        title={`${customer.name} - ${t('addEntry')}`}
       >
         <div className="space-y-4 pt-1">
           {/* Credit vs Payment Toggle */}
@@ -449,7 +449,7 @@ export const CustomerDetailScreen: React.FC = () => {
               }`}
             >
               <ArrowUpRight className="w-4 h-4" />
-              <span>Udhaar Diya</span>
+              <span>{t('creditGiven')}</span>
             </button>
 
             <button
@@ -462,14 +462,14 @@ export const CustomerDetailScreen: React.FC = () => {
               }`}
             >
               <ArrowDownLeft className="w-4 h-4" />
-              <span>Jama Mila</span>
+              <span>{t('paymentReceived')}</span>
             </button>
           </div>
 
           {/* Amount Input */}
           <div>
             <label className="text-xs font-black uppercase tracking-wider text-slate-400 mb-1 block">
-              Rakam (Amount ₹)
+              {t('amountInRupees')}
             </label>
             <input
               type="number"
@@ -484,13 +484,13 @@ export const CustomerDetailScreen: React.FC = () => {
           {/* Note Input */}
           <div>
             <label className="text-xs font-black uppercase tracking-wider text-slate-400 mb-1 block">
-              Note (Optional)
+              {t('noteOptional')}
             </label>
             <input
               type="text"
               value={paymentNote}
               onChange={(e) => setPaymentNote(e.target.value)}
-              placeholder="e.g. Doodh aur bread"
+              placeholder={t('notePlaceholder')}
               className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl p-3 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
             />
           </div>
@@ -504,7 +504,7 @@ export const CustomerDetailScreen: React.FC = () => {
             disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
             className="min-h-[56px] text-base"
           >
-            ✓ Entry Save Karein
+            ✓ {t('saveEntry')}
           </Button>
         </div>
       </BottomSheet>

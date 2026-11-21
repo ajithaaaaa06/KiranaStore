@@ -22,7 +22,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { soundbox } from '../lib/soundbox';
 import { useI18n } from '../i18n/I18nContext';
-import { getSpeechTemplates } from '../i18n/speech';
 import { LanguageCode } from '../services/types';
 
 export interface UseSpeakOptions {
@@ -300,8 +299,9 @@ export function useSpeak() {
   );
 
   const speakBalance = useCallback(
-    (customerName: string, balance: number, lang?: LanguageCode) => {
+    async (customerName: string, balance: number, lang?: LanguageCode) => {
       const activeLang = lang || language;
+      const { getSpeechTemplates } = await import('../i18n/speech');
       const templates = getSpeechTemplates(activeLang);
       const text = templates.balanceAnswer(customerName, balance);
       speak(text, { soundboxMode: true, chimeType: 'payment' });
@@ -310,13 +310,14 @@ export function useSpeak() {
   );
 
   const speakConfirmation = useCallback(
-    (
+    async (
       customerName: string,
       amount: number | string,
       type: 'credit' | 'payment',
       lang?: LanguageCode
     ) => {
       const activeLang = lang || language;
+      const { getSpeechTemplates } = await import('../i18n/speech');
       const templates = getSpeechTemplates(activeLang);
       const text =
         type === 'credit'

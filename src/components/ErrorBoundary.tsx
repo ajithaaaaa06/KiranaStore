@@ -5,6 +5,8 @@
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { dictionaries } from '../i18n/translations';
+import { LanguageCode } from '../services/types';
 
 interface Props {
   children: ReactNode;
@@ -49,6 +51,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const savedLang = (localStorage.getItem('voice_khata_lang') as LanguageCode) || 'en';
+      const dict = dictionaries[savedLang] || dictionaries.en;
+
       return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl text-center space-y-4 animate-fade-in">
@@ -60,10 +65,10 @@ export class ErrorBoundary extends Component<Props, State> {
             {/* Title & Message */}
             <div>
               <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                Kuch Gadbad Hui
+                {dict.errorBoundaryTitle}
               </h1>
               <p className="text-xs font-bold text-slate-400 mt-0.5">
-                Something went wrong, but don't worry!
+                {dict.errorBoundarySub}
               </p>
             </div>
 
@@ -71,7 +76,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="p-3.5 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-500/30 text-left flex items-start gap-2.5">
               <ShieldCheck className="w-5 h-5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
               <p className="text-xs font-semibold text-teal-900 dark:text-teal-200 leading-relaxed">
-                Aapka saara khata data aapke phone me bilkul surakshit (IndexedDB) hai. Kuch khoya nahi hai.
+                {dict.errorBoundarySafety}
               </p>
             </div>
 
@@ -82,7 +87,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 className="w-full py-4 px-4 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md min-h-[56px]"
               >
                 <RefreshCw className="w-4 h-4" />
-                <span>Dobara Koshish Karein (Retry)</span>
+                <span>{dict.retryButton}</span>
               </button>
 
               <button
@@ -90,7 +95,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 className="w-full py-3.5 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition-colors min-h-[48px]"
               >
                 <Home className="w-4 h-4" />
-                <span>Home Par Jayein</span>
+                <span>{dict.goHomeButton}</span>
               </button>
             </div>
 
@@ -102,7 +107,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   onClick={() => this.setState({ showDetails: !this.state.showDetails })}
                   className="w-full flex items-center justify-between text-[11px] font-bold text-slate-400 hover:text-slate-600 py-1"
                 >
-                  <span>Technical Error Details</span>
+                  <span>{dict.technicalDetails}</span>
                   {this.state.showDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
                 {this.state.showDetails && (

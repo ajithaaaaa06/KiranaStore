@@ -151,7 +151,7 @@ export const PaymentRequestSheet: React.FC<PaymentRequestSheetProps> = ({
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.error('Failed to share/download QR:', err);
-        showToast('QR save nahi ho paya', { type: 'warning' });
+        showToast(t('qrSaveError'), { type: 'warning' });
       }
     } finally {
       setIsSharing(false);
@@ -255,7 +255,7 @@ export const PaymentRequestSheet: React.FC<PaymentRequestSheetProps> = ({
               <div className="w-full mt-3.5 p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-between text-xs">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Grahak (Customer)
+                    {t('customerName')}
                   </span>
                   <span className="text-sm font-black text-white" data-testid="customer-name-label">
                     {customer.name}
@@ -264,13 +264,13 @@ export const PaymentRequestSheet: React.FC<PaymentRequestSheetProps> = ({
 
                 <div className="text-right">
                   <div className="flex items-center gap-1.5 justify-end">
-                    <span className="text-[10px] text-amber-400 font-bold uppercase">Udhaar Added:</span>
+                    <span className="text-[10px] text-amber-400 font-bold uppercase">{t('udhaarAdded')}:</span>
                     <span className="text-sm font-black text-amber-400" data-testid="added-amount-label">
                       ₹{amount.toLocaleString('en-IN')}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-300 font-semibold mt-0.5">
-                    Kul Baaki: <span className="font-bold text-white">₹{runningBalance.toLocaleString('en-IN')}</span>
+                    {t('totalBalance')}: <span className="font-bold text-white">₹{runningBalance.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
               </div>

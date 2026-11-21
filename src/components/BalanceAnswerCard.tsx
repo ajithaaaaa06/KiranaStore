@@ -110,7 +110,7 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
             </div>
             <div>
               <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block">
-                Khata Balance Inquiry
+                {t('balanceInquiryTitle')}
               </span>
               <h2
                 id="balance-answer-title"
@@ -164,7 +164,7 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
                 isOwed ? 'text-amber-300' : 'text-emerald-300'
               }`}
             >
-              {isOwed ? 'Kul Baaki (Pending Udhaar)' : isClear ? 'Hisaab Chukta' : 'Advance Jama'}
+              {isOwed ? t('outstandingUdhaar') : isClear ? t('allSettled') : t('advancePayment')}
             </span>
 
             {/* Replay Spoken Voice Button */}
@@ -177,17 +177,17 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
                   ? 'bg-amber-500 text-amber-950 animate-pulse'
                   : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
               }`}
-              title="Aawaz dobara sunien (Replay voice)"
+              title="Replay voice"
             >
               {isSpeaking ? (
                 <>
                   <Volume2 className="w-3.5 h-3.5 animate-bounce" />
-                  <span>Bol rahe hain...</span>
+                  <span>{t('speaking')}</span>
                 </>
               ) : (
                 <>
                   <RotateCcw className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Sunien (Replay)</span>
+                  <span>{t('listenReplay')}</span>
                 </>
               )}
             </button>
@@ -207,19 +207,19 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
                 isOwed ? 'text-amber-300/90' : 'text-emerald-300/90'
               }`}
             >
-              {isOwed ? 'baaki (owes)' : isClear ? 'sab clear hai ✓' : 'advance jama'}
+              {isOwed ? t('baakiOwed') : isClear ? t('allSettled') : t('advancePayment')}
             </div>
           </div>
 
           {/* Breakdown Pills: Total Udhaar vs Total Jama */}
           <div className="flex items-center justify-center gap-4 text-xs font-bold text-slate-300 mt-3 pt-3 border-t border-slate-700/60">
             <div className="flex items-center gap-1">
-              <span className="text-slate-400">Kul Udhaar:</span>
+              <span className="text-slate-400">{t('totalCreditLabel')}:</span>
               <span className="text-amber-400">{formatRupees(customer.totalCredit)}</span>
             </div>
             <span>•</span>
             <div className="flex items-center gap-1">
-              <span className="text-slate-400">Kul Jama:</span>
+              <span className="text-slate-400">{t('totalPaymentLabel')}:</span>
               <span className="text-emerald-400">{formatRupees(customer.totalPayment)}</span>
             </div>
           </div>
@@ -230,14 +230,14 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-slate-400" />
-              Pichle 3 Hisaab (Last 3 Transactions)
+              {t('recentEntriesReceipt')}
             </span>
-            <span className="text-[11px] text-slate-500">Latest first</span>
+            <span className="text-[11px] text-slate-500">{t('latestFirst')}</span>
           </div>
 
           {recentTransactions.length === 0 ? (
             <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-800 text-center text-xs text-slate-400 font-medium">
-              Koi pichla hisaab nahi mila
+              {t('noEntriesYet')}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -264,7 +264,7 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
                       </div>
                       <div>
                         <span className="font-bold text-slate-200 block">
-                          {isCredit ? 'Udhaar Diya' : 'Jama Mila'}
+                          {isCredit ? t('creditGiven') : t('paymentReceived')}
                         </span>
                         <span className="text-[10px] text-slate-400">
                           {formatFullRelativeDate(tx.date, { lang: language })}
@@ -301,7 +301,7 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
             aria-label="Send WhatsApp payment reminder"
           >
             <Send className="w-5 h-5" />
-            <span>Send reminder</span>
+            <span>{t('sendReminder')}</span>
           </button>
 
           {/* View Khata Button (Customer Profile) */}
@@ -312,7 +312,7 @@ export const BalanceAnswerCard: React.FC<BalanceAnswerCardProps> = ({
             aria-label="View customer ledger account"
           >
             <User className="w-5 h-5 text-blue-400" />
-            <span>View khata</span>
+            <span>{t('viewKhata')}</span>
           </button>
         </div>
       </div>

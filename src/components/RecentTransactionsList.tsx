@@ -15,6 +15,7 @@ import { formatRelativeDate } from '../lib/format';
 import { formatTime } from '../lib/formatters';
 import { Amount } from './ui/Amount';
 import { Card } from './ui/Card';
+import { useI18n } from '../i18n/I18nContext';
 
 interface RecentTransactionsListProps {
   entries: LedgerEntry[];
@@ -28,6 +29,7 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
   onSelectCustomer,
 }) => {
   const navigate = useNavigate();
+  const { language, t } = useI18n();
 
   // Show only last 5 entries as specified
   const last5Entries = entries.slice(0, 5);
@@ -45,16 +47,16 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
       <div className="flex items-center justify-between mb-2.5 px-1">
         <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-primary dark:text-primary-400" />
-          Recent Entries (Pichhla Hisaab)
+          {t('recentEntries')}
         </h3>
         <span className="text-[11px] font-bold text-slate-400">
-          Last 5 entries
+          {t('last5Entries')}
         </span>
       </div>
 
       {last5Entries.length === 0 ? (
         <Card padding="md" className="text-center text-slate-400 text-xs font-medium py-6">
-          Abhi koi hisaab darj nahi hai. Mic daba kar bolein!
+          {t('noEntriesYetPrompt')}
         </Card>
       ) : (
         <div className="space-y-2">
@@ -90,11 +92,11 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
                     </h4>
                     <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5">
                       <span className={isCredit ? 'text-credit dark:text-credit-dark' : 'text-payment dark:text-payment-dark'}>
-                        {isCredit ? 'Udhaar' : 'Jama'}
+                        {isCredit ? t('creditBadge') : t('paymentBadge')}
                       </span>
                       <span> • </span>
-                      <span>{formatRelativeDate(entry.date, { lang: 'hinglish' })}</span>
-                      <span> {formatTime(entry.date)}</span>
+                      <span>{formatRelativeDate(entry.date, { lang: language })}</span>
+                      <span> {formatTime(entry.date, language)}</span>
                     </p>
                   </div>
                 </div>

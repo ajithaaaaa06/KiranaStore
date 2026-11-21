@@ -44,7 +44,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
   onCustomerCreated,
   onSelectExisting,
 }) => {
-  const { language, currentLangConfig } = useI18n();
+  const { language, currentLangConfig, t } = useI18n();
   const { showToast } = useToast();
 
   const [name, setName] = useState('');
@@ -111,7 +111,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
     setErrorMessage(null);
 
     if (!trimmedName) {
-      setErrorMessage('Kripya grahak ka naam darj karein');
+      setErrorMessage(t('enterCustomerNameError'));
       return;
     }
 
@@ -119,7 +119,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
     if (phone.trim()) {
       cleanPhoneDigits = phone.replace(/\D/g, '').slice(-10);
       if (cleanPhoneDigits.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhoneDigits)) {
-        setErrorMessage('10-digit sahi Indian mobile number darj karein (6-9 se shuru)');
+        setErrorMessage(t('invalidPhoneError'));
         return;
       }
     }
@@ -160,7 +160,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
       onCustomerCreated(newCustomer);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Grahak save karne me samasya aayi');
+      setErrorMessage(err.message || t('errorSavingCustomer'));
     } finally {
       setIsSaving(false);
     }
@@ -198,10 +198,10 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
             </div>
             <div>
               <h3 id="add-customer-sheet-title" className="text-lg font-black tracking-tight">
-                Naya Grahak Jodein
+                {t('addNewCustomerTitle')}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                Bina hisaab ke naya customer add karein
+                {t('addNewCustomerSubtitle')}
               </p>
             </div>
           </div>
@@ -230,10 +230,10 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
               <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <h4 className="text-sm font-black text-amber-900 dark:text-amber-200">
-                  {similarCustomer.name} already exists
+                  {similarCustomer.name} {t('customerAlreadyExists')}
                 </h4>
                 <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mt-0.5">
-                  Is naam se milta-julta customer pehle se darj hai. Kya aap inhi ka khata use karna chahte hain?
+                  {t('similarCustomerWarning')}
                 </p>
               </div>
             </div>
@@ -263,7 +263,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
                 onClick={handleChooseExisting}
                 className="py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs transition-all active:scale-95 shadow-sm min-h-[44px]"
               >
-                ✓ Use this one
+                ✓ {t('useThisOne')}
               </button>
 
               <button
@@ -271,7 +271,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
                 onClick={() => handleSave(true)}
                 className="py-2.5 px-3 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-black text-xs transition-all active:scale-95 min-h-[44px]"
               >
-                Create anyway
+                {t('createAnyway')}
               </button>
             </div>
           </div>
@@ -281,7 +281,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
         <div className="space-y-1.5 mb-3.5">
           <label className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <User className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span>Grahak Ka Naam (Name) *</span>
+            <span>{t('customerName')} *</span>
           </label>
 
           <div className="relative flex items-center">
@@ -320,7 +320,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
 
           {(isListening || isListeningName) && (
             <p className="text-[11px] font-bold text-rose-500 animate-pulse pl-1">
-              🎙️ Naam boliye... ({currentLangConfig.nativeLabel})
+              🎙️ {t('speakNamePrompt')}
             </p>
           )}
         </div>
@@ -330,7 +330,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
           <div className="flex items-center justify-between">
             <label className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              <span>Mobile Number (Optional)</span>
+              <span>{t('phone')} ({t('noteOptional')})</span>
             </label>
             <span className="text-[10px] font-bold text-slate-400">10 digits</span>
           </div>
@@ -349,7 +349,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
             />
           </div>
           <p className="text-[11px] text-slate-400 font-semibold pl-1">
-            WhatsApp reminder ke liye upyogi (baad me bhi jod sakte hain).
+            {t('phoneHelpText')}
           </p>
         </div>
 
@@ -360,7 +360,7 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
             onClick={onClose}
             className="py-3 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm transition-all min-h-[48px] active:scale-95"
           >
-            Cancel
+            {t('cancel')}
           </button>
 
           <button
@@ -374,11 +374,11 @@ export const AddCustomerSheet: React.FC<AddCustomerSheetProps> = ({
             }`}
           >
             {isSaving ? (
-              <span>Saving...</span>
+              <span>{t('saving')}</span>
             ) : (
               <>
                 <Check className="w-5 h-5" />
-                <span>Save Customer</span>
+                <span>{t('saveCustomer')}</span>
               </>
             )}
           </button>

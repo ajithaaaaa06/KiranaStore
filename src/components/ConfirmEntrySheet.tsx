@@ -222,14 +222,14 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
 
       // 1. Voice Confirmation ("haan" / "yes" / "save" / "theek hai")
       if (res.intent === 'confirm') {
-        setVoiceFeedbackText('Saving by voice command... (आवाज़ से सेव हो रहा है)');
+        setVoiceFeedbackText(t('savingByVoice'));
         handleSave();
         return;
       }
 
       // 2. Voice Rejection ("nahi" / "cancel" / "ruko")
       if (res.intent === 'cancel') {
-        setVoiceFeedbackText('Cancelled by voice (रद्द किया गया)');
+        setVoiceFeedbackText(t('cancelledByVoice'));
         soundbox.playWarningTone();
         setTimeout(() => onCancel(), 400);
         return;
@@ -242,7 +242,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
           prev.map((e, idx) => (idx === 0 ? { ...e, amount: newAmt, isLowConfidence: false } : e))
         );
         triggerFieldAnimation('amount');
-        setVoiceFeedbackText(`Amount updated to ₹${newAmt} (रकम बदली: ₹${newAmt})`);
+        setVoiceFeedbackText(`${t('voiceAmountUpdated')}: ₹${newAmt}`);
         soundbox.playCreditChime();
         return;
       }
@@ -264,7 +264,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
             )
           );
           triggerFieldAnimation('amount');
-          setVoiceFeedbackText(`Updated: ₹${primary.amount} ${primary.type === 'credit' ? 'Udhaar' : 'Jama'}`);
+          setVoiceFeedbackText(`Updated: ₹${primary.amount} ${primary.type === 'credit' ? t('credit') : t('payment')}`);
           soundbox.playCreditChime();
           return;
         }
@@ -400,7 +400,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
     const finalCustName = selectedCustomer ? selectedCustomer.name : customerName.trim();
 
     if (!finalCustName) {
-      showToast('Grahak ka naam zaroori hai', { type: 'warning' });
+      showToast(t('enterCustomerNameError'), { type: 'warning' });
       return;
     }
 
@@ -478,7 +478,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
               id="confirm-sheet-title"
               className="text-xs font-black uppercase tracking-wider text-slate-400"
             >
-              Hisaab Confirm Karein (Review Entry)
+              {t('reviewEntryTitle')}
             </h2>
           </div>
 
@@ -497,12 +497,11 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
               <span className="font-bold text-sm">
-                Aisa entry abhi hi hua tha. Phir se save karein?
+                {t('duplicateEntryWarningTitle')}
               </span>
             </div>
             <p className="text-xs text-amber-200/90 pl-7 leading-relaxed">
-              {customerName} ke liye ₹{primaryEntry?.amount} ka{' '}
-              {isCredit ? 'udhaar' : 'jama'} pichle 10 minute mein darj ho chuka hai.
+              {t('duplicateEntryWarningDesc')}
             </p>
             <div className="flex items-center gap-2 pt-1 pl-7 flex-wrap">
               <button
@@ -511,14 +510,14 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
                 onClick={() => setDuplicateAcknowledged(true)}
                 className="px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm shadow-md transition-transform active:scale-95 min-h-touch flex items-center justify-center"
               >
-                Save anyway (Haan, save karein)
+                {t('saveAnyway')}
               </button>
               <button
                 type="button"
                 onClick={onCancel}
                 className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm border border-slate-600 active:scale-95 min-h-touch flex items-center justify-center"
               >
-                Cancel (Radd karein)
+                {t('cancel')}
               </button>
             </div>
           </div>
@@ -531,7 +530,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
               <div className="flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-blue-400" />
                 <span className="text-xs font-black uppercase tracking-wider text-blue-300">
-                  Kaunsa grahak? ({candidateCustomers.length} mile)
+                  {t('whichCustomerTitle')} ({candidateCustomers.length})
                 </span>
               </div>
               <span className="text-[10px] text-slate-400">1-Tap Select</span>
@@ -573,7 +572,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
                     </div>
                     <div className="text-right">
                       <div className="text-xs font-bold text-amber-400">
-                        ₹{c.balance.toLocaleString('en-IN')} baaki
+                        ₹{c.balance.toLocaleString('en-IN')} {t('baakiOwed')}
                       </div>
                       {isSelected && (
                         <span className="text-[10px] font-bold text-blue-400 flex items-center gap-0.5 justify-end mt-0.5">
@@ -595,7 +594,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
                 className="flex items-center gap-2 p-2.5 rounded-xl border border-dashed border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500 text-xs font-bold min-h-[48px] justify-center"
               >
                 <UserPlus className="w-4 h-4 text-teal-400" />
-                <span>+ Naya Grahak banayein ("{customerName}")</span>
+                <span>+ {t('addNewCustomerTitle')} ("{customerName}")</span>
               </button>
             </div>
           </div>
@@ -614,7 +613,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
           <div className="flex items-center justify-between mb-1">
             <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-teal-400" />
-              <span>Grahak (Customer Name)</span>
+              <span>{t('customerName')}</span>
             </label>
 
             {isLowConfidenceCustomer && (
@@ -693,7 +692,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
                             : 'bg-slate-700 text-slate-400'
                         }`}
                       >
-                        <ArrowUpRight className="w-3.5 h-3.5" /> Udhaar
+                        <ArrowUpRight className="w-3.5 h-3.5" /> {t('credit')}
                       </button>
                       <button
                         type="button"
@@ -704,7 +703,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
                             : 'bg-slate-700 text-slate-400'
                         }`}
                       >
-                        <ArrowDownLeft className="w-3.5 h-3.5" /> Jama
+                        <ArrowDownLeft className="w-3.5 h-3.5" /> {t('payment')}
                       </button>
 
                       {/* Remove Row Button */}
@@ -763,13 +762,13 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
             {/* Live Net Calculation Banner */}
             <div className="p-3 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-between text-xs">
               <span className="text-slate-400 font-bold">
-                Udhaar: <span className="text-amber-400">₹{totalCredit}</span> | Jama:{' '}
+                {t('credit')}: <span className="text-amber-400">₹{totalCredit}</span> | {t('payment')}:{' '}
                 <span className="text-emerald-400">₹{totalPayment}</span>
               </span>
               <span className="font-black text-sm">
                 Net:{' '}
                 <span className={netImpact >= 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                  {netImpact >= 0 ? `₹${netImpact} Udhaar` : `₹${Math.abs(netImpact)} Jama`}
+                  {netImpact >= 0 ? `₹${netImpact} ${t('credit')}` : `₹${Math.abs(netImpact)} ${t('payment')}`}
                 </span>
               </span>
             </div>
@@ -904,12 +903,12 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
               {isListeningCorrection ? (
                 <>
                   <MicOff className="w-5 h-5" />
-                  <span>Sun rahe hain... (Tap to stop)</span>
+                  <span>{t('micCaptionListening')}</span>
                 </>
               ) : (
                 <>
                   <Mic className="w-5 h-5" />
-                  <span>Correct by voice (आवाज़ से सुधारें)</span>
+                  <span>{t('correctByVoice')}</span>
                 </>
               )}
             </button>
@@ -981,7 +980,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
             aria-label="Reject and cancel entry"
           >
             <X className="w-6 h-6 text-slate-400" />
-            <span>✗ Reject</span>
+            <span>✗ {t('cancel')}</span>
           </button>
 
           {/* ✓ Save Button (Huge Green Gradient) */}
@@ -1002,7 +1001,7 @@ export const ConfirmEntrySheet: React.FC<ConfirmEntrySheetProps> = ({
             aria-label="Confirm and save entry"
           >
             <Check className="w-6 h-6" />
-            <span>✓ Save</span>
+            <span>✓ {t('save')}</span>
           </button>
         </div>
       </div>

@@ -15,7 +15,7 @@ interface LanguageSelectorModalProps {
 export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
   onClose,
 }) => {
-  const { language, setLanguage, supportedLanguages } = useI18n();
+  const { language, setLanguage, supportedLanguages, t } = useI18n();
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-sm animate-fade-in">
@@ -27,7 +27,7 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorModalProps> = ({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
             <Globe className="w-5 h-5 text-blue-400" />
-            <h3 className="text-lg font-bold text-white">Choose Language (भाषा चुनें)</h3>
+            <h3 className="text-lg font-bold text-white">{t('chooseLanguage')}</h3>
           </div>
           <button
             onClick={onClose}

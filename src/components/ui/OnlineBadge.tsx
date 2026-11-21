@@ -11,6 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { Wifi, WifiOff, AlertCircle, X, Keyboard, CheckCircle2 } from 'lucide-react';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { useI18n } from '../../i18n/I18nContext';
 
 export interface OnlineBadgeProps {
   isOnlineOverride?: boolean;
@@ -25,6 +26,7 @@ export const OnlineBadge: React.FC<OnlineBadgeProps> = ({
 }) => {
   const { isOnline: detectedOnline, wasOffline } = useOnlineStatus();
   const online = isOnlineOverride !== undefined ? isOnlineOverride : detectedOnline;
+  const { t } = useI18n();
 
   const [showOfflineNote, setShowOfflineNote] = useState(false);
 
@@ -60,7 +62,7 @@ export const OnlineBadge: React.FC<OnlineBadgeProps> = ({
           title="Internet connected. Speech recognition & WhatsApp ready."
         >
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-          <span>Online</span>
+          <span>{t('online')}</span>
         </div>
       ) : (
         <button
@@ -69,7 +71,7 @@ export const OnlineBadge: React.FC<OnlineBadgeProps> = ({
           title="Offline mode: Tap to view details"
         >
           <WifiOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span>Offline – sab chalega</span>
+          <span>{t('offlineSabChalega')}</span>
         </button>
       )}
 
@@ -85,10 +87,10 @@ export const OnlineBadge: React.FC<OnlineBadgeProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    Offline – Sab Chalega
+                    {t('offlineSabChalega')}
                   </h3>
                   <span className="text-[11px] font-bold text-slate-500">
-                    Network disconnected
+                    {t('networkDisconnected')}
                   </span>
                 </div>
               </div>
@@ -106,14 +108,14 @@ export const OnlineBadge: React.FC<OnlineBadgeProps> = ({
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Aapka pura khata safe hai aur 100% phone me hi save hota rahega.
+                  {t('offlineSafeMessage')}
                 </p>
               </div>
 
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Chrome browser me aawaz pehchanna (voice mic) internet mang sakta hai. Agar mic na chale, toh bina pareshani <strong className="text-teal-600 dark:text-teal-400">"Type instead"</strong> se darj karein.
+                  {t('offlineMicWarning')}
                 </p>
               </div>
             </div>
@@ -125,14 +127,14 @@ export const OnlineBadge: React.FC<OnlineBadgeProps> = ({
                 className="w-full py-3.5 px-4 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md min-h-[52px]"
               >
                 <Keyboard className="w-4 h-4" />
-                <span>"Type Instead" Khata Kholein</span>
+                <span>{t('openTypeInstead')}</span>
               </button>
 
               <button
                 onClick={handleDismissNote}
                 className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
               >
-                Theek Hai, Samajh Gaya
+                {t('gotIt')}
               </button>
             </div>
           </div>

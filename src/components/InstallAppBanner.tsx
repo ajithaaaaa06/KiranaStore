@@ -6,9 +6,11 @@
 import React from 'react';
 import { Download, X, Smartphone, Sparkles } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { useI18n } from '../i18n/I18nContext';
 
 export const InstallAppBanner: React.FC = () => {
   const { isInstallable, triggerInstall, dismissBanner } = usePWAInstall();
+  const { t } = useI18n();
 
   if (!isInstallable) {
     return null;
@@ -28,11 +30,11 @@ export const InstallAppBanner: React.FC = () => {
           </div>
           <div className="min-w-0">
             <h3 className="text-xs font-black tracking-tight flex items-center gap-1.5 truncate">
-              <span>App Install Karein (Home Screen)</span>
+              <span>{t('installAppTitle')}</span>
               <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
             </h3>
             <p className="text-[11px] font-semibold text-teal-100/90 truncate">
-              Fast & 100% offline chalega • Ek tap me khata
+              {t('installAppSub')}
             </p>
           </div>
         </div>
@@ -45,7 +47,7 @@ export const InstallAppBanner: React.FC = () => {
             aria-label="Install Voice Khata app"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Install</span>
+            <span>{t('install')}</span>
           </button>
           <button
             onClick={dismissBanner}

@@ -43,7 +43,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
   onClose,
   onCustomerUpdated,
 }) => {
-  const { language: currentAppLang } = useI18n();
+  const { language: currentAppLang, t } = useI18n();
   const { showToast } = useToast();
 
   const [selectedLang, setSelectedLang] = useState<LanguageCode>(currentAppLang);
@@ -97,7 +97,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
     const cleanedDigits = cleanPhone(phoneNumber);
 
     if (!cleanedDigits || cleanedDigits.length < 10) {
-      showToast('Kripya 10-digit phone number darj karein', { type: 'warning' });
+      showToast(t('invalidPhoneError'), { type: 'warning' });
       return;
     }
 
@@ -125,7 +125,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
     if (navigator.clipboard) {
       navigator.clipboard.writeText(messageText);
       setCopied(true);
-      showToast('Message text copy ho gaya!', { type: 'success' });
+      showToast(t('messageCopiedToast'), { type: 'success' });
       setTimeout(() => setCopied(false), 2000);
     }
   };
@@ -152,7 +152,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
                 id="reminder-sheet-title"
                 className="text-xs font-black uppercase tracking-wider text-slate-400 block"
               >
-                WhatsApp Reminder
+                {t('whatsappReminder')}
               </span>
               <h3 className="text-base font-black text-white">{customer.name}</h3>
             </div>
@@ -170,11 +170,11 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
         {/* Customer Balance Banner */}
         <div className="p-3 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-between mb-3">
           <div>
-            <span className="text-xs font-bold text-slate-400 block">Total Udhaar Baaki:</span>
+            <span className="text-xs font-bold text-slate-400 block">{t('outstandingUdhaar')}:</span>
             {customer.lastRemindedAt && (
               <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1 mt-0.5">
                 <Clock className="w-3 h-3" />
-                Aakhri reminder: {formatFullRelativeDate(customer.lastRemindedAt, { lang: selectedLang })}
+                {t('lastReminder')}: {formatFullRelativeDate(customer.lastRemindedAt, { lang: selectedLang })}
               </span>
             )}
           </div>
@@ -187,7 +187,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
         <div className="mb-3.5">
           <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
             <Phone className="w-3.5 h-3.5 text-teal-400" />
-            WhatsApp Phone Number
+            {t('whatsappPhoneNumber')}
           </label>
           <div className="relative">
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
@@ -203,7 +203,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
           </div>
           {!customer.phone && (
             <p className="text-[11px] text-teal-400 font-bold mt-1">
-              ✓ Ek baar darj karein, yeh grahak profile me save ho jayega.
+              ✓ {t('savePhoneToProfileHint')}
             </p>
           )}
         </div>
@@ -212,11 +212,11 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
         <div className="mb-2">
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block mb-1.5 flex items-center gap-1">
             <Globe className="w-3.5 h-3.5 text-blue-400" />
-            Bhasha Chunein (Select Template Language)
+            {t('selectTemplateLanguage')}
           </span>
           <div className="grid grid-cols-3 gap-1.5">
             {[
-              { code: 'hi', label: 'हिन्दी' },
+              { code: 'hi', label: selectedLang === 'hi' ? 'हिन्दी' : 'Hindi' },
               { code: 'hinglish', label: 'Hinglish' },
               { code: 'en', label: 'English' },
               { code: 'kn', label: 'ಕನ್ನಡ' },
@@ -243,7 +243,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
         <div className="mb-4">
           <div className="flex items-center justify-between mb-1">
             <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              Message Preview (Aap badal sakte hain)
+              {t('messagePreview')}
             </label>
             <button
               type="button"
@@ -253,12 +253,12 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
               {copied ? (
                 <>
                   <CheckCircle className="w-3 h-3 text-emerald-400" />
-                  <span className="text-emerald-400">Copied</span>
+                  <span className="text-emerald-400">{t('copied')}</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3 h-3" />
-                  <span>Copy</span>
+                  <span>{t('copy')}</span>
                 </>
               )}
             </button>
@@ -278,7 +278,7 @@ export const ReminderSheet: React.FC<ReminderSheetProps> = ({
           className="w-full flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-base transition-all min-h-[56px] shadow-lg shadow-emerald-700/30 active:scale-95 mt-auto"
         >
           <Send className="w-5 h-5" />
-          <span>WhatsApp Par Bhejein</span>
+          <span>{t('sendWhatsAppPayment')}</span>
         </button>
       </div>
     </div>

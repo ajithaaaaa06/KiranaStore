@@ -77,14 +77,14 @@ export const CustomersScreen: React.FC = () => {
 
   return (
     <div className="pb-32 pt-2 px-3.5 max-w-md mx-auto w-full">
-      {/* Title Bar (Notice: FAB-style "+ Add" is NOT needed as customers are created by voice) */}
+      {/* Title Bar */}
       <div className="mb-3 px-1">
         <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
           <Users className="w-5 h-5 text-teal-600 dark:text-teal-400" />
           <span>{t('customersTitle')}</span>
         </h2>
         <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-          {customers.length} grahak registered • Sorted by highest balance
+          {t('customersCountSorted', { count: customers.length })}
         </p>
       </div>
 
@@ -104,7 +104,7 @@ export const CustomersScreen: React.FC = () => {
             onClick={() => setSearchQuery('')}
             className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
           >
-            Clear
+            {t('clear')}
           </button>
         )}
       </div>
@@ -161,13 +161,13 @@ export const CustomersScreen: React.FC = () => {
           // EMPTY STATE
           <EmptyState
             icon={<User className="w-8 h-8" />}
-            title={customers.length === 0 ? "Abhi koi customer nahi" : "Koi Grahak Nahi Mila"}
+            title={customers.length === 0 ? t('noCustomersYet') : t('noCustomerFound')}
             description={
               customers.length === 0
-                ? "Abhi koi customer nahi. Pehla udhaar bolkar jodein"
+                ? t('noCustomersDescription')
                 : searchQuery
-                ? `"${searchQuery}" ke hisaab se koi grahak darj nahi hai. Bolkar entry karein.`
-                : 'Is filter me abhi koi grahak nahi hai.'
+                ? t('noMatchingCustomerQuery', { query: searchQuery })
+                : t('noCustomersInFilter')
             }
             action={
               customers.length === 0 ? (
@@ -179,7 +179,7 @@ export const CustomersScreen: React.FC = () => {
                     className="min-h-[52px]"
                   >
                     <UserPlus className="w-5 h-5 mr-1" />
-                    + Add customer
+                    {t('addCustomerButton')}
                   </Button>
                   <Button
                     variant="secondary"
@@ -187,7 +187,7 @@ export const CustomersScreen: React.FC = () => {
                     onClick={() => navigate('/')}
                     className="min-h-[48px]"
                   >
-                    🎤 Pehla Udhaar Bolkar Jodein
+                    {t('firstUdhaarVoice')}
                   </Button>
                 </div>
               ) : undefined
@@ -227,7 +227,7 @@ export const CustomersScreen: React.FC = () => {
                       </h4>
                       {isNewCustomer && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30 shrink-0">
-                          New
+                          {t('badgeNew')}
                         </span>
                       )}
                     </div>
@@ -236,7 +236,7 @@ export const CustomersScreen: React.FC = () => {
                       {c.phone && <span>•</span>}
                       <span className="flex items-center gap-0.5">
                         <Clock className="w-3 h-3 text-slate-400" />
-                        <span>Last: {lastActivity}</span>
+                        <span>{t('lastActivity', { date: lastActivity })}</span>
                       </span>
                     </div>
                   </div>
@@ -257,7 +257,7 @@ export const CustomersScreen: React.FC = () => {
                         : 'text-emerald-600 dark:text-emerald-400'
                         }`}
                     >
-                      {hasPending ? 'BAAKI (OWES)' : 'CHUKTA (CLEAR)'}
+                      {hasPending ? t('badgeOwes') : t('badgeSettled')}
                     </span>
                   </div>
                   <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" />
@@ -277,7 +277,7 @@ export const CustomersScreen: React.FC = () => {
           aria-label="Add customer"
         >
           <UserPlus className="w-5 h-5" />
-          <span>+ Add customer</span>
+          <span>{t('addCustomerButton')}</span>
         </button>
       </div>
 

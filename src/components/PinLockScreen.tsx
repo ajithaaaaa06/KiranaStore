@@ -13,6 +13,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Delete, RotateCcw, AlertTriangle, ShieldAlert, KeyRound, Check } from 'lucide-react';
 import { ledgerService } from '../services/ledgerService';
+import { useI18n } from '../i18n/I18nContext';
 
 interface PinLockScreenProps {
   onUnlock: () => void;
@@ -20,6 +21,7 @@ interface PinLockScreenProps {
 }
 
 export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock, onResetApp }) => {
+  const { t } = useI18n();
   const [pin, setPin] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState<boolean>(false);
@@ -61,11 +63,11 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock, onResetA
       } else {
         // If length reached 6 and failed, or 4 failed
         if (candidatePin.length >= 4) {
-          triggerError('Galat PIN! Kripya dubara koshish karein.');
+          triggerError(t('pinIncorrect'));
         }
       }
     } catch {
-      triggerError('Galat PIN! Kripya dubara koshish karein.');
+      triggerError(t('pinIncorrect'));
     } finally {
       setIsVerifying(false);
     }
@@ -102,7 +104,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock, onResetA
           Voice Khata Locked 🔒
         </h1>
         <p className="text-xs font-semibold text-slate-400 mt-1">
-          Aapka khata AES-256 encrypted hai. Kripya apna PIN enter karein:
+          {t('pinLockedNotice')}
         </p>
       </div>
 
@@ -220,8 +222,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock, onResetA
                 Privacy by Design 🔒
               </h2>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                Aapka saara kirana hisaab on-device Web Crypto (AES-256 GCM) se lock hai.
-                Hamare ya kisi ke paas bhi aapka master key nahi hai.
+                {t('pinCryptoLockDesc')}
               </p>
             </div>
 
@@ -253,7 +254,7 @@ export const PinLockScreen: React.FC<PinLockScreenProps> = ({ onUnlock, onResetA
                     onClick={handleWipeAndReset}
                     className="py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-black text-white transition-all min-h-[48px]"
                   >
-                    Haan, Reset Karein
+                    {t('yesReset')}
                   </button>
                 </div>
               </div>

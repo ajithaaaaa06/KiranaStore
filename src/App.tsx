@@ -25,6 +25,16 @@ import { PwaUpdateToast } from './components/PwaUpdateToast';
 import { ToastProvider } from './components/ui/Toast';
 import { ledgerService } from './services/ledgerService';
 import { requestStoragePersistence } from './services/db';
+import { useI18n } from './i18n/I18nContext';
+
+const SuspenseLoader: React.FC<{ messageKey: string }> = ({ messageKey }) => {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-bold">
+      {t(messageKey as any)}
+    </div>
+  );
+};
 
 // Lazy-load modals and non-home routes to ensure <150KB initial home JS bundle
 const LanguageSelectorModal = lazy(() => import('./components/LanguageSelectorModal').then(m => ({ default: m.LanguageSelectorModal })));
@@ -211,13 +221,7 @@ export const App: React.FC = () => {
             <Route
               path="/customers"
               element={
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-bold">
-                      Loading Grahak Khata...
-                    </div>
-                  }
-                >
+                <Suspense fallback={<SuspenseLoader messageKey="loadingCustomers" />}>
                   <CustomersScreen />
                 </Suspense>
               }
@@ -226,13 +230,7 @@ export const App: React.FC = () => {
             <Route
               path="/customers/:id"
               element={
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-bold">
-                      Loading Customer Ledger...
-                    </div>
-                  }
-                >
+                <Suspense fallback={<SuspenseLoader messageKey="loadingCustomers" />}>
                   <CustomerDetailScreen />
                 </Suspense>
               }
@@ -241,13 +239,7 @@ export const App: React.FC = () => {
             <Route
               path="/summary"
               element={
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-bold">
-                      Loading Hisaab Summary...
-                    </div>
-                  }
-                >
+                <Suspense fallback={<SuspenseLoader messageKey="loadingSummary" />}>
                   <SummaryScreen />
                 </Suspense>
               }
@@ -256,13 +248,7 @@ export const App: React.FC = () => {
             <Route
               path="/settings"
               element={
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-bold">
-                      Loading Settings...
-                    </div>
-                  }
-                >
+                <Suspense fallback={<SuspenseLoader messageKey="loading" />}>
                   <SettingsScreen onOpenLanguagePicker={() => {}} />
                 </Suspense>
               }

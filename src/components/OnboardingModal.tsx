@@ -25,6 +25,7 @@ import {
   Sparkles,
   Volume2,
 } from 'lucide-react';
+import { useI18n } from '../i18n/I18nContext';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -32,6 +33,7 @@ interface OnboardingModalProps {
 }
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) => {
+  const { t, language } = useI18n();
   const [currentStep, setCurrentStep] = useState(0); // 0, 1, 2
   const [isRequestingMic, setIsRequestingMic] = useState(false);
   const [micGranted, setMicGranted] = useState(false);
@@ -90,10 +92,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
   const steps = [
     // Step 1: Speak (Boliye)
     {
-      title: '1. Bas Mic Dabakar Boliye',
-      badge: 'Step 1 of 3: Boliye (Speak)',
-      description:
-        'Dukan par haath busy hain? Koi baat nahi. Ek tap me mic dabaiye aur Hindi, Hinglish, Kannada, Tamil ya Telugu me boliye.',
+      title: t('onboardingStep1Title'),
+      badge: 'Step 1 of 3: Speak',
+      description: t('onboardingStep1Desc'),
       renderVisual: () => (
         <div className="relative flex flex-col items-center justify-center py-6">
           {/* Animated Glow Rings */}
@@ -105,7 +106,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
           {/* Spoken example chip */}
           <div className="mt-5 px-3.5 py-2 rounded-2xl bg-teal-50 dark:bg-teal-950/60 border border-teal-300 dark:border-teal-700/60 text-teal-900 dark:text-teal-200 text-xs font-black shadow-sm flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-            <span>"Ramesh ko 500 udhaar diya"</span>
+            <span>{t('hintPhrase1')}</span>
           </div>
         </div>
       ),
@@ -113,33 +114,32 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
 
     // Step 2: Confirm (Dekhein)
     {
-      title: '2. Screen Par Preview Dekhein',
-      badge: 'Step 2 of 3: Dekhein (Confirm)',
-      description:
-        'Aawaz sunte hi app entry ka preview dikhayega. Sab sahi lage toh ek tap me save karein. Galat ho toh bolkar turant sudharein.',
+      title: t('onboardingStep2Title'),
+      badge: 'Step 2 of 3: Confirm',
+      description: t('onboardingStep2Desc'),
       renderVisual: () => (
         <div className="py-4">
           <div className="bg-slate-50 dark:bg-slate-800/80 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-slate-500 uppercase">Customer Preview</span>
+              <span className="text-xs font-black text-slate-500 uppercase">{t('reviewEntryTitle')}</span>
               <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-black border border-amber-500/30">
-                UDHAAR (CREDIT)
+                {t('credit').toUpperCase()}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-black text-slate-900 dark:text-white">Ramesh Kumar</p>
-                <p className="text-[11px] font-bold text-slate-400">Aaj, 21 Nov</p>
+                <p className="text-[11px] font-bold text-slate-400">{t('today')}</p>
               </div>
               <p className="text-2xl font-black text-amber-600 dark:text-amber-400">₹500</p>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-1">
               <div className="py-2 px-3 rounded-xl bg-emerald-600 text-white font-black text-xs text-center flex items-center justify-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>✓ Save</span>
+                <span>✓ {t('save')}</span>
               </div>
               <div className="py-2 px-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs text-center">
-                ✗ Cancel
+                ✗ {t('cancel')}
               </div>
             </div>
           </div>
@@ -149,26 +149,25 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
 
     // Step 3: Done (Hisaab Done & Mic Access)
     {
-      title: '3. Khata Update & Reminder Bhejein',
-      badge: 'Step 3 of 3: Hisaab Done',
-      description:
-        'Customer ka khata turant update ho jayega! Ek tap me WhatsApp reminder bhejein ya 58mm thermal slip print karein.',
+      title: t('onboardingStep3Title'),
+      badge: 'Step 3 of 3: Done',
+      description: t('onboardingStep3Desc'),
       renderVisual: () => (
         <div className="py-4 space-y-2.5">
           <div className="flex items-center justify-center gap-3">
             <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center gap-2 text-xs font-black">
               <Send className="w-4 h-4 text-emerald-500" />
-              <span>WhatsApp Reminder</span>
+              <span>{t('whatsappReminder')}</span>
             </div>
             <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 flex items-center gap-2 text-xs font-black">
               <Printer className="w-4 h-4 text-blue-500" />
-              <span>58mm Thermal Print</span>
+              <span>{t('printReceipt')}</span>
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-500/30 text-center">
             <p className="text-xs font-bold text-teal-800 dark:text-teal-300 flex items-center justify-center gap-1.5">
               <Volume2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-              <span>Soundbox audio confirm karta hai!</span>
+              <span>Soundbox audio confirmation!</span>
             </p>
           </div>
         </div>
@@ -251,7 +250,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
                 onClick={() => setCurrentStep((prev) => prev + 1)}
                 className="flex-1 py-3.5 px-4 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md min-h-[52px]"
               >
-                <span>Aage Badhein</span>
+                <span>{t('nextStep')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -264,8 +263,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
               <Mic className="w-5 h-5 text-amber-300 animate-pulse" />
               <span>
                 {isRequestingMic
-                  ? 'Permission Maang Rahe Hain...'
-                  : 'Mic Permission Dein & Shuru Karein'}
+                  ? t('loading')
+                  : t('grantMicAndStart')}
               </span>
             </button>
           )}

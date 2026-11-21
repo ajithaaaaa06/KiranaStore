@@ -1,13 +1,54 @@
 /**
  * Indian Rupee (INR) and Relative Date Formatting Utility
  * Strictly follows Indian digit grouping (e.g. ₹1,24,500)
- * and shopkeeper friendly relative dates ("Aaj", "Kal", "Parso" + English).
+ * and localized relative dates ("Aaj", "Kal", "Parso" + English, Kannada, Tamil, Telugu).
  */
+
+export type RelativeDateLang = 'hinglish' | 'hi' | 'en' | 'kn' | 'ta' | 'te';
+export type NumeralScript = 'latin' | 'native';
+
+export const NATIVE_DIGIT_MAP: Record<string, string[]> = {
+  hi: ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'],
+  kn: ['೦', '೧', '೨', '೩', '೪', '೫', '೬', '೭', '೮', '೯'],
+  ta: ['௦', '௧', '௨', '௩', '௪', '௫', '௬', '௭', '௮', '௯'],
+  te: ['౦', '౧', '౨', '౩', '౪', '౫', '౬', '౭', '౮', '౯'],
+};
+
+/**
+ * Returns BCP-47 locale tag for a supported language code
+ */
+export function getLocaleForLang(lang: string = 'en'): string {
+  switch (lang) {
+    case 'hi':
+      return 'hi-IN';
+    case 'kn':
+      return 'kn-IN';
+    case 'ta':
+      return 'ta-IN';
+    case 'te':
+      return 'te-IN';
+    case 'en':
+    case 'hinglish':
+    default:
+      return 'en-IN';
+  }
+}
+
+/**
+ * Converts Western Latin digits 0-9 into regional Indic script digits
+ */
+export function convertToNativeDigits(text: string, lang: string): string {
+  const digits = NATIVE_DIGIT_MAP[lang];
+  if (!digits) return text;
+  return text.replace(/[0-9]/g, (d) => digits[parseInt(d, 10)]);
+}
 
 export interface FormatRupeesOptions {
   showSign?: boolean;
   showSymbol?: boolean;
   decimals?: number;
+  lang?: string;
+  numeralScript?: NumeralScript;
 }
 
 /**
@@ -18,20 +59,31 @@ export function formatRupees(
   amount: number,
   options: FormatRupeesOptions = {}
 ): string {
-  const { showSign = false, showSymbol = true, decimals = 0 } = options;
+  const {
+    showSign = false,
+    showSymbol = true,
+    decimals = 0,
+    lang = 'en',
+    numeralScript = 'latin',
+  } = options;
 
   if (isNaN(amount) || amount === null || amount === undefined) {
-    return showSymbol ? '₹0' : '0';
+    const zeroStr = showSymbol ? '₹0' : '0';
+    return numeralScript === 'native' ? convertToNativeDigits(zeroStr, lang) : zeroStr;
   }
 
   const isNegative = amount < 0;
   const absAmount = Math.abs(amount);
 
   // Format with en-IN locale for Indian number grouping
-  const formattedNumber = new Intl.NumberFormat('en-IN', {
+  let formattedNumber = new Intl.NumberFormat('en-IN', {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
   }).format(absAmount);
+
+  if (numeralScript === 'native') {
+    formattedNumber = convertToNativeDigits(formattedNumber, lang);
+  }
 
   let prefix = '';
   if (showSign) {
@@ -46,17 +98,19 @@ export function formatRupees(
   return `${prefix}${symbol}${formattedNumber}`;
 }
 
-export type RelativeDateLang = 'hinglish' | 'hi' | 'en' | 'kn' | 'ta' | 'te';
-
 /**
  * Formats an ISO string or Date object into shopkeeper-friendly relative dates:
- * "Aaj" (Today), "Kal" (Yesterday), "Parso" (Day before yesterday) or calendar date.
+ * "Today" / "Yesterday" / "Day before yesterday" in each supported language.
  */
 export function formatRelativeDate(
   dateInput: string | Date | number,
-  options: { lang?: RelativeDateLang; includeTime?: boolean } = {}
+  options: {
+    lang?: RelativeDateLang;
+    includeTime?: boolean;
+    numeralScript?: NumeralScript;
+  } = {}
 ): string {
-  const { lang = 'hinglish', includeTime = false } = options;
+  const { lang = 'hinglish', includeTime = false, numeralScript = 'latin' } = options;
 
   if (!dateInput) return '';
 
@@ -145,21 +199,29 @@ export function formatRelativeDate(
         break;
     }
   } else {
-    // Standard Date
+    // Standard Date formatted using target locale
     const isSameYear = target.getFullYear() === now.getFullYear();
-    dayLabel = target.toLocaleDateString('en-IN', {
+    const locale = getLocaleForLang(lang);
+    dayLabel = target.toLocaleDateString(locale, {
       day: 'numeric',
       month: 'short',
       year: isSameYear ? undefined : 'numeric',
     });
+    if (numeralScript === 'native') {
+      dayLabel = convertToNativeDigits(dayLabel, lang);
+    }
   }
 
   if (includeTime) {
-    const timeStr = target.toLocaleTimeString('en-IN', {
+    const locale = getLocaleForLang(lang);
+    let timeStr = target.toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
     });
+    if (numeralScript === 'native') {
+      timeStr = convertToNativeDigits(timeStr, lang);
+    }
     return `${dayLabel}, ${timeStr}`;
   }
 
@@ -167,25 +229,28 @@ export function formatRelativeDate(
 }
 
 /**
- * Formats a date combining relative day ("Aaj", "Kal", "Parso") with day and month:
- * e.g. "Kal, 20 Nov" or "Aaj, 21 Nov"
+ * Formats a date combining relative day ("Today", "Yesterday", "Day before") with day and month:
+ * e.g. "Yesterday, 20 Nov" or "Today, 21 Nov"
  */
 export function formatFullRelativeDate(
   dateInput: string | Date | number,
-  options: { lang?: RelativeDateLang } = {}
+  options: { lang?: RelativeDateLang; numeralScript?: NumeralScript } = {}
 ): string {
-  const { lang = 'hinglish' } = options;
+  const { lang = 'hinglish', numeralScript = 'latin' } = options;
   if (!dateInput) return '';
 
   const target = new Date(dateInput);
   if (isNaN(target.getTime())) return String(dateInput);
 
-  const rel = formatRelativeDate(target, { lang });
-  const dayMonth = target.toLocaleDateString('en-IN', {
+  const rel = formatRelativeDate(target, { lang, numeralScript });
+  const locale = getLocaleForLang(lang);
+  let dayMonth = target.toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
   });
+  if (numeralScript === 'native') {
+    dayMonth = convertToNativeDigits(dayMonth, lang);
+  }
 
   return `${rel}, ${dayMonth}`;
 }
-

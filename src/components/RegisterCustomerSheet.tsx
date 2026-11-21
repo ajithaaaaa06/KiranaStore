@@ -156,7 +156,7 @@ export const RegisterCustomerSheet: React.FC<RegisterCustomerSheetProps> = ({
         ) {
           setReadBackState('idle');
           setPhone('');
-          setErrorMessage('Number clear kar diya. Dobara boliye ya keypad use karein.');
+          setErrorMessage(t('numberClearedSpeakAgain'));
           return;
         }
       }
@@ -326,7 +326,7 @@ export const RegisterCustomerSheet: React.FC<RegisterCustomerSheetProps> = ({
                   Pending Transaction
                 </span>
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                  {pendingEntry.type === 'credit' ? 'Udhaar' : 'Jama'} ₹{pendingEntry.amount} will be saved after registration
+                  {t('pendingEntrySavedAfterReg', { type: pendingEntry.type === 'credit' ? t('credit') : t('payment'), amount: pendingEntry.amount ?? 0 })}
                 </span>
               </div>
             </div>
@@ -335,7 +335,7 @@ export const RegisterCustomerSheet: React.FC<RegisterCustomerSheetProps> = ({
           {/* 1. Customer Name Field */}
           <div>
             <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">
-              Customer Name / ग्राहक का नाम
+              {t('customerName')}
             </label>
             <div className="relative flex items-center">
               <div className="absolute left-3.5 text-slate-400">

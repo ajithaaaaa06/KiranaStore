@@ -36,22 +36,22 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
   onOpenManualEntry,
   isOffline = false,
 }) => {
-  const { language, setLanguage } = useI18n();
+  const { language, setLanguage, t } = useI18n();
 
-  // 5 Speech Languages chips: हिं / EN / ಕನ್ನಡ / தமிழ் / తెలుగు
+  // 5 Speech Languages chips: हिं (in Hindi) / HI (in other langs) / EN / ಕನ್ನಡ / தமிழ் / తెలుగు
   const languageChips: { code: LanguageCode; label: string; sub: string }[] = [
-    { code: 'hi', label: 'हिं', sub: 'Hindi' },
+    { code: 'hi', label: language === 'hi' ? 'हिं' : 'HI', sub: 'Hindi' },
     { code: 'en', label: 'EN', sub: 'English' },
     { code: 'kn', label: 'ಕನ್ನಡ', sub: 'Kannada' },
     { code: 'ta', label: 'தமிழ்', sub: 'Tamil' },
     { code: 'te', label: 'తెలుగు', sub: 'Telugu' },
   ];
 
-  // Specific demo hint phrases requested by user for pitch demo
+  // Localized hint phrases for speech testing
   const hintPhrases = [
-    'Ramesh ko 500 udhaar diya',
-    'Ramesh ka 340 udhaar, kal 200 diya tha',
-    'Ramesh ka total?',
+    t('hintPhrase1'),
+    t('hintPhrase2'),
+    t('hintPhrase3'),
   ];
 
   const isListening = speechState === 'listening';
@@ -64,10 +64,10 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
       <div className="w-full mb-3">
         <div className="flex items-center justify-between mb-1.5 px-1">
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Bhasha / Language
+            {t('language')}
           </span>
           <span className="text-[10px] font-semibold text-slate-400">
-            Speech Language
+            {t('speechLanguage')}
           </span>
         </div>
 
@@ -105,7 +105,7 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
             <div className="flex-1 text-xs">
               <p className="font-bold text-sm">{errorMessage || 'Audio capture issue'}</p>
               <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">
-                Mic kaam nahi kar raha to likh kar hisaab darj karein.
+                {t('micErrorFallbackNote')}
               </p>
             </div>
           </div>
@@ -114,7 +114,7 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
             className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-sm min-h-touch transition-transform active:scale-95 shadow-md"
           >
             <Keyboard className="w-5 h-5" />
-            <span>Likh kar darj karein (Type instead)</span>
+            <span>{t('typeInstead')}</span>
           </button>
         </div>
       )}
@@ -156,7 +156,7 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
             <>
               <Loader2 className="w-12 h-12 text-white animate-spin" />
               <span className="text-[10px] font-black uppercase tracking-wider mt-1 text-white/90">
-                SAMJH RAHE HAIN...
+                {t('micPromptProcessing')}
               </span>
             </>
           ) : isListening ? (
@@ -176,7 +176,7 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
                 ))}
               </div>
               <span className="text-[10px] font-black uppercase tracking-wider text-white">
-                SUN RAHE HAIN
+                {t('micPromptListening')}
               </span>
             </>
           ) : isError ? (
@@ -184,7 +184,7 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
             <>
               <RefreshCw className="w-10 h-10 text-white" />
               <span className="text-[10px] font-black uppercase tracking-wider mt-1 text-white">
-                RETRY KAREIN
+                {t('micPromptRetry')}
               </span>
             </>
           ) : (
@@ -192,7 +192,7 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
             <>
               <Mic className="w-12 h-12 text-white" />
               <span className="text-[11px] font-black uppercase tracking-wider mt-1 text-white/95">
-                BOLIYE
+                {t('micPromptSpeak')}
               </span>
             </>
           )}
@@ -202,10 +202,10 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
       {/* Mic Action Caption */}
       <p className="text-xs font-bold text-slate-500 dark:text-slate-400 text-center mb-3">
         {isListening
-          ? 'Shanti se bolein • Auto-stops on silence'
+          ? t('micCaptionListening')
           : isProcessing
-          ? 'Hisaab calculate ho raha hai...'
-          : 'Ek tap karein aur bolein'}
+          ? t('micCaptionProcessing')
+          : t('micCaptionIdle')}
       </p>
 
       {/* 4. "Type instead" Button below the mic (Highlighted when offline) */}
@@ -221,11 +221,11 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
       >
         <div className="flex items-center gap-2">
           <Keyboard className={`w-5 h-5 ${isOffline ? 'text-teal-600 dark:text-teal-400' : 'text-primary dark:text-teal-400'}`} />
-          <span>Type instead (Likh kar darj karein)</span>
+          <span>{t('typeInstead')}</span>
         </div>
         {isOffline && (
           <span className="px-2.5 py-1 rounded-full bg-teal-600 text-white text-[10px] font-black uppercase tracking-wider shadow-sm">
-            Offline Safe
+            {t('offlineSafe')}
           </span>
         )}
       </button>
@@ -235,9 +235,9 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
         <div className="flex items-center justify-between mb-1.5 px-1">
           <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 uppercase tracking-wider">
             <Sparkles className="w-3 h-3 text-amber-500" />
-            Quick Demo / Example Phrases
+            {t('quickDemoPhrases')}
           </span>
-          <span className="text-[10px] text-slate-400">Tap to test</span>
+          <span className="text-[10px] text-slate-400">{t('tapToTest')}</span>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -252,7 +252,7 @@ export const GiantMicHero: React.FC<GiantMicHeroProps> = ({
                 <span className="text-sm">&ldquo;{phrase}&rdquo;</span>
               </div>
               <span className="text-xs font-semibold text-primary dark:text-teal-400 shrink-0">
-                Bol kar dekhein →
+                {t('trySpeaking')} →
               </span>
             </button>
           ))}

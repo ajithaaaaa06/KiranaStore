@@ -161,9 +161,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
       if (ok) {
         setHasPinSet(false);
         setShowPinModal(false);
-        showToast('PIN remove ho gaya.', { type: 'info' });
+        showToast('PIN removed.', { type: 'info' });
       } else {
-        setPinError('Galat PIN! Dubara koshish karein.');
+        setPinError(t('pinIncorrect'));
       }
     }
   };
@@ -697,8 +697,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
             <Volume2 className="w-4 h-4 text-emerald-500" />
             <span>
               {isSpeaking
-                ? 'Bol rahe hain...'
-                : 'Test Voice: "Ramesh ka baaki ₹1,400"'}
+                ? t('speaking')
+                : `${t('testVoice')}: "₹1,400"`}
             </span>
           </button>
         </div>
@@ -913,7 +913,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
               {t('exportLedgerLabel')}
             </span>
             <span className="text-[11px] font-semibold text-slate-400">
-              Phone me offline backup save karein
+              {t('exportLedgerDesc')}
             </span>
           </div>
         </div>
@@ -1193,7 +1193,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
       {/* App Version Info */}
       <div className="text-center pt-2 pb-6">
         <p className="text-xs font-black text-slate-500">
-          Voice Khata (आवाज़ खाता) v1.0.0
+          {language === 'hi' ? 'Voice Khata (आवाज़ खाता) v1.0.0' : 'Voice Khata v1.0.0'}
         </p>
         <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
           Build Bengaluru 2.0 Hackathon • Made with ❤️ for Indian Kirana Stores
@@ -1213,7 +1213,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
                   {pinModalMode === 'set' ? 'Set Security PIN' : 'Remove PIN Protection'}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {pinModalMode === 'set' ? '4 se 6 anko ka PIN chunein' : 'Pehle apna purana PIN enter karein'}
+                  {pinModalMode === 'set' ? t('pinLengthError') : t('enterPin')}
                 </p>
               </div>
             </div>
@@ -1221,7 +1221,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = () => {
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                  {pinModalMode === 'set' ? 'Naya PIN (4-6 digits)' : 'Current PIN'}
+                  {pinModalMode === 'set' ? t('setPin') : t('enterPin')}
                 </label>
                 <input
                   type="password"

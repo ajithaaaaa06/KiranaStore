@@ -16,6 +16,7 @@ import { LanguageCode } from '../services/types';
 
 export type ThemeMode = 'light' | 'high-contrast';
 export type ASREngine = 'browser' | 'bhashini' | 'sarvam';
+export type NumeralScript = 'latin' | 'native';
 
 export interface AppSettings {
   shopName: string;
@@ -27,6 +28,7 @@ export interface AppSettings {
   asrEngine: ASREngine;
   requireCustomerPhone: boolean;
   autoOpenPaymentRequest: boolean;
+  numeralScript: NumeralScript;
 }
 
 export const SETTINGS_STORAGE_KEY = 'voice_khata_settings';
@@ -46,6 +48,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   asrEngine: 'browser',
   requireCustomerPhone: true,
   autoOpenPaymentRequest: true,
+  numeralScript: 'latin',
 };
 
 interface SettingsContextType {
@@ -87,6 +90,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       asrEngine: DEFAULT_SETTINGS.asrEngine,
       requireCustomerPhone: DEFAULT_SETTINGS.requireCustomerPhone,
       autoOpenPaymentRequest: DEFAULT_SETTINGS.autoOpenPaymentRequest,
+      numeralScript: DEFAULT_SETTINGS.numeralScript,
     };
   });
 

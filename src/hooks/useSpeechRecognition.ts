@@ -24,7 +24,6 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { parseTranscript } from '../services/parser';
 import { getAsrProvider } from '../services/asr/asrProvider';
 
 export type SpeechState = 'idle' | 'listening' | 'processing' | 'error';
@@ -301,6 +300,7 @@ export function useSpeechRecognition({
 
         for (const candidate of candidateTranscripts) {
           try {
+            const { parseTranscript } = await import('../services/parser');
             const parsed = await parseTranscript(candidate);
             const conf = parsed.confidence ?? 0.5;
             if (conf > highestConfidence) {

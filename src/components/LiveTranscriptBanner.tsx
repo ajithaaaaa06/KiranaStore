@@ -10,6 +10,7 @@ import { Sparkles, X, Volume2, AlertCircle, Keyboard } from 'lucide-react';
 import { ParsedEntry } from '../services/types';
 import { Amount } from './ui/Amount';
 import { Badge } from './ui/Badge';
+import { useI18n } from '../i18n/I18nContext';
 
 interface LiveTranscriptBannerProps {
   transcript: string;
@@ -32,6 +33,7 @@ export const LiveTranscriptBanner: React.FC<LiveTranscriptBannerProps> = ({
   onClear,
   onOpenManualEntry,
 }) => {
+  const { t } = useI18n();
   const currentText = interimTranscript || transcript;
 
   // If there's an error and no text, show error banner with immediate 1-tap manual fallback
@@ -49,7 +51,7 @@ export const LiveTranscriptBanner: React.FC<LiveTranscriptBannerProps> = ({
               className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-sm min-h-touch transition-transform active:scale-95 shadow-md"
             >
               <Keyboard className="w-5 h-5" />
-              <span>Likh kar darj karein (Type instead)</span>
+              <span>{t('typeInstead')}</span>
             </button>
           )}
         </div>
@@ -64,7 +66,7 @@ export const LiveTranscriptBanner: React.FC<LiveTranscriptBannerProps> = ({
         <div className="bg-teal-50 dark:bg-teal-950/40 border border-teal-300 dark:border-teal-700/50 rounded-2xl p-3 text-center">
           <p className="text-xs font-bold text-teal-800 dark:text-teal-300 flex items-center justify-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping" />
-            <span>Sun rahe hain... Apni bhasha me bolein</span>
+            <span>{t('listeningSpeakYourLanguage')}</span>
           </p>
         </div>
       </div>
@@ -81,7 +83,7 @@ export const LiveTranscriptBanner: React.FC<LiveTranscriptBannerProps> = ({
         <div className="flex items-center justify-between mb-1">
           <span className="text-[10px] font-black uppercase tracking-wider text-primary dark:text-primary-400 flex items-center gap-1">
             <Volume2 className="w-3.5 h-3.5" />
-            {isListening ? 'Streaming Speech...' : isProcessing ? 'Processing Speech...' : 'Heard Voice'}
+            {isListening ? t('streamingSpeech') : isProcessing ? t('processingSpeech') : t('heardVoice')}
           </span>
           <button
             onClick={onClear}

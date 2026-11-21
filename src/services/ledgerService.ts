@@ -25,10 +25,9 @@ import {
 } from './types';
 import { translations } from '../i18n/translations';
 import { cleanPhoneNumber } from '../lib/formatters';
-import { findCustomers as findMatchingCustomers, isDuplicateEntry } from './customerMatcher';
 import { getDB, EncryptedCustomerRecord, EncryptedEntryRecord, DB_NAME } from './db';
 import { cryptoService } from './crypto';
-import { generatePaymentRef } from './upiPayment';
+import { generatePaymentRef } from './paymentRef';
 import {
   encryptCustomerEntity,
   decryptCustomerEntity,
@@ -472,6 +471,7 @@ export class RealLedgerService implements ILedgerService {
     const cleanQuery = query.trim();
     if (!cleanQuery) return allCustomers;
 
+    const { findCustomers: findMatchingCustomers } = await import('./customerMatcher');
     const matchResult = findMatchingCustomers(cleanQuery, allCustomers);
     if (matchResult.candidates.length > 0) {
       return matchResult.candidates.map((c) => c.customer);
@@ -502,6 +502,7 @@ export class RealLedgerService implements ILedgerService {
     if (existing) return existing;
 
     // 2. High-confidence auto_select match (exact transliteration or identical phonetic name)
+    const { findCustomers: findMatchingCustomers } = await import('./customerMatcher');
     const matchResult = findMatchingCustomers(trimmed, all);
     if (matchResult.action === 'auto_select' && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
       return matchResult.selectedCustomer;
@@ -733,6 +734,7 @@ export class RealLedgerService implements ILedgerService {
     withinMs: number = 600000
   ): Promise<boolean> {
     const entries = await this.getEntries();
+    const { isDuplicateEntry } = await import('./customerMatcher');
     return isDuplicateEntry(
       {
         customerId: customerQuery,
@@ -933,7 +935,7 @@ export class RealLedgerService implements ILedgerService {
         else payment += e.amount;
       }
 
-      const dayLabel = i === 0 ? 'Aaj' : i === 1 ? 'Kal' : dayNames[d.getDay()];
+      const dayLabel = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : dayNames[d.getDay()];
 
       result.push({
         date: isoDate,
@@ -1127,6 +1129,7 @@ export class InMemoryLedgerService implements ILedgerService {
     const cleanQuery = query.trim();
     if (!cleanQuery) return this.getCustomers();
 
+    const { findCustomers: findMatchingCustomers } = await import('./customerMatcher');
     const matchResult = findMatchingCustomers(cleanQuery, this.customers);
     if (matchResult.candidates.length > 0) {
       return matchResult.candidates.map((c) => c.customer);
@@ -1304,6 +1307,7 @@ export class InMemoryLedgerService implements ILedgerService {
     withinMs: number = 600000
   ): Promise<boolean> {
     await this.init();
+    const { isDuplicateEntry } = await import('./customerMatcher');
     return isDuplicateEntry(
       { customerId: customerQuery, customerName: customerQuery, amount, type },
       this.entries,
@@ -1323,6 +1327,7 @@ export class InMemoryLedgerService implements ILedgerService {
     if (existing) return existing;
 
     // 2. High-confidence auto_select match (exact transliteration or identical phonetic name)
+    const { findCustomers: findMatchingCustomers } = await import('./customerMatcher');
     const matchResult = findMatchingCustomers(trimmed, all);
     if (matchResult.action === 'auto_select' && matchResult.topScore >= 0.98 && matchResult.selectedCustomer) {
       return matchResult.selectedCustomer;
@@ -1504,7 +1509,7 @@ export class InMemoryLedgerService implements ILedgerService {
         else payment += e.amount;
       }
 
-      const dayLabel = i === 0 ? 'Aaj' : i === 1 ? 'Kal' : dayNames[d.getDay()];
+      const dayLabel = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : dayNames[d.getDay()];
 
       result.push({
         date: isoDate,

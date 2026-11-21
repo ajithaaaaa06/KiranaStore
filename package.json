@@ -13,6 +13,7 @@
     "audit:pwa": "esbuild scripts/auditPwa.ts --bundle --platform=node --outfile=scripts/auditPwa.cjs && node scripts/auditPwa.cjs",
     "accuracy": "esbuild scripts/accuracy.ts --bundle --platform=node --outfile=scripts/accuracy.cjs && node scripts/accuracy.cjs",
     "benchmark": "esbuild scripts/perfBenchmark.ts --bundle --platform=node --outfile=scripts/perfBenchmark.cjs && node scripts/perfBenchmark.cjs",
+    "i18n:check": "esbuild scripts/checkI18n.ts --bundle --platform=node --outfile=scripts/checkI18n.cjs && node scripts/checkI18n.cjs",
     "test:e2e": "playwright test",
     "test": "esbuild scripts/testParser.ts --bundle --platform=node --outfile=scripts/testParser.cjs && node scripts/testParser.cjs && vitest run --coverage",
     "test:vitest": "vitest run"

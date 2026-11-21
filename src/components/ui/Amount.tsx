@@ -8,6 +8,8 @@
 import React from 'react';
 import { ArrowUpRight, ArrowDownLeft, Minus } from 'lucide-react';
 import { formatRupees } from '../../lib/format';
+import { useI18n } from '../../i18n/I18nContext';
+import { useSettings } from '../../hooks/useSettings';
 
 export type AmountType = 'credit' | 'payment' | 'neutral' | 'danger';
 export type AmountSize = 'sm' | 'md' | 'lg' | 'xl' | 'hero';
@@ -20,6 +22,7 @@ export interface AmountProps {
   showTypeLabel?: boolean;
   showSign?: boolean;
   className?: string;
+  lang?: string;
 }
 
 export const Amount: React.FC<AmountProps> = ({
@@ -30,8 +33,33 @@ export const Amount: React.FC<AmountProps> = ({
   showTypeLabel = false,
   showSign = false,
   className = '',
+  lang: langProp,
 }) => {
-  const formatted = formatRupees(value, { showSign, showSymbol: true });
+  let language = langProp || 'en';
+  let numeralScript: 'latin' | 'native' = 'latin';
+
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const i18n = useI18n();
+    if (i18n?.language && !langProp) language = i18n.language;
+  } catch {
+    // If rendered outside I18nProvider
+  }
+
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const settingsCtx = useSettings();
+    if (settingsCtx?.settings?.numeralScript) numeralScript = settingsCtx.settings.numeralScript;
+  } catch {
+    // If rendered outside SettingsProvider
+  }
+
+  const formatted = formatRupees(value, {
+    showSign,
+    showSymbol: true,
+    lang: language,
+    numeralScript,
+  });
 
   const sizeClasses = {
     sm: 'text-sm font-bold',
@@ -50,8 +78,8 @@ export const Amount: React.FC<AmountProps> = ({
   };
 
   // Color semantics:
-  // Credit/Udhaar Owed = Amber
-  // Payment Received = Green
+  // Credit = Amber
+  // Payment = Green
   const colorClasses = {
     credit: 'text-credit dark:text-credit-dark',
     payment: 'text-payment dark:text-payment-dark',
@@ -60,8 +88,8 @@ export const Amount: React.FC<AmountProps> = ({
   };
 
   const typeLabels = {
-    credit: 'Udhaar Owed',
-    payment: 'Payment Received',
+    credit: 'Credit',
+    payment: 'Payment',
     danger: 'Alert',
     neutral: '',
   };

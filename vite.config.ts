@@ -108,7 +108,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          lucide: ['lucide-react'],
         },
       },
     },
@@ -116,7 +115,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['tests/**', 'node_modules/**', 'dist/**'],
     coverage: {
       provider: 'v8',

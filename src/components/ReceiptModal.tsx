@@ -23,6 +23,7 @@ import { Customer, LedgerEntry } from '../services/types';
 import { formatRupees, formatFullRelativeDate } from '../lib/format';
 import { formatTime } from '../lib/formatters';
 import { useToast } from './ui/Toast';
+import { useI18n } from '../i18n/I18nContext';
 
 export interface ReceiptModalProps {
   customer: Customer;
@@ -40,6 +41,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
 }) => {
   const { showToast } = useToast();
+  const { t, language } = useI18n();
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -99,7 +101,7 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
           title: `${shopName} - Khata Slip (${customer.name})`,
           text: plainTextReceipt,
         });
-        showToast('Receipt share ho gayi!', { type: 'success' });
+        showToast(t('receiptSharedSuccess'), { type: 'success' });
         return;
       } catch (err: any) {
         if (err.name === 'AbortError') return; // User cancelled share dialog
@@ -110,7 +112,7 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
     if (navigator.clipboard) {
       navigator.clipboard.writeText(plainTextReceipt);
       setCopied(true);
-      showToast('Receipt text clipboard me copy ho gaya!', { type: 'success' });
+      showToast(t('receiptCopiedSuccess'), { type: 'success' });
       setTimeout(() => setCopied(false), 2500);
     }
   };
@@ -127,7 +129,7 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
           <div className="flex items-center gap-2">
             <Receipt className="w-4 h-4 text-teal-400" />
             <span className="text-xs font-black uppercase tracking-wider text-slate-400">
-              Printable Khata Receipt
+              {t('printReceipt')}
             </span>
           </div>
 
@@ -153,7 +155,7 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
               {shopName}
             </h2>
             <p className="text-[10px] text-slate-600 mt-0.5">
-              KHATA STATEMENT SLIP
+              {t('khataStatementSlip')}
             </p>
             <p className="text-[10px] text-slate-500 mt-0.5">
               {currentDateFormatted} • {currentTimeFormatted}
@@ -163,12 +165,12 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
           {/* Customer Metadata */}
           <div className="py-2.5 border-b border-dashed border-slate-400 space-y-0.5">
             <div className="flex justify-between font-bold">
-              <span className="text-slate-500">Grahak:</span>
+              <span className="text-slate-500">{t('customerName')}:</span>
               <span className="font-black text-slate-900">{customer.name}</span>
             </div>
             {customer.phone && (
               <div className="flex justify-between">
-                <span className="text-slate-500">Phone:</span>
+                <span className="text-slate-500">{t('phone')}:</span>
                 <span>+91 {customer.phone}</span>
               </div>
             )}
@@ -177,7 +179,7 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
           {/* Line Items Statement */}
           <div className="py-2.5 border-b border-dashed border-slate-400">
             <span className="text-[10px] font-black uppercase text-slate-500 block mb-1">
-              Pichle Hisaab (Recent Entries):
+              {t('recentEntriesReceipt')}
             </span>
             <div className="space-y-1">
               {entries.slice(0, 5).map((e) => {
@@ -186,10 +188,10 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
                   <div key={e.id} className="flex justify-between items-start text-[11px]">
                     <div>
                       <span className="font-bold">
-                        {isCredit ? '[UDHAAR]' : '[JAMA]'}
+                        [{isCredit ? t('credit').toUpperCase() : t('payment').toUpperCase()}]
                       </span>{' '}
                       <span className="text-slate-600">
-                        {formatFullRelativeDate(e.date)}
+                        {formatFullRelativeDate(e.date, { lang: language })}
                       </span>
                       {e.note && (
                         <span className="block text-[10px] text-slate-500 italic pl-1">
@@ -209,15 +211,15 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
           {/* Summary Totals */}
           <div className="py-2.5 border-b-2 border-slate-900 space-y-1">
             <div className="flex justify-between text-slate-600 text-[11px]">
-              <span>Kul Udhaar:</span>
+              <span>{t('totalCreditLabel')}</span>
               <span>₹{customer.totalCredit.toLocaleString('en-IN')}</span>
             </div>
             <div className="flex justify-between text-slate-600 text-[11px]">
-              <span>Kul Jama:</span>
+              <span>{t('totalPaymentLabel')}</span>
               <span>₹{customer.totalPayment.toLocaleString('en-IN')}</span>
             </div>
             <div className="flex justify-between text-sm font-black pt-1 border-t border-slate-300 text-slate-900">
-              <span>KUL BAAKI:</span>
+              <span>{t('outstandingUdhaar')}:</span>
               <span className="text-base font-black">
                 ₹{customer.balance.toLocaleString('en-IN')}
               </span>
@@ -226,7 +228,7 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
 
           {/* Footer */}
           <div className="text-center pt-3 text-[10px] text-slate-500 space-y-0.5">
-            <p className="font-bold">Vyapar ke liye dhanyawad! 🙏</p>
+            <p className="font-bold">{t('thankYouShopping')}</p>
             <p>Powered by Voice Khata PWA</p>
           </div>
         </div>
@@ -240,7 +242,7 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
             className="flex items-center justify-center gap-2 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-black text-sm transition-all min-h-[52px] shadow-md active:scale-95"
           >
             <Printer className="w-4 h-4" />
-            <span>Print Receipt</span>
+            <span>{t('printReceipt')}</span>
           </button>
 
           {/* Share Button */}
@@ -252,12 +254,12 @@ Total Jama:   ₹${customer.totalPayment.toLocaleString('en-IN')}
             {copied ? (
               <>
                 <CheckCircle className="w-4 h-4 text-emerald-400" />
-                <span className="text-emerald-400">Copied!</span>
+                <span className="text-emerald-400">{t('copied')}</span>
               </>
             ) : (
               <>
                 <Share2 className="w-4 h-4" />
-                <span>Share Slip</span>
+                <span>{t('shareSlip')}</span>
               </>
             )}
           </button>

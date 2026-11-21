@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { ArrowUpRight, ArrowDownLeft, Wallet } from 'lucide-react';
-import { formatINR } from '../lib/formatters';
+import { formatRupees } from '../lib/format';
 import { DailySummary } from '../services/types';
 import { useI18n } from '../i18n/I18nContext';
 
@@ -24,50 +24,50 @@ export const QuickSummaryCards: React.FC<QuickSummaryCardsProps> = ({
     <section className="px-4 py-3 max-w-md mx-auto w-full">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          {t.todaySummary[language]}
+          {t('todaySummary')}
         </h2>
         <span className="text-xs font-semibold text-slate-500">
-          {summary.transactionCount} {language === 'hi' ? 'लेन-देन' : 'entries'}
+          {t('entriesCount', { count: summary.transactionCount })}
         </span>
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
-        {/* Today's Udhaar Diya (Credit Given - Red/Amber) */}
+        {/* Today's Credit Given */}
         <div className="bg-gradient-to-br from-rose-950/40 to-slate-900 border border-rose-600/30 rounded-2xl p-3.5 flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-rose-300 flex items-center gap-1">
               <span className="p-1 rounded-md bg-rose-500/20 text-rose-400">
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </span>
-              {t.creditGiven[language]}
+              {t('creditGiven')}
             </span>
           </div>
           <div className="mt-2">
             <p className="text-2xl font-black text-rose-400 tracking-tight">
-              {formatINR(summary.totalCreditGiven)}
+              {formatRupees(summary.totalCreditGiven, { lang: language })}
             </p>
             <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              Aaj diya gaya udhaar
+              {t('creditGivenTodaySub')}
             </p>
           </div>
         </div>
 
-        {/* Today's Jama Mila (Payment Received - Green) */}
+        {/* Today's Payment Received */}
         <div className="bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-600/30 rounded-2xl p-3.5 flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-emerald-300 flex items-center gap-1">
               <span className="p-1 rounded-md bg-emerald-500/20 text-emerald-400">
                 <ArrowDownLeft className="w-3.5 h-3.5" />
               </span>
-              {t.paymentReceived[language]}
+              {t('paymentReceived')}
             </span>
           </div>
           <div className="mt-2">
             <p className="text-2xl font-black text-emerald-400 tracking-tight">
-              {formatINR(summary.totalPaymentReceived)}
+              {formatRupees(summary.totalPaymentReceived, { lang: language })}
             </p>
             <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              Aaj jama hui rashi
+              {t('paymentReceivedTodaySub')}
             </p>
           </div>
         </div>
@@ -81,12 +81,12 @@ export const QuickSummaryCards: React.FC<QuickSummaryCardsProps> = ({
           </div>
           <div>
             <span className="text-xs font-bold text-slate-400">
-              {t.balanceOwed[language]} (Bazaar Baaki)
+              {t('balanceOwed')} ({t('marketPending')})
             </span>
           </div>
         </div>
         <span className="text-lg font-black text-amber-400">
-          {formatINR(totalPendingBalance)}
+          {formatRupees(totalPendingBalance, { lang: language })}
         </span>
       </div>
     </section>

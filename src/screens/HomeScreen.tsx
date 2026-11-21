@@ -19,18 +19,17 @@ import { LiveTranscriptBanner } from '../components/LiveTranscriptBanner';
 import { RecentTransactionsList } from '../components/RecentTransactionsList';
 import { Customer, LedgerEntry, DailySummary, ParsedEntry, TransactionType, ConfirmEntryData, ShopProfile, PaymentRequest } from '../services/types';
 import { ledgerService } from '../services/ledgerService';
-import { parseTranscript } from '../services/parser';
-import { findCustomers } from '../services/customerMatcher';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSoundbox } from '../hooks/useSoundbox';
 import { useSpeak } from '../hooks/useSpeak';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useI18n } from '../i18n/I18nContext';
-import { getSpeechTemplates } from '../i18n/speech';
 import { useToast } from '../components/ui/Toast';
 import { useSettings } from '../hooks/useSettings';
-import { DebugLatencyBadge, LatencyMetrics } from '../components/DebugLatencyBadge';
+import type { LatencyMetrics } from '../components/DebugLatencyBadge';
 import { VolumeX, AlertCircle, QrCode } from 'lucide-react';
+
+const DebugLatencyBadge = lazy(() => import('../components/DebugLatencyBadge').then(m => ({ default: m.DebugLatencyBadge })));
 
 const ConfirmEntrySheet = lazy(() => import('../components/ConfirmEntrySheet').then(m => ({ default: m.ConfirmEntrySheet })));
 const BalanceAnswerCard = lazy(() => import('../components/BalanceAnswerCard').then(m => ({ default: m.BalanceAnswerCard })));
@@ -229,6 +228,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       if (items.length === 1) {
         if (primary.type === 'credit') {
           if (settings.autoOpenPaymentRequest) {
+            const { getSpeechTemplates } = await import('../i18n/speech');
             const tmpl = getSpeechTemplates(language);
             const spokenText = tmpl.creditSavedWithPaymentRequest(primary.customerName, primary.amount);
             speak(spokenText, { locale: currentLangConfig.speechLocale });
@@ -239,7 +239,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
           announcePaymentSaved(primary.customerName, primary.amount);
         }
         showToast(
-          `${primary.customerName} ko ${primary.type === 'credit' ? 'udhaar' : 'jama'} likha gaya!`,
+          `${primary.customerName}: ${primary.type === 'credit' ? t('credit') : t('payment')} - ${t('entrySavedSuccess')}`,
           { type: 'success' }
         );
 
@@ -253,7 +253,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
           setShowPaymentSheet(true);
         }
       } else {
-        showToast(`${items.length} hisaab entries safalta se save ho gayi!`, {
+        showToast(`${items.length} ${t('multiEntriesSavedSuccess')}`, {
           type: 'success',
         });
       }
@@ -292,6 +292,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       }
       const tEnd = lastSpeechEndRef.current || performance.now();
       const parseStart = performance.now();
+      const { parseTranscript } = await import('../services/parser');
       const result = await parseTranscript(finalTranscript, parsedDraft || undefined);
       const parseEnd = performance.now();
 
@@ -341,6 +342,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         const queryStart = performance.now();
         const targetName = result.queryCustomer || result.customerName || 'Customer';
         const allCusts = await ledgerService.getCustomers();
+        const { findCustomers } = await import('../services/customerMatcher');
         const matchResult = findCustomers(targetName, allCusts);
 
         // Disambiguate multiple candidates (F16)
@@ -383,21 +385,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         setShowRegisterSheet(true);
         if (!result.phone) {
           const askText =
-            t('customerNewAskPhoneSpoken', { name: result.name || 'Grahak' }) ||
-            `${result.name || 'Grahak'} naya hai. Number bataiye`;
+            t('customerNewAskPhoneSpoken', { name: result.name || t('customer') });
           speak(askText, { locale: currentLangConfig.speechLocale });
         }
         return;
       } else if (result.intent === 'entry' || result.type === 'entry') {
         const spokenCustName = result.data.customerName || '';
         const allCusts = await ledgerService.getCustomers();
+        const { findCustomers } = await import('../services/customerMatcher');
         const matchResult = findCustomers(spokenCustName, allCusts);
 
         // If customer is not found (score < 0.60), ask for number and open RegisterCustomerSheet!
         if (matchResult.action === 'create_new') {
           const askText =
-            t('customerNewAskPhoneSpoken', { name: spokenCustName }) ||
-            `${spokenCustName} naya hai. Number bataiye`;
+            t('customerNewAskPhoneSpoken', { name: spokenCustName });
           speak(askText, { locale: currentLangConfig.speechLocale });
           setRegisterInitialName(spokenCustName);
           setRegisterInitialPhone('');
@@ -436,7 +437,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
         setShowConfirmSheet(true);
       } else {
         // Unknown: inform user gracefully
-        showToast(result.message || 'Hisaab samajh nahi aaya. Kripya dobara bolein.', {
+        showToast(result.message || t('errorNotUnderstood'), {
           type: 'warning',
         });
       }
@@ -756,7 +757,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onSelectCustomer }) => {
       )}
 
       {/* 11. SLA Latency & Telemetry Badge (?debug=1) */}
-      <DebugLatencyBadge metrics={latencyMetrics} />
+      <Suspense fallback={null}>
+        <DebugLatencyBadge metrics={latencyMetrics} />
+      </Suspense>
     </div>
   );
 };

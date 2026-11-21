@@ -7,6 +7,7 @@
 
 import qrcode from 'qrcode-generator';
 import { LanguageCode } from './types';
+export { generatePaymentRef } from './paymentRef';
 
 export interface UpiLinkOptions {
   upiId: string;
@@ -24,23 +25,6 @@ export interface PaymentRequestMessageOptions {
   upiId: string;
   paymentLink?: string;
   lang?: LanguageCode;
-}
-
-/**
- * Generates a random 16 URL-safe characters payment reference.
- * Contains strictly no personal data or sensitive identifiers.
- */
-export function generatePaymentRef(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-  }
-  // Fallback for older environments / test runners
-  const pool = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let ref = '';
-  for (let i = 0; i < 16; i++) {
-    ref += pool.charAt(Math.floor(Math.random() * pool.length));
-  }
-  return ref;
 }
 
 /**
